@@ -80,6 +80,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final controller = context.watch<DomainController>();
     final l10n = AppLocalizations.of(context);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final pages = <Widget>[
       const DiscoverScreen(),
       const LikesScreen(),
@@ -90,7 +91,17 @@ class _HomeShellState extends State<HomeShell> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
-            child: IndexedStack(index: controller.selectedTab, children: pages),
+            child: IndexedStack(
+              index: controller.selectedTab,
+              children: [
+                for (var i = 0; i < pages.length; i++)
+                  _TabEntrance(
+                    active: controller.selectedTab == i,
+                    reduceMotion: reduceMotion,
+                    child: pages[i],
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -125,6 +136,79 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Subtle fade + rise when a bottom tab becomes active.
+class _TabEntrance extends StatefulWidget {
+  const _TabEntrance({
+    required this.active,
+    required this.reduceMotion,
+    required this.child,
+  });
+
+  final bool active;
+  final bool reduceMotion;
+  final Widget child;
+
+  @override
+  State<_TabEntrance> createState() => _TabEntranceState();
+}
+
+class _TabEntranceState extends State<_TabEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOut,
+  );
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, 0.018),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) {
+      if (widget.reduceMotion) {
+        _controller.value = 1;
+      } else {
+        _controller.forward();
+      }
+    } else {
+      _controller.value = 1;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TabEntrance oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      if (widget.reduceMotion) {
+        _controller.value = 1;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.reduceMotion) return widget.child;
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(position: _slide, child: widget.child),
     );
   }
 }
@@ -677,7 +761,7 @@ class LikesScreen extends StatelessWidget {
           ? const _InfoCard(
               icon: Icons.favorite_outline,
               title: 'No likes yet',
-              body: 'Tap Interested on Browse. Your likes show here.',
+              body: 'Tap ♥ on Browse. Your likes show here.',
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -727,17 +811,25 @@ class _LikesSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: AppColors.rose),
+              Icon(icon, size: 22, color: AppColors.rose),
               const SizedBox(width: 8),
               Text(title, style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
-              Text(
-                '$count',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.muted,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.darkCream,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -752,34 +844,66 @@ class _LikesSection extends StatelessWidget {
           ...domainsWithLikes.map((policy) {
             final entries = entriesFor(policy.id);
             return Card(
-              margin: const EdgeInsets.only(bottom: 8),
+              margin: const EdgeInsets.only(bottom: 10),
+              clipBehavior: Clip.antiAlias,
               child: Theme(
                 data: Theme.of(
                   context,
                 ).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
-                  initiallyExpanded: domainsWithLikes.length == 1,
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-                  childrenPadding: const EdgeInsets.only(bottom: 4),
+                  initiallyExpanded: false,
+                  tilePadding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                  childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
                   leading: CircleAvatar(
                     backgroundColor: policy.softColor,
                     child: Icon(
                       _domainIcons[policy.id],
                       color: policy.color,
-                      size: 20,
+                      size: 22,
                     ),
                   ),
-                  title: Text(policy.label),
-                  subtitle: Text('${entries.length}'),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          policy.label,
+                          style: TextStyle(
+                            color: policy.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: policy.softColor,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '${entries.length}',
+                          style: TextStyle(
+                            color: policy.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   children: entries
                       .map(
-                        (entry) => _LikeRow(
-                          entry: entry,
-                          mutual: likes.isMutual(
-                            entry.domain,
-                            entry.otherUid,
+                        (entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _LikeRow(
+                            entry: entry,
+                            mutual: likes.isMutual(
+                              entry.domain,
+                              entry.otherUid,
+                            ),
+                            onOpen: () => _showLikeDetail(context, entry),
                           ),
-                          onOpen: () => _showLikeDetail(context, entry),
                         ),
                       )
                       .toList(growable: false),
@@ -811,35 +935,97 @@ class _LikeRow extends StatelessWidget {
     final photo = card?.imageUrls.isNotEmpty == true
         ? card!.imageUrls.first
         : null;
-    return ListTile(
-      onTap: onOpen,
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          width: 52,
-          height: 52,
-          child: photo == null
-              ? _SyntheticArtwork(label: title, seed: entry.otherUid.hashCode)
-              : _LikePhoto(
-                  url: photo,
-                  label: title,
-                  seed: entry.otherUid.hashCode,
+    final policy = AppDomains.byId(entry.domain);
+    return Material(
+      color: policy.softColor.withValues(alpha: .35),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: photo == null
+                      ? _SyntheticArtwork(
+                          label: title,
+                          seed: entry.otherUid.hashCode,
+                        )
+                      : _LikePhoto(
+                          url: photo,
+                          label: title,
+                          seed: entry.otherUid.hashCode,
+                        ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (city.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 16,
+                            color: AppColors.muted,
+                          ),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              city,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          mutual ? Icons.lock_open : Icons.lock_outline,
+                          size: 16,
+                          color: mutual
+                              ? CardSideMark.supplyColor
+                              : AppColors.muted,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          mutual ? 'Both liked' : 'Waiting',
+                          style: TextStyle(
+                            color: mutual
+                                ? CardSideMark.supplyColor
+                                : AppColors.muted,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.muted),
+            ],
+          ),
         ),
-      ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        [
-          if (city.isNotEmpty) city,
-          mutual ? 'Both liked' : 'Waiting',
-        ].join(' • '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: Icon(
-        mutual ? Icons.lock_open : Icons.lock_outline,
-        color: mutual ? CardSideMark.supplyColor : AppColors.muted,
-        size: 20,
       ),
     );
   }
@@ -977,7 +1163,15 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
           bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
         ),
         child: SingleChildScrollView(
-          child: Column(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: policy.color, width: 4),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
@@ -1122,6 +1316,8 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                 ],
               ),
             ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1189,6 +1385,9 @@ class MeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final identity = context.watch<IdentityStore>();
+    final initial = identity.identity.displayName.isEmpty
+        ? '?'
+        : identity.identity.displayName.characters.first.toUpperCase();
     return _Page(
       title: 'Me',
       actions: [
@@ -1201,39 +1400,139 @@ class MeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Card(
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: AppColors.darkCream,
-                child: Text(
-                  identity.identity.displayName.isEmpty
-                      ? '?'
-                      : identity.identity.displayName.characters.first
-                            .toUpperCase(),
+          Material(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => showIdentityForm(context),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: AppColors.darkCream,
+                      child: Text(
+                        initial,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            identity.completed
+                                ? identity.identity.displayName
+                                : 'Add my details',
+                            style: Theme.of(context).textTheme.titleLarge,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (identity.completed) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on_outlined,
+                                  size: 16,
+                                  color: AppColors.muted,
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Text(
+                                    identity.identity.cityLabel,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: AppColors.muted),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.edit_outlined, color: AppColors.muted),
+                  ],
                 ),
               ),
-              title: Text(
-                identity.completed
-                    ? identity.identity.displayName
-                    : 'Add my details',
-              ),
-              subtitle: identity.completed
-                  ? Text(identity.identity.cityLabel)
-                  : null,
-              trailing: const Icon(Icons.edit_outlined),
-              onTap: () => showIdentityForm(context),
             ),
           ),
           const SizedBox(height: 16),
-          Card(
-            child: ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: AppColors.darkCream,
-                child: Icon(Icons.campaign_outlined, color: AppColors.rose),
-              ),
-              title: const Text('My ads'),
-              trailing: const Icon(Icons.chevron_right),
+          Material(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
               onTap: () => _showMyAdsSheet(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 24,
+                          backgroundColor: AppColors.darkCream,
+                          child: Icon(
+                            Icons.campaign_outlined,
+                            color: AppColors.rose,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'My ads',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right,
+                          color: AppColors.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 8,
+                    child: Row(
+                      children: [
+                        for (final domain in AppDomains.all)
+                          Expanded(
+                            child: ColoredBox(color: domain.color),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+                    child: Row(
+                      children: [
+                        for (final domain in AppDomains.all) ...[
+                          Expanded(
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: domain.softColor,
+                              child: Icon(
+                                _domainIcons[domain.id],
+                                color: domain.color,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1284,28 +1583,49 @@ Future<void> _showMyAdsSheet(BuildContext context) {
               const SizedBox(height: 8),
               ...AppDomains.all.map((domain) {
                 final hasAd = domain.enabled && _domainHasAd(context, domain.id);
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: domain.softColor,
-                    child: Icon(_domainIcons[domain.id], color: domain.color),
-                  ),
-                  title: Text(domain.label),
-                  trailing: !domain.enabled
-                      ? Text(
-                          'Soon',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: AppColors.muted),
-                        )
-                      : Icon(
-                          hasAd ? Icons.check_circle : Icons.add_circle_outline,
-                          color: hasAd ? domain.color : AppColors.muted,
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: domain.softColor,
+                    borderRadius: BorderRadius.circular(16),
+                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.white.withValues(alpha: .7),
+                        child: Icon(
+                          _domainIcons[domain.id],
+                          color: domain.color,
                         ),
-                  onTap: domain.enabled
-                      ? () {
-                          Navigator.pop(context);
-                          showDomainProfileForm(context, domain);
-                        }
-                      : null,
+                      ),
+                      title: Text(
+                        domain.label,
+                        style: TextStyle(
+                          color: domain.color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      trailing: !domain.enabled
+                          ? Text(
+                              'Soon',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.muted),
+                            )
+                          : Icon(
+                              hasAd
+                                  ? Icons.check_circle
+                                  : Icons.add_circle_outline,
+                              color: hasAd ? domain.color : AppColors.muted,
+                            ),
+                      onTap: domain.enabled
+                          ? () {
+                              Navigator.pop(context);
+                              showDomainProfileForm(context, domain);
+                            }
+                          : null,
+                    ),
+                  ),
                 );
               }),
               if (hasAds) ...[

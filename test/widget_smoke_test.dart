@@ -37,12 +37,17 @@ void main() {
     expect(find.text('Guide'), findsNothing);
     expect(find.byType(DiscoveryCard), findsWidgets);
 
+    await tester.tap(find.text('Likes'));
+    await tester.pumpAndSettle();
+    expect(find.text('No likes yet'), findsOneWidget);
+
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
     expect(find.text('My ads'), findsOneWidget);
     expect(find.text('Get more views'), findsNothing);
     expect(find.text('Settings & safety'), findsNothing);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.campaign_outlined), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
