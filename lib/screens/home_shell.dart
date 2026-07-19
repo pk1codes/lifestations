@@ -12,6 +12,7 @@ import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
 import '../models/domain_profiles.dart';
 import '../services/account_services.dart';
+import 'legal_screens.dart';
 import '../services/contact_service.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/form_media_controller.dart';
@@ -26,6 +27,7 @@ import '../widgets/forms/bikes_form.dart';
 import '../widgets/forms/home_help_form.dart';
 import '../widgets/forms/jobs_form.dart';
 import '../widgets/forms/marriage_form.dart';
+import '../widgets/domain_sphere_selector.dart';
 import '../widgets/forms/rooms_form.dart';
 import '../widgets/onboarding/otp_sheet.dart';
 import '../widgets/safety/safety_sheet.dart';
@@ -154,31 +156,14 @@ Future<void> showDomainDial(BuildContext context) async {
             const Text(
               'One account. Independent profiles for every part of life.',
             ),
-            const SizedBox(height: 18),
-            ...AppDomains.all.map(
-              (domain) => Semantics(
-                label:
-                    '${domain.label}, ${domain.frequency} FM'
-                    '${domain.enabled ? '' : ', coming soon'}',
-                child: ListTile(
-                  enabled: domain.enabled,
-                  leading: CircleAvatar(
-                    backgroundColor: domain.color.withValues(alpha: .14),
-                    child: Icon(Icons.graphic_eq, color: domain.color),
-                  ),
-                  title: Text(domain.label),
-                  subtitle: Text(
-                    '${domain.frequency.toStringAsFixed(1)} FM'
-                    '${domain.enabled ? '' : '  •  Coming soon'}',
-                  ),
-                  trailing: controller.selected == domain.id
-                      ? Icon(Icons.radio_button_checked, color: domain.color)
-                      : const Icon(Icons.radio_button_off),
-                  onTap: () {
-                    controller.selectDomain(domain.id);
-                    Navigator.pop(context);
-                  },
-                ),
+            const SizedBox(height: 12),
+            Center(
+              child: DomainSphereSelector(
+                selected: controller.selected,
+                onDomainSelected: (id) {
+                  controller.selectDomain(id);
+                  Navigator.pop(context);
+                },
               ),
             ),
           ],
@@ -1043,9 +1028,37 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
             ),
             ListTile(
               leading: const Icon(Icons.gavel_outlined),
-              title: const Text('Community standards'),
+              title: const Text('Community terms'),
               subtitle: const Text(
                 'Respect, consent, truth, and no harassment.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LegalPageScreen.terms(),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.privacy_tip_outlined),
+              title: const Text('Privacy policy'),
+              subtitle: const Text('What we collect and how it is used.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LegalPageScreen.privacy(),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Data & account deletion'),
+              subtitle: const Text('Delete your account and data anytime.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LegalPageScreen.dataDeletion(),
+                ),
               ),
             ),
           ],

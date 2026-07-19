@@ -138,7 +138,7 @@ class FlutMarriageApp extends StatelessWidget {
       child: Consumer<LocaleController>(
         builder: (context, locale, _) => MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'Flut Marriage',
+          title: 'Life Stations',
           theme: buildTheme(),
           locale: locale.localeCode == null ? null : Locale(locale.localeCode!),
           supportedLocales: const [Locale('en'), Locale('hi')],

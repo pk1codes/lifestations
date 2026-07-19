@@ -17,10 +17,61 @@ class ProcessedImage {
   final String mimeType;
 }
 
+/// Quality ladder keyed by source byte size. Small sources keep higher
+/// quality (avoid generation loss); large sources step quality down so
+/// upload / storage / egress stay cheap.
+@immutable
+class CompressionLadder {
+  const CompressionLadder({
+    required this.thumbQuality,
+    required this.mediumQuality,
+    required this.largeQuality,
+  });
+
+  final int thumbQuality;
+  final int mediumQuality;
+  final int largeQuality;
+
+  /// Picks qualities from the raw source size before any resize.
+  static CompressionLadder forSourceBytes(int bytes) {
+    if (bytes < 200 * 1024) {
+      // Already small — preserve detail; WebP still shrinks vs JPEG/PNG.
+      return const CompressionLadder(
+        thumbQuality: 72,
+        mediumQuality: 84,
+        largeQuality: 90,
+      );
+    }
+    if (bytes < 1024 * 1024) {
+      return const CompressionLadder(
+        thumbQuality: 60,
+        mediumQuality: 72,
+        largeQuality: 80,
+      );
+    }
+    if (bytes < 3 * 1024 * 1024) {
+      return const CompressionLadder(
+        thumbQuality: 55,
+        mediumQuality: 65,
+        largeQuality: 74,
+      );
+    }
+    return const CompressionLadder(
+      thumbQuality: 48,
+      mediumQuality: 58,
+      largeQuality: 68,
+    );
+  }
+}
+
 class ImagePipeline {
   ImagePipeline({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
 
   static const maxUploadBytes = 5 * 1024 * 1024;
+  static const thumbWidth = 320;
+  static const mediumWidth = 960;
+  static const largeWidth = 1800;
+
   final ImagePicker _picker;
 
   Future<XFile?> pick() => _picker.pickImage(
@@ -34,10 +85,11 @@ class ImagePipeline {
     if (bytes.length > maxUploadBytes) {
       throw const FormatException('Image must be 5 MiB or smaller');
     }
+    final ladder = CompressionLadder.forSourceBytes(bytes.length);
     final variants = await Future.wait([
-      _compress(bytes, 320, 60),
-      _compress(bytes, 960, 72),
-      _compress(bytes, 1800, 80),
+      _compress(bytes, thumbWidth, ladder.thumbQuality),
+      _compress(bytes, mediumWidth, ladder.mediumQuality),
+      _compress(bytes, largeWidth, ladder.largeQuality),
     ]);
     if (variants.any((bytes) => bytes.isEmpty)) {
       throw const FormatException('Image could not be processed');

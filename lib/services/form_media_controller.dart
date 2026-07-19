@@ -61,7 +61,16 @@ class FormMediaController extends ChangeNotifier {
               slot: slot,
               image: processed,
             );
-      urls.add(variants.mediumUrl);
+      // Upsert by slot so re-picks replace the previous URL instead of
+      // appending and leaving orphan references in the listing.
+      while (urls.length <= slot) {
+        urls.add('');
+      }
+      urls[slot] = variants.mediumUrl;
+      // Drop trailing empty placeholders from earlier growth.
+      while (urls.isNotEmpty && urls.last.isEmpty) {
+        urls.removeLast();
+      }
       notifyListeners();
       return true;
     } catch (error) {

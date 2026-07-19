@@ -1,11 +1,11 @@
 {
-    "name": "flut_marriage",
-    "short_name": "flut_marriage",
+    "name": "Life Stations",
+    "short_name": "Life Stations",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FBF6EE",
+    "theme_color": "#9B3B5A",
+    "description": "One account, five life domains — Marriage, Jobs, Rooms, Bikes, Home Help.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

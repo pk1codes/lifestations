@@ -37,7 +37,7 @@ class ShareService {
     await SharePlus.instance.share(
       ShareParams(
         text: 'Private-by-design listing: $url',
-        subject: 'Shared on Flut Marriage',
+        subject: 'Shared on Life Stations',
       ),
     );
   }

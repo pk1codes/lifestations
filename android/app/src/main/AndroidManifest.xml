@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Release permissions. Debug/profile manifests add INTERNET for tooling;
+         it must also be declared here or the release build has no network. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13+ runtime notification permission for FCM match/safety alerts. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <application
-        android:label="flut_marriage"
+        android:label="Life Stations"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -24,14 +30,14 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- App Links for /c/* — replace YOUR_HOST before production. -->
+            <!-- App Links for public share cards /c/* on the Hosting domain. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="https"
-                    android:host="YOUR_HOST"
+                    android:host="aaaa-4eee0.web.app"
                     android:pathPrefix="/c"/>
             </intent-filter>
         </activity>

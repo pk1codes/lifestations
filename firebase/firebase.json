@@ -28,11 +28,27 @@
     ],
     "rewrites": [
       {
+        "source": "/i/**",
+        "function": {
+          "functionId": "serveMedia",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
     ],
     "headers": [
+      {
+        "source": "/i/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public,max-age=31536000,immutable"
+          }
+        ]
+      },
       {
         "source": "**",
         "headers": [

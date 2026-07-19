@@ -1,4 +1,4 @@
-package com.matchmaker.flut_marriage
+package com.lifestations.app
 
 import io.flutter.embedding.android.FlutterActivity
 

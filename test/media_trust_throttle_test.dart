@@ -3,6 +3,7 @@ import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flut_marriage/services/account_services.dart';
 import 'package:flut_marriage/services/feed_throttle.dart';
 import 'package:flut_marriage/services/image_pipeline/image_pipeline.dart';
+import 'package:flut_marriage/services/media_upload_service.dart';
 import 'package:flut_marriage/services/moderation/moderation_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +56,27 @@ void main() {
   test('seed feature flag allows debug and empty-feed mobile fallback', () {
     expect(FeatureFlags.allowBundledSeeds(remoteFeedEmpty: false), isTrue);
     expect(FeatureFlags.allowBundledSeeds(remoteFeedEmpty: true), isTrue);
+  });
+
+  test('compression ladder softens quality for large sources', () {
+    final small = CompressionLadder.forSourceBytes(50 * 1024);
+    final mid = CompressionLadder.forSourceBytes(500 * 1024);
+    final large = CompressionLadder.forSourceBytes(2 * 1024 * 1024);
+    final huge = CompressionLadder.forSourceBytes(4 * 1024 * 1024);
+    expect(small.mediumQuality, greaterThan(mid.mediumQuality));
+    expect(mid.mediumQuality, greaterThan(large.mediumQuality));
+    expect(large.mediumQuality, greaterThan(huge.mediumQuality));
+  });
+
+  test('media CDN URLs route through Hosting /i/ prefix', () {
+    expect(
+      mediaCdnUrl('profile_photos/uid/marriage/0/medium.webp'),
+      'https://aaaa-4eee0.web.app/i/profile_photos/uid/marriage/0/medium.webp',
+    );
+    expect(
+      mediaCdnUrl('/media/uid/rooms/offer1/2/thumb.webp'),
+      contains('/i/media/uid/rooms/offer1/2/thumb.webp'),
+    );
   });
 
   test('refresh day key persists', () async {

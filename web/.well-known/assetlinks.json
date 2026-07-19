@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.lifestations.app",
+      "sha256_cert_fingerprints": [
+        "8C:16:F3:55:8C:AA:F3:AE:60:81:BA:13:6C:CA:4E:61:99:88:EA:71:F9:B3:11:BB:AE:18:8B:41:09:2D:62:0B"
+      ]
+    }
+  }
+]

@@ -7,6 +7,28 @@ import 'firebase_bootstrap.dart';
 import 'image_pipeline/image_pipeline.dart';
 import 'moderation/moderation_service.dart';
 
+/// Public CDN origin for user media. Hosting rewrites `/i/**` to the
+/// [serveMedia] Cloud Function, which streams Storage objects with a
+/// long-lived Cache-Control so the Hosting edge CDN can cache them.
+const mediaCdnOrigin = String.fromEnvironment(
+  'SHARE_ORIGIN',
+  defaultValue: 'https://aaaa-4eee0.web.app',
+);
+
+const mediaCacheControl = 'public,max-age=31536000,immutable';
+
+/// Builds the Hosting-CDN URL for a Storage object path
+/// (e.g. `profile_photos/uid/marriage/0/medium.webp`).
+String mediaCdnUrl(String objectPath) {
+  final cleaned = objectPath.replaceFirst(RegExp(r'^/+'), '');
+  final encoded = cleaned
+      .split('/')
+      .where((segment) => segment.isNotEmpty)
+      .map(Uri.encodeComponent)
+      .join('/');
+  return '$mediaCdnOrigin/i/$encoded';
+}
+
 class UploadedVariants {
   const UploadedVariants({
     required this.thumbUrl,
@@ -85,7 +107,13 @@ class MediaUploadService {
     if (!FirebaseBootstrap.ready) return;
     final ref = _db.ref('verify_staging/$uid/$docType/attest.webp');
     try {
-      await ref.putData(bytes, SettableMetadata(contentType: 'image/webp'));
+      await ref.putData(
+        bytes,
+        SettableMetadata(
+          contentType: 'image/webp',
+          cacheControl: 'private,max-age=0,no-store',
+        ),
+      );
     } finally {
       try {
         await ref.delete();
@@ -94,6 +122,25 @@ class MediaUploadService {
           debugPrint('verify_staging cleanup skipped');
         }
       }
+    }
+  }
+
+  /// Best-effort wipe of an existing slot before overwrite so stale
+  /// variant names / orphaned bytes cannot accumulate under the prefix.
+  Future<void> clearSlot(String prefix) async {
+    if (!FirebaseBootstrap.ready) return;
+    await Future.wait([
+      _deleteQuietly('$prefix/thumb.webp'),
+      _deleteQuietly('$prefix/medium.webp'),
+      _deleteQuietly('$prefix/large.webp'),
+    ]);
+  }
+
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      await _db.ref(path).delete();
+    } catch (_) {
+      // Object missing or rules denied — overwrite will still succeed.
     }
   }
 
@@ -109,24 +156,25 @@ class MediaUploadService {
         pathPrefix: prefix,
       );
     }
+    await clearSlot(prefix);
     final thumb = _db.ref('$prefix/thumb.webp');
     final medium = _db.ref('$prefix/medium.webp');
     final large = _db.ref('$prefix/large.webp');
-    final meta = SettableMetadata(contentType: 'image/webp');
+    final meta = SettableMetadata(
+      contentType: 'image/webp',
+      cacheControl: mediaCacheControl,
+    );
     await Future.wait([
       thumb.putData(image.thumb, meta),
       medium.putData(image.medium, meta),
       large.putData(image.large, meta),
     ]);
-    final urls = await Future.wait([
-      thumb.getDownloadURL(),
-      medium.getDownloadURL(),
-      large.getDownloadURL(),
-    ]);
+    // Prefer Hosting-CDN URLs over signed Storage download URLs so repeat
+    // views are served from the edge with immutable caching.
     return UploadedVariants(
-      thumbUrl: urls[0],
-      mediumUrl: urls[1],
-      largeUrl: urls[2],
+      thumbUrl: mediaCdnUrl('$prefix/thumb.webp'),
+      mediumUrl: mediaCdnUrl('$prefix/medium.webp'),
+      largeUrl: mediaCdnUrl('$prefix/large.webp'),
       pathPrefix: prefix,
     );
   }

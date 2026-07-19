@@ -1,4 +1,4 @@
-# Flut Marriage 3.0.0+3
+# Life Stations 3.0.0+3
 
 A local-first Flutter marketplace connecting demand and supply across independent
 domains. **All five stations are live:** Marriage, Jobs, Rooms, Bikes, and Home Help.

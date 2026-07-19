@@ -23,15 +23,31 @@ class FirebaseBootstrap {
         persistenceEnabled: true,
         cacheSizeBytes: 15 * 1024 * 1024,
       );
-      await FirebaseAppCheck.instance.activate(
-        providerAndroid: const AndroidPlayIntegrityProvider(),
-        providerApple: const AppleAppAttestProvider(),
-        providerWeb: ReCaptchaV3Provider(
-          const String.fromEnvironment('RECAPTCHA_V3_SITE_KEY'),
-        ),
-      );
+      const webSiteKey = String.fromEnvironment('RECAPTCHA_V3_SITE_KEY');
+      if (kIsWeb) {
+        // Web App Check uses reCAPTCHA Enterprise. Passing an empty key makes
+        // reCAPTCHA throw during startup and can leave Chrome blank.
+        if (webSiteKey.isNotEmpty) {
+          await FirebaseAppCheck.instance.activate(
+            providerWeb: ReCaptchaEnterpriseProvider(webSiteKey),
+          );
+        }
+      } else {
+        await FirebaseAppCheck.instance.activate(
+          providerAndroid: const AndroidPlayIntegrityProvider(),
+          providerApple: const AppleAppAttestProvider(),
+        );
+      }
       if (FirebaseAuth.instance.currentUser == null) {
-        await FirebaseAuth.instance.signInAnonymously();
+        try {
+          await FirebaseAuth.instance.signInAnonymously();
+        } on FirebaseAuthException catch (error) {
+          // Anonymous sign-in may be disabled in the console; the app can
+          // still reach Firebase and sign in via phone OTP later.
+          if (kDebugMode) {
+            debugPrint('Anonymous sign-in unavailable: ${error.code}');
+          }
+        }
       }
       try {
         await FirebaseAnalytics.instance.logAppOpen();

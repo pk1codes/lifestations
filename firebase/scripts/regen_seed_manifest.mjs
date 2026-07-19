@@ -13,6 +13,9 @@
  *   initial_seeds/rooms/photos/rooms_{card}_{slot}.webp
  *   initial_seeds/bikes/photos/bikes_{card}_{slot}.webp
  *   initial_seeds/home_help/photos/home_help_{card}_{slot}.webp
+ *
+ * Card and slot are 1-based (card 1..9, slot 1..3). If you drop files using the
+ * alternate seed_* / *_seed_* naming, rename them to the canonical pattern first.
  */
 import crypto from 'crypto';
 import fs from 'fs';
