@@ -1,0 +1,96 @@
+rules_version = '2';
+
+// Production storage — owner writes, ≤5MB, image content-types only.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isSmallUpload() {
+      return request.resource != null
+        && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    function isAllowedImage() {
+      return request.resource.contentType.matches('image/(webp|jpeg|jpg|png)');
+    }
+
+    function allowedDomain(domainId) {
+      return domainId in ['marriage', 'jobs', 'rooms', 'bikes', 'home_help', 'identity'];
+    }
+
+    match /profile_photos/{userId}/{domainOrIdentity}/{slot}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && isSmallUpload()
+        && isAllowedImage()
+        && allowedDomain(domainOrIdentity)
+        && slot.matches('[012]')
+        && fileName.matches('.*\\.(webp|jpg|jpeg|png)');
+      allow delete: if isOwner(userId);
+    }
+
+    match /profile_photos/{userId}/{slot}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && isSmallUpload()
+        && isAllowedImage()
+        && slot.matches('[012]')
+        && fileName.matches('.*\\.(webp|jpg|jpeg|png)');
+      allow delete: if isOwner(userId);
+    }
+
+    match /media/{userId}/{domainId}/{offerId}/{slot}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && isSmallUpload()
+        && isAllowedImage()
+        && domainId in ['rooms', 'bikes', 'home_help']
+        && slot.matches('[0-7]')
+        && fileName.matches('.*\\.(webp|jpg|jpeg|png)');
+      allow delete: if isOwner(userId);
+    }
+
+    match /media/{userId}/{domainId}/{offerId}/docs/{docName}/{fileName} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if isOwner(userId)
+        && isSmallUpload()
+        && isAllowedImage()
+        && domainId in ['rooms', 'bikes']
+        && docName in ['rc', 'insurance']
+        && fileName.matches('.*\\.(webp|jpg|jpeg|png)');
+      allow delete: if isOwner(userId);
+    }
+
+    // Trust-on-upload staging — owner-only; app deletes immediately after flag set.
+    match /verify_staging/{userId}/{docType}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && isSmallUpload()
+        && isAllowedImage()
+        && docType.matches('^[a-z0-9_]{2,40}$')
+        && fileName.matches('.*\\.(webp|jpg|jpeg|png)');
+      allow delete: if isOwner(userId);
+    }
+
+    match /profile_media/{userId}/{slot}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && isSmallUpload()
+        && isAllowedImage()
+        && slot.matches('[012]')
+        && fileName in ['thumb.webp', 'medium.webp', 'large.webp'];
+      allow delete: if isOwner(userId);
+    }
+
+    match /profile_photos/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow delete: if isOwner(userId);
+    }
+  }
+}

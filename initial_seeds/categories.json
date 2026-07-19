@@ -1,0 +1,34 @@
+{
+  "categories": [
+    {
+      "id": "marriage_1",
+      "cityId": "mumbai",
+      "cityLabel": "Mumbai & MMR",
+      "cardIds": [
+        "demo_marriage_1",
+        "demo_marriage_2",
+        "demo_marriage_3"
+      ]
+    },
+    {
+      "id": "marriage_2",
+      "cityId": "delhi",
+      "cityLabel": "Delhi NCR",
+      "cardIds": [
+        "demo_marriage_4",
+        "demo_marriage_5",
+        "demo_marriage_6"
+      ]
+    },
+    {
+      "id": "marriage_3",
+      "cityId": "bengaluru",
+      "cityLabel": "Bengaluru",
+      "cardIds": [
+        "demo_marriage_7",
+        "demo_marriage_8",
+        "demo_marriage_9"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,274 @@
+{
+  "profiles": [
+    {
+      "id": "demo_marriage_1",
+      "ownerId": "demo_owner_marriage_1",
+      "domainId": "marriage",
+      "cityId": "mumbai",
+      "cityLabel": "Mumbai & MMR",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_1_1.webp",
+          "sha256": "8cb8e1b40e7f398ed482539977bb8e030fd6c412097366a1d7726711dafe77b1"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_1_2.webp",
+          "sha256": "695caff0d34de36aff5e89c084701df69aa1dbda0c5d155c0e95c60bc3b3c88f"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_1_3.webp",
+          "sha256": "6cb4bffdc267477f2706bf4a89494d853edb601ccc569f2dd10b12b351886b91"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_1_1.webp",
+        "initial_seeds/photos/marriage_1_2.webp",
+        "initial_seeds/photos/marriage_1_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_2",
+      "ownerId": "demo_owner_marriage_2",
+      "domainId": "marriage",
+      "cityId": "mumbai",
+      "cityLabel": "Mumbai & MMR",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_2_1.webp",
+          "sha256": "99a2aab8eb7217b40396f635131102eae4b35015e0b61f30b1892360fec1ea2e"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_2_2.webp",
+          "sha256": "4802b870c06f89a17ade7d6314124d625b92747f74da87fdef86f221e64c5284"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_2_3.webp",
+          "sha256": "f49ceb379d93e11b9820e7b445da577247a16da9cfeed6ea5b4ed77eff5d4f5e"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_2_1.webp",
+        "initial_seeds/photos/marriage_2_2.webp",
+        "initial_seeds/photos/marriage_2_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_3",
+      "ownerId": "demo_owner_marriage_3",
+      "domainId": "marriage",
+      "cityId": "mumbai",
+      "cityLabel": "Mumbai & MMR",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_3_1.webp",
+          "sha256": "067e7e5c20c6c96b9fb1cd9098907d311e641960ed8aa57cdeefa6a2592c0e5a"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_3_2.webp",
+          "sha256": "eb1e4ddf444d6b030455097ca7e164d2b417f27a7a55c75ef6a4d580a5c6c6f2"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_3_3.webp",
+          "sha256": "9c705c4633d8c194d36be7a1d86e3b110470455f41e769136189609eabf58d9e"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_3_1.webp",
+        "initial_seeds/photos/marriage_3_2.webp",
+        "initial_seeds/photos/marriage_3_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_4",
+      "ownerId": "demo_owner_marriage_4",
+      "domainId": "marriage",
+      "cityId": "delhi",
+      "cityLabel": "Delhi NCR",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_4_1.webp",
+          "sha256": "243d21d655ba34f55ed686a5e912dda922883a718c5489ee0b803e4e7c7b6d3c"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_4_2.webp",
+          "sha256": "7d34c21c820c5e769c071a164ec88e1c1bc71aa2e4f8174e0aa734c66c621702"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_4_3.webp",
+          "sha256": "b66c2daaa59e5927e5e87c6c2489241a22d83b1fa9e75cb03b5537e5ccc82bfe"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_4_1.webp",
+        "initial_seeds/photos/marriage_4_2.webp",
+        "initial_seeds/photos/marriage_4_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_5",
+      "ownerId": "demo_owner_marriage_5",
+      "domainId": "marriage",
+      "cityId": "delhi",
+      "cityLabel": "Delhi NCR",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_5_1.webp",
+          "sha256": "0a6817b9e7687047c60076742c6650cc3d4f190fcc5d2775ba8645d7b96e084d"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_5_2.webp",
+          "sha256": "9d9823bd1d0ba7ac6bce48647cd7c78a8c29fa1185eccb866d44547ccb925566"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_5_3.webp",
+          "sha256": "4c75f84bb99477fc2a302a5ace515e0379667c4991592577ccebbc80821c9abf"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_5_1.webp",
+        "initial_seeds/photos/marriage_5_2.webp",
+        "initial_seeds/photos/marriage_5_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_6",
+      "ownerId": "demo_owner_marriage_6",
+      "domainId": "marriage",
+      "cityId": "delhi",
+      "cityLabel": "Delhi NCR",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_6_1.webp",
+          "sha256": "cf1533e9bc8fca97afbac5252024d9b75cf31bcab36bfcb6a44c14ba1bcf984c"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_6_2.webp",
+          "sha256": "1de42c8a43f8333641068cb078103fcb42c20f51c79305f97557e6ee08b77132"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_6_3.webp",
+          "sha256": "e361f445839f270257cb39912b335c100a9b8d7ed928e700cdcdda1c7ac95863"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_6_1.webp",
+        "initial_seeds/photos/marriage_6_2.webp",
+        "initial_seeds/photos/marriage_6_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_7",
+      "ownerId": "demo_owner_marriage_7",
+      "domainId": "marriage",
+      "cityId": "bengaluru",
+      "cityLabel": "Bengaluru",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_7_1.webp",
+          "sha256": "abc78c59ceb9ea796d0d429f12284446d90fecbf3902b1c95318e0a2ec148fc5"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_7_2.webp",
+          "sha256": "46c689b11e6ca9bf361096c2a085f5e72082f5c44575dc9ffada1925ae8982d5"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_7_3.webp",
+          "sha256": "e896b84d01d75262ab799d269019b7a7f92d0e20a009ee87cc2696c65f4644c1"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_7_1.webp",
+        "initial_seeds/photos/marriage_7_2.webp",
+        "initial_seeds/photos/marriage_7_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_8",
+      "ownerId": "demo_owner_marriage_8",
+      "domainId": "marriage",
+      "cityId": "bengaluru",
+      "cityLabel": "Bengaluru",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_8_1.webp",
+          "sha256": "d585ba68d49683855d01161e8af63354581e34e2d339a83085c31657a06fdc5e"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_8_2.webp",
+          "sha256": "807d793d46a14cb6f28a508588a4e57ddbaf44b8591215dc16ded00c25ac156f"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_8_3.webp",
+          "sha256": "3a8f4333894df9f9730c28d94054d37ecc03f15786d091d6b8bcdb9007da1154"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_8_1.webp",
+        "initial_seeds/photos/marriage_8_2.webp",
+        "initial_seeds/photos/marriage_8_3.webp"
+      ]
+    },
+    {
+      "id": "demo_marriage_9",
+      "ownerId": "demo_owner_marriage_9",
+      "domainId": "marriage",
+      "cityId": "bengaluru",
+      "cityLabel": "Bengaluru",
+      "synthetic": true,
+      "photoSlots": [
+        {
+          "slot": 1,
+          "path": "initial_seeds/photos/marriage_9_1.webp",
+          "sha256": "24819069a260f7972de708eded72f1870aa98e1da292ce9e4441641142f9aebb"
+        },
+        {
+          "slot": 2,
+          "path": "initial_seeds/photos/marriage_9_2.webp",
+          "sha256": "398235418819aec79aefd849954f27fc857525bc544bcac19c8454873f6c466a"
+        },
+        {
+          "slot": 3,
+          "path": "initial_seeds/photos/marriage_9_3.webp",
+          "sha256": "08eb98c8eea7c93290473c1ae1a111c6087a9005bbf15786a11155068989b969"
+        }
+      ],
+      "photoUrls": [
+        "initial_seeds/photos/marriage_9_1.webp",
+        "initial_seeds/photos/marriage_9_2.webp",
+        "initial_seeds/photos/marriage_9_3.webp"
+      ]
+    }
+  ]
+}

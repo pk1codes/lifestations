@@ -1,0 +1,99 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+build/
+/coverage/
+
+# Node (Firebase functions/scripts)
+node_modules/
+**/node_modules/
+npm-debug.log*
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Credentials and local Firebase state
+.env
+.env.*
+!.env.example
+*service-account*.json
+*adminsdk*.json
+*.jks
+*.keystore
+key.properties
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+firebase/public/
+build/debug-info/
+
+# Firebase Hosting build copy + local deploy cache
+/firebase/public/**
+!/firebase/public/.gitkeep
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+
+# Secrets — never commit service-account keys or env files
+*firebase-adminsdk*.json
+*service-account*.json
+*-adminsdk-*.json
+.env
+.env.*
+*.local
+*.env.local
+.envrc
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+firebase/*secret*.json
+firebase/*credentials*.json
+firebase/scripts/serviceAccount.json
+firebase/reseed_reports/
+
+# Android release signing — never commit
+android/key.properties
+android/upload-keystore.jks
+**/upload-keystore.jks

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEMPLATE ONLY. Do NOT commit real values.
+  Run `flutterfire configure` (recommended) or download GoogleService-Info.plist
+  from the Firebase console and save it as ios/Runner/GoogleService-Info.plist
+  (git-ignored), then add it to the Runner target in Xcode.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>REPLACE_WITH_IOS_API_KEY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>000000000000</string>
+	<key>BUNDLE_ID</key>
+	<string>com.matchmaker.flutMarriage</string>
+	<key>PROJECT_ID</key>
+	<string>YOUR_FIREBASE_PROJECT_ID</string>
+	<key>STORAGE_BUCKET</key>
+	<string>YOUR_FIREBASE_PROJECT_ID.appspot.com</string>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:000000000000:ios:0000000000000000000000</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
+</dict>
+</plist>

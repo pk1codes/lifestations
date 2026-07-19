@@ -1,0 +1,26 @@
+{
+  "version": 4,
+  "categories": [
+    {
+      "id": "help-city-mumbai",
+      "categoryName": "Mumbai & MMR",
+      "subtitle": "Nearby in Mumbai & MMR",
+      "tag": "Mumbai & MMR",
+      "order": 1
+    },
+    {
+      "id": "help-city-delhi-ncr",
+      "categoryName": "Delhi NCR",
+      "subtitle": "Nearby in Delhi NCR",
+      "tag": "Delhi NCR",
+      "order": 2
+    },
+    {
+      "id": "help-city-bengaluru",
+      "categoryName": "Bengaluru",
+      "subtitle": "Nearby in Bengaluru",
+      "tag": "Bengaluru",
+      "order": 3
+    }
+  ]
+}

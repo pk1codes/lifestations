@@ -1,0 +1,1393 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "dimensions": {
+    "width": 1800,
+    "height": 2400
+  },
+  "counts": {
+    "cards": 45,
+    "images": 135,
+    "uniqueSha256": 135,
+    "totalBytes": 12739972
+  },
+  "domains": [
+    {
+      "id": "marriage",
+      "cards": 9,
+      "images": 27
+    },
+    {
+      "id": "jobs",
+      "cards": 9,
+      "images": 27
+    },
+    {
+      "id": "rooms",
+      "cards": 9,
+      "images": 27
+    },
+    {
+      "id": "bikes",
+      "cards": 9,
+      "images": 27
+    },
+    {
+      "id": "home_help",
+      "cards": 9,
+      "images": 27
+    }
+  ],
+  "images": [
+    {
+      "path": "initial_seeds/photos/marriage_1_1.webp",
+      "sha256": "8cb8e1b40e7f398ed482539977bb8e030fd6c412097366a1d7726711dafe77b1",
+      "bytes": 103036,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 1,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_1_2.webp",
+      "sha256": "695caff0d34de36aff5e89c084701df69aa1dbda0c5d155c0e95c60bc3b3c88f",
+      "bytes": 88994,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 1,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_1_3.webp",
+      "sha256": "6cb4bffdc267477f2706bf4a89494d853edb601ccc569f2dd10b12b351886b91",
+      "bytes": 79396,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 1,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_2_1.webp",
+      "sha256": "99a2aab8eb7217b40396f635131102eae4b35015e0b61f30b1892360fec1ea2e",
+      "bytes": 100874,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 2,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_2_2.webp",
+      "sha256": "4802b870c06f89a17ade7d6314124d625b92747f74da87fdef86f221e64c5284",
+      "bytes": 88884,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 2,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_2_3.webp",
+      "sha256": "f49ceb379d93e11b9820e7b445da577247a16da9cfeed6ea5b4ed77eff5d4f5e",
+      "bytes": 78734,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 2,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_3_1.webp",
+      "sha256": "067e7e5c20c6c96b9fb1cd9098907d311e641960ed8aa57cdeefa6a2592c0e5a",
+      "bytes": 100486,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 3,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_3_2.webp",
+      "sha256": "eb1e4ddf444d6b030455097ca7e164d2b417f27a7a55c75ef6a4d580a5c6c6f2",
+      "bytes": 90292,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 3,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_3_3.webp",
+      "sha256": "9c705c4633d8c194d36be7a1d86e3b110470455f41e769136189609eabf58d9e",
+      "bytes": 76418,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 3,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_4_1.webp",
+      "sha256": "243d21d655ba34f55ed686a5e912dda922883a718c5489ee0b803e4e7c7b6d3c",
+      "bytes": 101672,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 4,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_4_2.webp",
+      "sha256": "7d34c21c820c5e769c071a164ec88e1c1bc71aa2e4f8174e0aa734c66c621702",
+      "bytes": 89982,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 4,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_4_3.webp",
+      "sha256": "b66c2daaa59e5927e5e87c6c2489241a22d83b1fa9e75cb03b5537e5ccc82bfe",
+      "bytes": 76736,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 4,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_5_1.webp",
+      "sha256": "0a6817b9e7687047c60076742c6650cc3d4f190fcc5d2775ba8645d7b96e084d",
+      "bytes": 101684,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 5,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_5_2.webp",
+      "sha256": "9d9823bd1d0ba7ac6bce48647cd7c78a8c29fa1185eccb866d44547ccb925566",
+      "bytes": 87738,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 5,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_5_3.webp",
+      "sha256": "4c75f84bb99477fc2a302a5ace515e0379667c4991592577ccebbc80821c9abf",
+      "bytes": 78002,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 5,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_6_1.webp",
+      "sha256": "cf1533e9bc8fca97afbac5252024d9b75cf31bcab36bfcb6a44c14ba1bcf984c",
+      "bytes": 103346,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 6,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_6_2.webp",
+      "sha256": "1de42c8a43f8333641068cb078103fcb42c20f51c79305f97557e6ee08b77132",
+      "bytes": 89262,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 6,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_6_3.webp",
+      "sha256": "e361f445839f270257cb39912b335c100a9b8d7ed928e700cdcdda1c7ac95863",
+      "bytes": 77140,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 6,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_7_1.webp",
+      "sha256": "abc78c59ceb9ea796d0d429f12284446d90fecbf3902b1c95318e0a2ec148fc5",
+      "bytes": 100598,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 7,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_7_2.webp",
+      "sha256": "46c689b11e6ca9bf361096c2a085f5e72082f5c44575dc9ffada1925ae8982d5",
+      "bytes": 88894,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 7,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_7_3.webp",
+      "sha256": "e896b84d01d75262ab799d269019b7a7f92d0e20a009ee87cc2696c65f4644c1",
+      "bytes": 79110,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 7,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_8_1.webp",
+      "sha256": "d585ba68d49683855d01161e8af63354581e34e2d339a83085c31657a06fdc5e",
+      "bytes": 100128,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 8,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_8_2.webp",
+      "sha256": "807d793d46a14cb6f28a508588a4e57ddbaf44b8591215dc16ded00c25ac156f",
+      "bytes": 90478,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 8,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_8_3.webp",
+      "sha256": "3a8f4333894df9f9730c28d94054d37ecc03f15786d091d6b8bcdb9007da1154",
+      "bytes": 75832,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 8,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/photos/marriage_9_1.webp",
+      "sha256": "24819069a260f7972de708eded72f1870aa98e1da292ce9e4441641142f9aebb",
+      "bytes": 101272,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 9,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/photos/marriage_9_2.webp",
+      "sha256": "398235418819aec79aefd849954f27fc857525bc544bcac19c8454873f6c466a",
+      "bytes": 90378,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 9,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/photos/marriage_9_3.webp",
+      "sha256": "08eb98c8eea7c93290473c1ae1a111c6087a9005bbf15786a11155068989b969",
+      "bytes": 77228,
+      "width": 1800,
+      "height": 2400,
+      "domain": "marriage",
+      "cardIndex": 9,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_1_1.webp",
+      "sha256": "35bd5e41e9ef19524b89aa0d6e03f7751a00fc631db99f37ed09f9d13ebae082",
+      "bytes": 120928,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 1,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_1_2.webp",
+      "sha256": "8debd240baa1bad647bd988474c8cd0563ba8e8623d08e64f3fd8d999e74d526",
+      "bytes": 102144,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 1,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_1_3.webp",
+      "sha256": "7597a20fd41ab090d87f8747bb9357d8bba0e087204251592ef8af566e38dd53",
+      "bytes": 92252,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 1,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_2_1.webp",
+      "sha256": "34223d0ba38f35d36573b46608b1218eb44ed7343a4e18b33563ef2859a7694c",
+      "bytes": 122244,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 2,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_2_2.webp",
+      "sha256": "68bc05fc5a03b92359ebce159e704d6e947ca819176978e74a824c2f9723275a",
+      "bytes": 104440,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 2,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_2_3.webp",
+      "sha256": "04eea33d0c05d6a0e9f412955c73b61eca61a2ab3afbe848523e0847fe045db4",
+      "bytes": 95038,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 2,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_3_1.webp",
+      "sha256": "a8c347871ec7bdc1b854d2c2263d9f501d38cf97da77b9adb3e8a13e4a217906",
+      "bytes": 118422,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 3,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_3_2.webp",
+      "sha256": "7eb0130f292cf02bee075ba3bfc473de1f1038fbe5d3768d50897d302d83cc6e",
+      "bytes": 104306,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 3,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_3_3.webp",
+      "sha256": "31929afe4bab2d5b1a5d09086ee1bd8cfe17c0a03e6cd5b1ecbda9b6c43190dd",
+      "bytes": 92856,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 3,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_4_1.webp",
+      "sha256": "2db92f3a5f7515994c56b26a1562e84fbdd749e9564c3d8121f6f962ac6a277e",
+      "bytes": 129780,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 4,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_4_2.webp",
+      "sha256": "005645f1fe15f90f311de3835e66ff72ab144edbe08d8e2e7a6584e9dd7dddf4",
+      "bytes": 104006,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 4,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_4_3.webp",
+      "sha256": "2c26e8805502508868f63f790f32cd4e06eb45aae023e64b34def00a4dead747",
+      "bytes": 93708,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 4,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_5_1.webp",
+      "sha256": "bb356e97bf2ac15a926924e75c6b1c936c173fd2cfaa2a189670e1672a7de774",
+      "bytes": 121420,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 5,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_5_2.webp",
+      "sha256": "d8ad64edf39fd7ea3ee7dd3635a4381d05ea80566ebfa29c93ca55951c71f0e5",
+      "bytes": 102876,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 5,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_5_3.webp",
+      "sha256": "989e7f5ef7acf8f549a77ebea429eae96c7c1fb760037562dfd9bf390a727293",
+      "bytes": 92326,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 5,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_6_1.webp",
+      "sha256": "b08fbe6a1eb1cfc3ae87acdcbb1ec92b1886669b3875b537a60c88610553c67c",
+      "bytes": 123216,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 6,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_6_2.webp",
+      "sha256": "357d340ac8885208ed0d3cb68e4123df8bf1a5abfa3ef6fcb76af73db0ed5294",
+      "bytes": 102156,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 6,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_6_3.webp",
+      "sha256": "24ea7f6257cbf1459f286f4ec77d3bbefa2a73e011a2036cab63a1912df1c3d6",
+      "bytes": 91928,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 6,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_7_1.webp",
+      "sha256": "d522e3bc406cad1b91ae445afde41239aeed2e4b4d8d79e90b6bbb91e9d4c7dd",
+      "bytes": 121722,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 7,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_7_2.webp",
+      "sha256": "78d78040ec204dee60bf3d92037a0885570d37ffee20c62531c7c408e9924c98",
+      "bytes": 104740,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 7,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_7_3.webp",
+      "sha256": "141a3b18a454c8c6d9f6f9c252521c106f571d5f03e04bbc1d1d74e6a935d838",
+      "bytes": 94044,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 7,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_8_1.webp",
+      "sha256": "1d0249248c89184670c2a85aad4477866f4037f36f250c3c9637c1f5637adf8d",
+      "bytes": 118808,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 8,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_8_2.webp",
+      "sha256": "005db1de3f5d5ef0f5fe385682fab61ddbb1dee4d595a0d95272a1193377cbd3",
+      "bytes": 104562,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 8,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_8_3.webp",
+      "sha256": "b45c80ae12421ffbe23f122d6b94813cef9101fb8d17a962ec476b049268da7f",
+      "bytes": 90050,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 8,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_9_1.webp",
+      "sha256": "ab8591fad86d4ac62b1d7eec00952ee8b6a432414b1937f05e02535b603dee54",
+      "bytes": 118682,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 9,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_9_2.webp",
+      "sha256": "da1792a383cf4441004e8561c8153057d0cf29e827f7f73218e7ac8328b79196",
+      "bytes": 104760,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 9,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/jobs/photos/jobs_9_3.webp",
+      "sha256": "829c05eeeea0e49a5c161f793880b38c7446648f7ae2ee5c9b02c07074d02e4e",
+      "bytes": 90646,
+      "width": 1800,
+      "height": 2400,
+      "domain": "jobs",
+      "cardIndex": 9,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_1_1.webp",
+      "sha256": "266843ff0743527b6d57d2769e250a9e82b519eee4e79e66f8015ceee55baadf",
+      "bytes": 116682,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 1,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_1_2.webp",
+      "sha256": "fbeb02b7104f0b0714340ccde95da16d482b0f7d4622f09c31c63b63615c9b28",
+      "bytes": 97406,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 1,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_1_3.webp",
+      "sha256": "4bbc3527a2d43c54b9f3a05c86c9e4218673a70c28c7c6115c686ab4f61ff1dd",
+      "bytes": 88864,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 1,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_2_1.webp",
+      "sha256": "338c7cdf0744e757e9fba8131198e0b95d796ca17da496fd246b903584f02dd5",
+      "bytes": 116138,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 2,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_2_2.webp",
+      "sha256": "7a62cb2c6c226a40be13cf7e573b23a9292f7293c0bb622fb54549610b115223",
+      "bytes": 98632,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 2,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_2_3.webp",
+      "sha256": "ced0012d684cbf4290ad9c5b82f56fd673aa8874e98fb68d4d561f698808dac0",
+      "bytes": 89762,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 2,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_3_1.webp",
+      "sha256": "60577b31de5303dec834cc4ce4d42147afc32626a2b9d0eb2143d675b63a6bbc",
+      "bytes": 113270,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 3,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_3_2.webp",
+      "sha256": "1bdfef4aff20f45aba687e528cae70ed1e40611175c6333e6de385591bfe2eee",
+      "bytes": 98038,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 3,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_3_3.webp",
+      "sha256": "20fb1aa7f36bbdb4066f241a4b74288e7d1c22dd3c26a5d3d6aa3b595539aaa5",
+      "bytes": 88420,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 3,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_4_1.webp",
+      "sha256": "4f80f474b906e41e88b4de4669f460fad3bdc8d016289def20d55d3cf9fe22ac",
+      "bytes": 116326,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 4,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_4_2.webp",
+      "sha256": "eb46d3787846ab7804b09c401bb38b5df5e66aed73ba9701ebe846b6edf65810",
+      "bytes": 98530,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 4,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_4_3.webp",
+      "sha256": "1e840f5754e74ec647a99f3813f1e79a610a279f10edc7b5e18253919c00f5a5",
+      "bytes": 88488,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 4,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_5_1.webp",
+      "sha256": "dbd92bb423b26beaaa48cf5011b5f3b72d1f16ac527af66b50fb8d5854897c6d",
+      "bytes": 114656,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 5,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_5_2.webp",
+      "sha256": "95d20acb4cc1af4e3f24d9af58ecad84b592e528f915a8cebdd3d0c6718d8f2f",
+      "bytes": 96178,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 5,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_5_3.webp",
+      "sha256": "65fef641445b54946a5770fbaeb79155a65b1e19268ffa723cacf5265681f72d",
+      "bytes": 90478,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 5,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_6_1.webp",
+      "sha256": "bed510a5459fde88ed5920f6e68cfc5928399c0973713064ae30532fb9784421",
+      "bytes": 119042,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 6,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_6_2.webp",
+      "sha256": "847bc2223748c31e57d6958feec0c94816c87ce2dd99bd6badb42effe5c4f596",
+      "bytes": 97364,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 6,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_6_3.webp",
+      "sha256": "6182e0aaebbdd3a166abe3cb2c84c6daf43cf2c3f5032054e6a832c6c66bcba7",
+      "bytes": 89430,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 6,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_7_1.webp",
+      "sha256": "48746e7752eff07e137cd6f9819373404056b317239fb3994f6255c07832f3cd",
+      "bytes": 114516,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 7,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_7_2.webp",
+      "sha256": "1b63c233febc1a42cb1fa85462b5fe5a8f9c8e198c4873d3bad61724103193f3",
+      "bytes": 98922,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 7,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_7_3.webp",
+      "sha256": "1d77c245284a10d2386b24525ba2344f3c9daaa51c2639674e5394a05dcbf95f",
+      "bytes": 89008,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 7,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_8_1.webp",
+      "sha256": "cfc6a5e984f2eec80cbb8bc1ef9786923052c781b76e0e926650859954d4d982",
+      "bytes": 113862,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 8,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_8_2.webp",
+      "sha256": "57df1a44f7d92d4b7d380ad3fd313b180533269f70f2ed7736245b4db2594d15",
+      "bytes": 98190,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 8,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_8_3.webp",
+      "sha256": "d501177df3fe771da56ef07841a42af014b5dccc5691ab43690c438a2c68c448",
+      "bytes": 87116,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 8,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_9_1.webp",
+      "sha256": "479c017befabcef82377747dcc7f695602c415c4f13a3bef2ea8027d425364e9",
+      "bytes": 110026,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 9,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_9_2.webp",
+      "sha256": "80c2d85f6469e24d141acd14b9a93a1a91606b8956e9960efa02ffc62a96cf50",
+      "bytes": 99022,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 9,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/rooms/photos/rooms_9_3.webp",
+      "sha256": "7e5e18df7a50ca1ea2aa3881e187b56bcc8acc772b45ef39bc7aaaba8a350226",
+      "bytes": 85078,
+      "width": 1800,
+      "height": 2400,
+      "domain": "rooms",
+      "cardIndex": 9,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_1_1.webp",
+      "sha256": "43ae8c761b64d45e0cb18b780d9aca2e11e27f1a0c38451d2a9a171a1cfe0af5",
+      "bytes": 101354,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 1,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_1_2.webp",
+      "sha256": "aa6e2e26721fc067e787c5de785210ce0ff3d665494fa8571bbcca122502da78",
+      "bytes": 85446,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 1,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_1_3.webp",
+      "sha256": "f5553e4013d6dbed00cf92094e9b5645cd8ac862bc62170f993400f11ca0d883",
+      "bytes": 76380,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 1,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_2_1.webp",
+      "sha256": "6371fc43cd5394a9f5e71d019143a7f25905f1b3b9afb5584a81a275afb6955c",
+      "bytes": 100212,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 2,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_2_2.webp",
+      "sha256": "4344c129b54855e4c7d494b06371e11b252bf6a351e549f6c55ba4e427578b61",
+      "bytes": 87914,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 2,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_2_3.webp",
+      "sha256": "087ec95d6816a94639858a1b95ca6e62814a6400ad0648e79a579b087424d674",
+      "bytes": 78890,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 2,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_3_1.webp",
+      "sha256": "cce4e1b1ad47cf63c98a21a8e18b678a7eef14974d36f680efa070f0b0fac45a",
+      "bytes": 98826,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 3,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_3_2.webp",
+      "sha256": "5744ad4b7aaacf4bba67a0d51eccfeceb7401391c6e795dcdeee7b80c5f459de",
+      "bytes": 89474,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 3,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_3_3.webp",
+      "sha256": "1dfb84e0f153fc2e7d1c6e296c6a39d5825200cfcb2deb0ff932e1c55146ebf5",
+      "bytes": 76976,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 3,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_4_1.webp",
+      "sha256": "11820dc749c6838d0164430b2d3250abe41d1a39b2621deae3a98dd4fed798ce",
+      "bytes": 100366,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 4,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_4_2.webp",
+      "sha256": "bc57c634e85829a9cafc8306371f6bbf1950d217ca2acc310ee4ca4ab0f9b44e",
+      "bytes": 86686,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 4,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_4_3.webp",
+      "sha256": "bb050cc16a1303d67c9442fa548c068d53208f41beb9c2e733a041c57bde2c4e",
+      "bytes": 75004,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 4,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_5_1.webp",
+      "sha256": "626128c68e0187b2fa1ff34c1f63d71d8c23889dab991ba94b087356058c5324",
+      "bytes": 100734,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 5,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_5_2.webp",
+      "sha256": "8a1cc4b212de8c44fc4fe1254a8690f63ef08513daeae2eb116472dcda22b4d0",
+      "bytes": 86556,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 5,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_5_3.webp",
+      "sha256": "de4bec19f21dcedd8b3e4600d1c216815e8d24fed8f1e3edf557cbec0b42e28f",
+      "bytes": 78340,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 5,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_6_1.webp",
+      "sha256": "71c0edd04b12ba157b0103db83e50e0752c66c1041e39d93d8fc7d9ce7c0de69",
+      "bytes": 101926,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 6,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_6_2.webp",
+      "sha256": "820d40eb191f3f30635cce96b58161f3556098f0480458bd51fca99a0e497930",
+      "bytes": 87432,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 6,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_6_3.webp",
+      "sha256": "b4f00482fb986f660395311e2e078bc3d9b1a12765ad101a7a93431afb9f59c3",
+      "bytes": 78284,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 6,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_7_1.webp",
+      "sha256": "d96e001656e9f37af546fad590abcc6a468fb91815aba207ef3fa28defe34f1e",
+      "bytes": 100634,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 7,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_7_2.webp",
+      "sha256": "8b0a90330bc4a033e69dafff041e6d3e7c65849fd13f7b5ffb1688ed480be8a5",
+      "bytes": 88024,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 7,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_7_3.webp",
+      "sha256": "17f56445ed50574cf5ff158159d64cbcd7e6cab5574fc639e315fea82e442059",
+      "bytes": 78014,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 7,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_8_1.webp",
+      "sha256": "a174f1854e0b943cce9195aee51359838b5bad7b78fb992bbc970a708e8c31dd",
+      "bytes": 99270,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 8,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_8_2.webp",
+      "sha256": "6e89979e366ea06ce5890fc5f2d3e8bdd550f554074dbaff61ad9d36cd932e8d",
+      "bytes": 89500,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 8,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_8_3.webp",
+      "sha256": "90e306cf78ca55c37daead0b250779b32ceb0876470c71c7f7ef26f5429bee9f",
+      "bytes": 76086,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 8,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_9_1.webp",
+      "sha256": "c350ae62ed3ce9b2cede4a491bc5495e62d149169d374add2ad9d36188742a41",
+      "bytes": 100094,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 9,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_9_2.webp",
+      "sha256": "e963f59ef677c2e811dde8900fa8550b935295d372114741688628f842c8614d",
+      "bytes": 88672,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 9,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/bikes/photos/bikes_9_3.webp",
+      "sha256": "3b88d886d71714d401aabc061c4d77be47e695b0069587600b020fd5d8f91b6d",
+      "bytes": 76148,
+      "width": 1800,
+      "height": 2400,
+      "domain": "bikes",
+      "cardIndex": 9,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_1_1.webp",
+      "sha256": "06a3af859694d257861c36f4e395eea20803f52f65107e90c19e4dc76ac389a5",
+      "bytes": 100130,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 1,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_1_2.webp",
+      "sha256": "4c6af106220133ee5307c1cc80e2c1e9448bd754cc1d0159d04f96fb4ddcad01",
+      "bytes": 85538,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 1,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_1_3.webp",
+      "sha256": "f81192653194b83d23bc5a5569012b2dae4a13cb79db3f6574495b71c3dd6f31",
+      "bytes": 76804,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 1,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_2_1.webp",
+      "sha256": "b85e02fb36847b180aa10485d6d9c330b5e710a37584d4f0a58c245a2de99adc",
+      "bytes": 101186,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 2,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_2_2.webp",
+      "sha256": "a836f03dafb33818dc056011bfbba141d3432c290a11ffb50fc94583a1e57165",
+      "bytes": 86698,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 2,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_2_3.webp",
+      "sha256": "366d22be18aa0012af1fef192cc9b09845d2e23378b4fc4376c54ab935e06b18",
+      "bytes": 78538,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 2,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_3_1.webp",
+      "sha256": "0a6bf6947a1a542ad83b113fc5b8ee1f346d33ed20945bf275400de2211573a4",
+      "bytes": 97424,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 3,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_3_2.webp",
+      "sha256": "2e38a0cb2d4e4a39462ce268f9491926eeecd2622084d643a7c7fcafe7989b39",
+      "bytes": 87076,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 3,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_3_3.webp",
+      "sha256": "ece5fe53a911d743beabb20910e0cdd2747854c15cf48c7e2e17e1565df10326",
+      "bytes": 75368,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 3,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_4_1.webp",
+      "sha256": "286427812529f11811a281bf8b54a6782b0f63897f3e5121e91947c562560b9e",
+      "bytes": 101196,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 4,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_4_2.webp",
+      "sha256": "08ed9b407dab6436f33dae20dd53fbfe894e532a424ea10d0a1046601515d3b2",
+      "bytes": 87598,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 4,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_4_3.webp",
+      "sha256": "7d31b47d3eeadce028ca48b6392f64faaf0a0951c013063455f88b65eaa5f445",
+      "bytes": 75360,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 4,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_5_1.webp",
+      "sha256": "9158e4a856d3032b1bee870b18fb5ff0174ea039201947f6bfe055b5536ce4a4",
+      "bytes": 98680,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 5,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_5_2.webp",
+      "sha256": "954461e830a69e06b157273de33405f3340ed0ca6c0be35bb72a9cc5ac328b3c",
+      "bytes": 85016,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 5,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_5_3.webp",
+      "sha256": "7e0f33dbf459fc727638b5445571de1bed3ba64a85eef3ce028db3b213f34d0a",
+      "bytes": 77480,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 5,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_6_1.webp",
+      "sha256": "b303b5c775db5d92960743f9f137229715c454b96ef318d6a52d7065e3ca314f",
+      "bytes": 101150,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 6,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_6_2.webp",
+      "sha256": "143489ab756e1dad1159b0c4bf6ee843d4ab2d64c5e6d7a585ec73c3241d0a2b",
+      "bytes": 85662,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 6,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_6_3.webp",
+      "sha256": "01d9fc45957574e688fc5f3944b32c4552edad3d5e674a04276d1caa030ea927",
+      "bytes": 76426,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 6,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_7_1.webp",
+      "sha256": "f31e465f18e2e6119f3ffe52dd583a6c886969840cd19490a94d117a5b25cd87",
+      "bytes": 98346,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 7,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_7_2.webp",
+      "sha256": "c0f99d4581be4b270f5c0f30b274de271bb6ce4046f068ffbd4da3e1c93eb308",
+      "bytes": 86800,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 7,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_7_3.webp",
+      "sha256": "415b2f7b01abc76d663960acebab97e19efc0c0922671377c026deb0159a561a",
+      "bytes": 77858,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 7,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_8_1.webp",
+      "sha256": "d9b12300e883a4715d540f2e03b14e8fac3ea46ff8c41357e22c7615f539c5f0",
+      "bytes": 97242,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 8,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_8_2.webp",
+      "sha256": "6af34380d4c69855c5c888ee274a55483724ef1ebbba100e92f179ed898d7945",
+      "bytes": 87208,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 8,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_8_3.webp",
+      "sha256": "cc1b5eb96492a21929861ac95460fe66514502372a9cd4ba15fd95bac1b17cf4",
+      "bytes": 74320,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 8,
+      "slot": 3
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_9_1.webp",
+      "sha256": "690d591085273ce4795c55e18832eb74964f68010f7609b391c774803e713f2c",
+      "bytes": 97850,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 9,
+      "slot": 1
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_9_2.webp",
+      "sha256": "360a7d329cbc30fa7e55437bca74b4132271472bed5f30c3850c3a230d29d4ca",
+      "bytes": 88142,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 9,
+      "slot": 2
+    },
+    {
+      "path": "initial_seeds/home_help/photos/home_help_9_3.webp",
+      "sha256": "55dbbbe3c7ca451c51620ec17d381b466fb5f1b48c9f3eccc608661fe6776661",
+      "bytes": 75536,
+      "width": 1800,
+      "height": 2400,
+      "domain": "home_help",
+      "cardIndex": 9,
+      "slot": 3
+    }
+  ]
+}

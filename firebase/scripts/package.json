@@ -1,0 +1,17 @@
+{
+  "name": "flut-marriage-seed",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "validate:333": "node validate_sharp_333_bundle.mjs",
+    "seed:manifest": "node regen_seed_manifest.mjs",
+    "prove:backend": "node prove_backend_invariants.mjs",
+    "seed:safe": "node seed_safe_inventory.mjs",
+    "seed:vaults": "node seed_contact_vaults.mjs",
+    "cleanup:bike-docs": "node cleanup_legacy_bike_doc_urls.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "sharp": "^0.34.2"
+  }
+}

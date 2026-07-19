@@ -1,0 +1,6 @@
+# Copy to android/key.properties (git-ignored) to enable release signing.
+# Place your keystore outside version control and point storeFile at it.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=upload
+storeFile=/absolute/path/to/upload-keystore.jks

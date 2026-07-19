@@ -1,0 +1,26 @@
+{
+  "version": 4,
+  "categories": [
+    {
+      "id": "loc-mumbai",
+      "categoryName": "Mumbai & MMR",
+      "subtitle": "Jobs across Mumbai & MMR",
+      "tag": "Mumbai & MMR",
+      "order": 1
+    },
+    {
+      "id": "loc-delhi",
+      "categoryName": "Delhi NCR",
+      "subtitle": "Jobs across Delhi NCR",
+      "tag": "Delhi NCR",
+      "order": 2
+    },
+    {
+      "id": "loc-bengaluru",
+      "categoryName": "Bengaluru",
+      "subtitle": "Jobs across Bengaluru",
+      "tag": "Bengaluru",
+      "order": 3
+    }
+  ]
+}

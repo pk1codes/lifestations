@@ -1,0 +1,29 @@
+{
+  "//": "TEMPLATE ONLY. Do NOT put real values here. Run `flutterfire configure` or download the real google-services.json from the Firebase console and save it as android/app/google-services.json (git-ignored). Once present, the Google Services + Crashlytics Gradle plugins auto-apply.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "YOUR_FIREBASE_PROJECT_ID",
+    "storage_bucket": "YOUR_FIREBASE_PROJECT_ID.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "com.matchmaker.flut_marriage"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "REPLACE_WITH_ANDROID_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

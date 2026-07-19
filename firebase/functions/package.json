@@ -1,0 +1,13 @@
+{
+  "name": "flut-marriage-functions",
+  "description": "Safety webhooks + feed throttle for Flut Marriage",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  },
+  "private": true
+}

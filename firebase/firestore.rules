@@ -1,0 +1,504 @@
+rules_version = '2';
+
+// Production rules — owner writes, public profiles without contact PII,
+// contact vault unlock after non-anonymous + same-domain mutual likes.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAnonymous() {
+      return isSignedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function allowedDomain(domainId) {
+      return domainId in ['marriage', 'jobs', 'rooms', 'bikes', 'home_help'];
+    }
+
+    // Same-domain mutual interest (not cross-domain mix-and-match).
+    function mutualLikeInDomain(domainId, targetUid) {
+      return exists(
+          /databases/$(database)/documents/domains/$(domainId)/likes/$(request.auth.uid)/outbound/$(targetUid)
+        )
+        && exists(
+          /databases/$(database)/documents/domains/$(domainId)/likes/$(targetUid)/outbound/$(request.auth.uid)
+        );
+    }
+
+    function mutualLike(targetUid) {
+      return mutualLikeInDomain('marriage', targetUid)
+        || mutualLikeInDomain('jobs', targetUid)
+        || mutualLikeInDomain('rooms', targetUid)
+        || mutualLikeInDomain('bikes', targetUid)
+        || mutualLikeInDomain('home_help', targetUid);
+    }
+
+    function validGender() {
+      return request.resource.data.gender in ['male', 'female', 'other'];
+    }
+
+    function validSeeking() {
+      return request.resource.data.seeking in ['male', 'female', 'everyone'];
+    }
+
+    // Public discovery profile — contact fields must be empty (vault holds real data).
+    function noPublicContact(d) {
+      return (!('whatsappNumber' in d) || d.whatsappNumber == '')
+        && (!('telegramHandle' in d) || d.telegramHandle == null || d.telegramHandle == '');
+    }
+
+    function validIdentity() {
+      let d = request.resource.data;
+      return d.keys().hasAll([
+          'displayName', 'whatsappNumber', 'cityId', 'cityLabel',
+          'nativeLanguage', 'userId'
+        ])
+        && d.displayName is string
+        && d.displayName.size() >= 2
+        && d.displayName.size() <= 60
+        // Public identity may keep contact empty; vault holds the real number.
+        && d.whatsappNumber is string
+        && d.whatsappNumber.size() <= 15
+        && d.cityId is string
+        && d.cityId.size() >= 2
+        && d.cityId.size() <= 40
+        && d.cityLabel is string
+        && d.cityLabel.size() <= 80
+        && d.nativeLanguage is string
+        && d.nativeLanguage.size() >= 2
+        && d.nativeLanguage.size() <= 40
+        && d.userId == request.auth.uid
+        && (!('photos' in d) || (d.photos is list && d.photos.size() <= 3))
+        && (!('photoUrl' in d) || d.photoUrl is string)
+        && (!('photoThumbUrl' in d) || d.photoThumbUrl is string)
+        && (!('photoLargeUrl' in d) || d.photoLargeUrl is string);
+    }
+
+    function validContactVault() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['whatsappNumber'])
+        && d.whatsappNumber is string
+        && d.whatsappNumber.size() >= 8
+        && d.whatsappNumber.size() <= 15
+        && (!('telegramHandle' in d) ||
+            (d.telegramHandle is string && d.telegramHandle.size() <= 40))
+        && (!('displayName' in d) ||
+            (d.displayName is string && d.displayName.size() <= 60));
+    }
+
+    function validProfile() {
+      let d = request.resource.data;
+      return d.keys().hasAll([
+          'name', 'age', 'gender', 'seeking', 'bio', 'location', 'userId'
+        ])
+        && d.name is string
+        && d.name.size() >= 2
+        && d.name.size() <= 128
+        && d.age is int
+        && d.age >= 18
+        && d.age <= 99
+        && validGender()
+        && validSeeking()
+        && d.bio is string
+        && d.bio.size() >= 10
+        && d.bio.size() <= 180
+        && d.location is string
+        && d.location.size() <= 80
+        && noPublicContact(d)
+        && d.userId == request.auth.uid
+        && (!('photos' in d) || (d.photos is list && d.photos.size() <= 3))
+        && (!('photoUrl' in d) || d.photoUrl is string)
+        && (!('photoThumbUrl' in d) || d.photoThumbUrl is string)
+        && (!('photoLargeUrl' in d) || d.photoLargeUrl is string)
+        && (!('photoPath' in d) || d.photoPath is string)
+        && (!('categories' in d) || (d.categories is list && d.categories.size() <= 20))
+        && (!('region' in d) || d.region is string)
+        && (!('cityId' in d) || d.cityId is string)
+        && (!('salary' in d) || (d.salary is string && d.salary.size() <= 40))
+        && (!('religion' in d) || (d.religion is string && d.religion.size() <= 40))
+        && (!('nativeLanguage' in d) || (d.nativeLanguage is string && d.nativeLanguage.size() <= 40))
+        && (!('maritalStatus' in d) || (d.maritalStatus is string && d.maritalStatus.size() <= 40))
+        && (!('heightCm' in d) || (d.heightCm is int && d.heightCm >= 100 && d.heightCm <= 250))
+        && (!('education' in d) || (d.education is string && d.education.size() <= 40))
+        && (!('occupation' in d) || (d.occupation is string && d.occupation.size() <= 40))
+        && (!('diet' in d) || (d.diet is string && d.diet.size() <= 40))
+        && (!('community' in d) || (d.community is string && d.community.size() <= 40))
+        && (!('ageBand' in d) || (d.ageBand is string && d.ageBand.size() <= 12));
+    }
+
+    function validDomainEnvelope() {
+      let d = request.resource.data;
+      return d.userId == request.auth.uid
+        && d.domain is string
+        && allowedDomain(d.domain)
+        && (!('cityId' in d) || d.cityId is string)
+        && (!('categoryTags' in d) || (d.categoryTags is list && d.categoryTags.size() <= 20))
+        && (!('categories' in d) || (d.categories is list && d.categories.size() <= 20))
+        && (!('active' in d) || d.active is bool);
+    }
+
+    function validMarriageDomainProfile() {
+      return validDomainEnvelope()
+        && validProfile()
+        && request.resource.data.domain == 'marriage';
+    }
+
+    function validJobsDomainProfile() {
+      let d = request.resource.data;
+      return validDomainEnvelope()
+        && d.domain == 'jobs'
+        && d.keys().hasAll(['name', 'bio', 'userId', 'jobsRole'])
+        && d.name is string
+        && d.name.size() >= 2
+        && d.name.size() <= 60
+        && d.bio is string
+        && d.bio.size() >= 4
+        && d.bio.size() <= 120
+        && noPublicContact(d)
+        && d.jobsRole in ['seek', 'offer']
+        && (!('tradeId' in d) || d.tradeId is string)
+        && (!('jobTitle' in d) || (d.jobTitle is string && d.jobTitle.size() <= 60))
+        && (!('salaryBand' in d) || (d.salaryBand is string && d.salaryBand.size() <= 40))
+        && (!('nativeLanguage' in d) || d.nativeLanguage is string)
+        && (!('photos' in d) || (d.photos is list && d.photos.size() <= 3));
+    }
+
+    function validDomainProfile(domainId) {
+      return domainId == 'marriage' && validMarriageDomainProfile()
+        || domainId == 'jobs' && validJobsDomainProfile();
+    }
+
+    function validOffer(domainId) {
+      let d = request.resource.data;
+      return allowedDomain(domainId)
+        && domainId in ['rooms', 'bikes', 'home_help']
+        && d.keys().hasAll([
+            'ownerId', 'domain', 'title', 'cityId', 'cityLabel', 'active'
+          ])
+        && d.ownerId == request.auth.uid
+        && d.domain == domainId
+        && d.title is string
+        && d.title.size() >= 2
+        && d.title.size() <= 80
+        && d.cityId is string
+        && d.cityId.size() >= 2
+        && d.cityId.size() <= 40
+        && d.cityLabel is string
+        && d.cityLabel.size() <= 80
+        && d.active is bool
+        && (!('body' in d) || (d.body is string && d.body.size() <= 400))
+        && (!('role' in d) || (d.role is string && d.role.size() <= 20))
+        && (!('categoryTags' in d) || (d.categoryTags is list && d.categoryTags.size() <= 20))
+        && (!('categories' in d) || (d.categories is list && d.categories.size() <= 20))
+        && (!('photos' in d) || (d.photos is list && d.photos.size() <= 8))
+        && (!('photoUrl' in d) || d.photoUrl is string)
+        && (!('photoThumbUrl' in d) || d.photoThumbUrl is string)
+        && (!('photoLargeUrl' in d) || d.photoLargeUrl is string)
+        && (!('attributes' in d) || (
+            d.attributes is map
+            && !('whatsappNumber' in d.attributes)
+            && !('telegramHandle' in d.attributes)
+            && !('phone' in d.attributes)
+            && !('rcUrl' in d.attributes)
+            && !('insuranceUrl' in d.attributes)
+          ))
+        && (!('userId' in d) || d.userId == request.auth.uid)
+        && !('whatsappNumber' in d)
+        && !('telegramHandle' in d)
+        && !('phone' in d);
+    }
+
+    function validPublicCard() {
+      let d = request.resource.data;
+      // Allowlisted projection only — no free-form title/bio/name fields.
+      return d.keys().hasOnly([
+          'slug', 'active', 'ownerId', 'domain', 'sourceId',
+          'headline', 'locationLabel', 'ageBand', 'role', 'tradeLabel',
+          'categoryTags', 'photoUrl', 'verified', 'promoted'
+        ])
+        && d.keys().hasAll([
+          'slug', 'active', 'ownerId', 'domain', 'sourceId', 'headline',
+          'locationLabel'
+        ])
+        && d.slug is string
+        && d.slug.matches(d.domain + '_[A-Za-z0-9]{6,64}')
+        && d.slug.size() <= 120
+        && d.active is bool
+        && d.ownerId == request.auth.uid
+        && allowedDomain(d.domain)
+        && d.sourceId is string
+        && d.sourceId.size() >= 2
+        && d.sourceId.size() <= 128
+        && d.headline is string
+        && d.headline.size() >= 2
+        && d.headline.size() <= 80
+        && d.locationLabel is string
+        && d.locationLabel.size() <= 80
+        && (!('ageBand' in d) || (d.ageBand is string && d.ageBand.size() <= 12))
+        && (!('role' in d) || (d.role is string && d.role.size() <= 20))
+        && (!('tradeLabel' in d) || (d.tradeLabel is string && d.tradeLabel.size() <= 60))
+        && (!('categoryTags' in d) || (d.categoryTags is list && d.categoryTags.size() <= 8))
+        && (!('photoUrl' in d) || (d.photoUrl is string && d.photoUrl.size() <= 512))
+        && (!('verified' in d) || d.verified is bool)
+        && (!('promoted' in d) || d.promoted is bool)
+        && !('name' in d)
+        && !('whatsappNumber' in d)
+        && !('bio' in d)
+        && !('telegramHandle' in d)
+        && !('displayName' in d)
+        && !('phone' in d)
+        && !('rcUrl' in d)
+        && !('insuranceUrl' in d)
+        && !('title' in d)
+        && !('subtitle' in d);
+    }
+
+    function publicCardImmutable(domainId) {
+      return request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.domain == resource.data.domain
+        && request.resource.data.domain == domainId
+        && request.resource.data.slug == resource.data.slug
+        && request.resource.data.sourceId == resource.data.sourceId;
+    }
+
+    function validLikeDoc(fromUid, toUid) {
+      let d = request.resource.data;
+      return d.keys().hasAll(['fromUserId', 'toUserId'])
+        && d.fromUserId == fromUid
+        && d.toUserId == toUid
+        && (!('snapshot' in d) || d.snapshot is map)
+        && (!('snapshot' in d) || !(('whatsappNumber' in d.snapshot)))
+        && (!('snapshot' in d) || !(('telegramHandle' in d.snapshot)))
+        && (!('snapshot' in d) || !(('phone' in d.snapshot)));
+    }
+
+    function validImageFlag() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['reporterUid', 'targetId', 'domain', 'reason'])
+        && d.reporterUid == request.auth.uid
+        && d.targetId is string
+        && d.targetId.size() >= 2
+        && d.targetId.size() <= 128
+        && allowedDomain(d.domain)
+        && d.reason is string
+        && d.reason.size() >= 3
+        && d.reason.size() <= 40
+        && (!('photoUrl' in d) || (d.photoUrl is string && d.photoUrl.size() <= 512))
+        && (!('photoSlot' in d) || (d.photoSlot is int && d.photoSlot >= 0 && d.photoSlot <= 7))
+        && (!('note' in d) || (d.note is string && d.note.size() <= 200))
+        && !('whatsappNumber' in d)
+        && !('name' in d)
+        && !('bio' in d);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validIdentity();
+      allow delete: if isOwner(userId);
+
+      // Contact vault — owner-only client reads.
+      // Mutual unlock goes through callable `unlockContact` (Admin SDK) so the
+      // selected domain cannot be bypassed via cross-domain mutualLike OR.
+      match /private/{docId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && ((docId == 'contact' && validContactVault())
+              || docId == 'push');
+        allow delete: if isOwner(userId);
+      }
+
+      // Per-user block list — owner only.
+      match /blocks/{targetUid} {
+        allow read, create, update, delete: if isOwner(userId)
+          && targetUid is string
+          && targetUid.size() >= 2
+          && targetUid.size() <= 128;
+      }
+    }
+
+    match /profiles/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && validProfile();
+      allow update: if isOwner(userId) && validProfile()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId);
+    }
+
+    match /discovery_categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // Legacy top-level path — read-only. Canonical writes live under domains/.../public_cards.
+    match /public_cards/{slug} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /domains/{domainId} {
+      allow read: if isSignedIn() && allowedDomain(domainId);
+
+      match /profiles/{userId} {
+        allow read: if isSignedIn() && allowedDomain(domainId);
+        allow create, update: if isOwner(userId)
+          && allowedDomain(domainId)
+          && validDomainProfile(domainId);
+        allow delete: if isOwner(userId) && allowedDomain(domainId);
+      }
+
+      match /offers/{offerId} {
+        allow read: if isSignedIn() && allowedDomain(domainId);
+        allow create: if isSignedIn()
+          && allowedDomain(domainId)
+          && validOffer(domainId);
+        allow update: if isSignedIn()
+          && allowedDomain(domainId)
+          && validOffer(domainId)
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId;
+        allow delete: if isSignedIn()
+          && allowedDomain(domainId)
+          && resource.data.ownerId == request.auth.uid;
+      }
+
+      match /discovery_categories/{categoryId} {
+        allow read: if isSignedIn() && allowedDomain(domainId);
+        allow create, update, delete: if false;
+      }
+
+      match /public_cards/{slug} {
+        allow read: if true;
+        allow create: if isSignedIn()
+          && allowedDomain(domainId)
+          && validPublicCard()
+          && request.resource.data.slug == slug
+          && request.resource.data.domain == domainId
+          && request.resource.data.ownerId == request.auth.uid;
+        allow update: if isSignedIn()
+          && allowedDomain(domainId)
+          && validPublicCard()
+          && request.resource.data.slug == slug
+          && resource.data.ownerId == request.auth.uid
+          && publicCardImmutable(domainId);
+        allow delete: if false;
+      }
+
+      match /likes/{ownerUid}/outbound/{targetUid} {
+        allow read: if isSignedIn()
+          && allowedDomain(domainId)
+          && request.auth.uid == ownerUid;
+        allow create, update: if isOwner(ownerUid)
+          && allowedDomain(domainId)
+          && validLikeDoc(ownerUid, targetUid);
+        allow delete: if isOwner(ownerUid) && allowedDomain(domainId);
+      }
+
+      match /likes/{ownerUid}/inbound/{fromUid} {
+        allow read: if isSignedIn()
+          && allowedDomain(domainId)
+          && request.auth.uid == ownerUid;
+        allow create, update: if isSignedIn()
+          && allowedDomain(domainId)
+          && request.auth.uid == fromUid
+          && validLikeDoc(fromUid, ownerUid);
+        allow delete: if isSignedIn()
+          && allowedDomain(domainId)
+          && (request.auth.uid == ownerUid || request.auth.uid == fromUid);
+      }
+    }
+
+    // OTP SMS send cooldown — claim before Auth.verifyPhoneNumber.
+    match /otp_trackers/{trackerId} {
+      function validOtpTrackerWrite() {
+        let d = request.resource.data;
+        return isSignedIn()
+          && d.keys().hasAll(['uid', 'lastSentAt'])
+          && d.uid == request.auth.uid
+          && d.lastSentAt == request.time
+          && (!('phoneHash' in d) ||
+              (d.phoneHash is string && d.phoneHash.size() <= 40));
+      }
+
+      allow read: if isSignedIn()
+        && resource.data.uid == request.auth.uid;
+
+      allow create: if validOtpTrackerWrite();
+
+      allow update: if validOtpTrackerWrite()
+        && request.time > resource.data.lastSentAt + duration.value(60, 's');
+
+      allow delete: if false;
+    }
+
+    // Client-reported feed fetch budget (pairs with FeedFetchThrottle).
+    match /rate_limits/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+            'hits', 'windowStartMs', 'lockedUntilMs', 'updatedAt'
+          ])
+        && request.resource.data.hits is int
+        && request.resource.data.hits >= 0
+        && request.resource.data.hits <= 10
+        && request.resource.data.windowStartMs is int
+        && request.resource.data.lockedUntilMs is int;
+      allow delete: if isOwner(userId);
+    }
+
+    match /image_flags/{flagId} {
+      allow read: if false;
+      allow create: if isSignedIn() && validImageFlag();
+      allow update, delete: if false;
+    }
+
+    // Frozen-domain waitlist lead capture (Rooms / Bikes / Home Help).
+    match /waitlists/{docId} {
+      allow read: if false;
+      allow create, update: if isSignedIn()
+        && request.resource.data.keys().hasAll(['domain', 'createdAt'])
+        && request.resource.data.domain in ['rooms', 'bikes', 'home_help']
+        && docId == request.resource.data.domain + '_' + request.auth.uid
+        && (!('uid' in request.resource.data) ||
+            request.resource.data.uid == request.auth.uid)
+        && (!('phoneOrEmail' in request.resource.data) ||
+            (request.resource.data.phoneOrEmail is string
+              && request.resource.data.phoneOrEmail.size() <= 80))
+        && (!('cityId' in request.resource.data) ||
+            (request.resource.data.cityId is string
+              && request.resource.data.cityId.size() <= 40));
+      allow delete: if false;
+    }
+
+    function validUserReport() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['kind', 'reporterUid', 'targetId', 'domain', 'reason'])
+        && d.kind == 'user'
+        && d.reporterUid == request.auth.uid
+        && d.targetId is string
+        && d.targetId.size() >= 2
+        && d.targetId.size() <= 128
+        && allowedDomain(d.domain)
+        && d.reason is string
+        && d.reason.size() >= 3
+        && d.reason.size() <= 40
+        && (!('note' in d) || (d.note is string && d.note.size() <= 200))
+        && (!('urgent' in d) || d.urgent is bool)
+        && !('whatsappNumber' in d)
+        && !('name' in d)
+        && !('bio' in d);
+    }
+
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isSignedIn() && validUserReport();
+      allow update, delete: if false;
+    }
+  }
+}

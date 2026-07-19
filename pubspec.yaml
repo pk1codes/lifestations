@@ -1,0 +1,62 @@
+name: flut_marriage
+description: Low-friction multi-domain discovery for India.
+publish_to: none
+version: 3.0.0+3
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.5+1
+  shared_preferences: ^2.5.3
+  firebase_core: ^4.12.1
+  firebase_auth: ^6.5.6
+  cloud_firestore: ^6.7.1
+  firebase_storage: ^13.4.5
+  firebase_app_check: ^0.4.5+2
+  firebase_crashlytics: ^5.2.6
+  firebase_analytics: ^12.4.5
+  cloud_functions: ^6.3.5
+  firebase_messaging: ^16.0.4
+  image_picker: ^1.2.3
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
+  flutter_image_compress: ^2.4.0
+  google_mlkit_face_detection: ^0.14.0
+  flutter_local_notifications: ^19.4.0
+  in_app_purchase: ^3.2.3
+  audioplayers: ^6.8.1
+  url_launcher: ^6.3.2
+  share_plus: ^12.0.1
+  http: ^1.5.0
+  profanity_filter: ^2.0.0
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/audio/
+    - initial_seeds/
+    - initial_seeds/photos/
+    - initial_seeds/jobs/
+    - initial_seeds/jobs/photos/
+    - initial_seeds/rooms/
+    - initial_seeds/rooms/photos/
+    - initial_seeds/bikes/
+    - initial_seeds/bikes/photos/
+    - initial_seeds/home_help/
+    - initial_seeds/home_help/photos/
