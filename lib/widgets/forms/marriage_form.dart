@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
@@ -37,6 +38,19 @@ class _MarriageFormState extends State<MarriageForm> {
   String? _occupation;
   String? _diet;
 
+  DomainPolicy get _domain => AppDomains.marriage;
+
+  int get _extraFilled => [
+    _salary,
+    _religion,
+    _language,
+    _status,
+    _height,
+    _education,
+    _occupation,
+    _diet,
+  ].where((v) => v != null).length;
+
   @override
   void dispose() {
     _age.dispose();
@@ -51,10 +65,11 @@ class _MarriageFormState extends State<MarriageForm> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
       children: [
         Text(
-          'Marriage profile',
-          style: Theme.of(context).textTheme.headlineMedium,
+          'Marriage',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            color: _domain.color,
+          ),
         ),
-        const Text('Required basics first. Optional details are tap-to-pick.'),
         const SizedBox(height: 16),
         TextFormField(
           controller: _age,
@@ -92,49 +107,6 @@ class _MarriageFormState extends State<MarriageForm> {
               ? 'Write at least 10 characters'
               : null,
         ),
-        _optional(
-          'Salary band',
-          MarriageProfile.salaryBands,
-          _salary,
-          (v) => _salary = v,
-        ),
-        _optional(
-          'Religion',
-          MarriageProfile.religions,
-          _religion,
-          (v) => _religion = v,
-        ),
-        _optional(
-          'Native language',
-          MarriageProfile.nativeLanguages,
-          _language,
-          (v) => _language = v,
-        ),
-        _optional(
-          'Marital status',
-          MarriageProfile.maritalStatuses,
-          _status,
-          (v) => _status = v,
-        ),
-        _optional(
-          'Height',
-          MarriageProfile.heightsCm,
-          _height,
-          (v) => _height = v,
-        ),
-        _optional(
-          'Education',
-          MarriageProfile.educationOptions,
-          _education,
-          (v) => _education = v,
-        ),
-        _optional(
-          'Occupation',
-          MarriageProfile.occupations,
-          _occupation,
-          (v) => _occupation = v,
-        ),
-        _optional('Diet', MarriageProfile.diets, _diet, (v) => _diet = v),
         PhotoCountPicker(
           count: _photos,
           minimum: 1,
@@ -142,12 +114,96 @@ class _MarriageFormState extends State<MarriageForm> {
           onPick: widget.onPickPhoto,
           onChanged: (value) => setState(() => _photos = value),
         ),
-        FilledButton(onPressed: _save, child: const Text('Save profile')),
+        const SizedBox(height: 4),
+        Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 4),
+            leading: CircleAvatar(
+              backgroundColor: _domain.softColor,
+              child: Icon(Icons.add, color: _domain.color),
+            ),
+            title: Text(
+              'More',
+              style: TextStyle(
+                color: _domain.color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: _extraFilled == 0
+                ? null
+                : CircleAvatar(
+                    radius: 12,
+                    backgroundColor: _domain.softColor,
+                    child: Text(
+                      '$_extraFilled',
+                      style: TextStyle(
+                        color: _domain.color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+            children: [
+              _extra(
+                'Salary',
+                MarriageProfile.salaryBands,
+                _salary,
+                (v) => _salary = v,
+              ),
+              _extra(
+                'Religion',
+                MarriageProfile.religions,
+                _religion,
+                (v) => _religion = v,
+              ),
+              _extra(
+                'Language',
+                MarriageProfile.nativeLanguages,
+                _language,
+                (v) => _language = v,
+              ),
+              _extra(
+                'Status',
+                MarriageProfile.maritalStatuses,
+                _status,
+                (v) => _status = v,
+              ),
+              _extra(
+                'Height',
+                MarriageProfile.heightsCm,
+                _height,
+                (v) => _height = v,
+              ),
+              _extra(
+                'Education',
+                MarriageProfile.educationOptions,
+                _education,
+                (v) => _education = v,
+              ),
+              _extra(
+                'Work',
+                MarriageProfile.occupations,
+                _occupation,
+                (v) => _occupation = v,
+              ),
+              _extra('Diet', MarriageProfile.diets, _diet, (v) => _diet = v),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: _domain.color),
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
       ],
     ),
   );
 
-  Widget _optional<T>(
+  Widget _extra<T>(
     String label,
     List<T> values,
     T? value,
@@ -156,7 +212,7 @@ class _MarriageFormState extends State<MarriageForm> {
     padding: const EdgeInsets.only(bottom: 12),
     child: DropdownButtonFormField<T>(
       initialValue: value,
-      decoration: InputDecoration(labelText: '$label (optional)'),
+      decoration: InputDecoration(labelText: label),
       items: values
           .map((item) => DropdownMenuItem(value: item, child: Text('$item')))
           .toList(),

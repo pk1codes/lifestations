@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
@@ -27,6 +28,18 @@ class _BikesFormState extends State<BikesForm> {
   TimeOfDay _to = const TimeOfDay(hour: 20, minute: 0);
   int _photos = 0;
 
+  DomainPolicy get _domain => AppDomains.bikes;
+
+  int get _extraFilled {
+    var n = 0;
+    if (_model.text.trim().isNotEmpty) n++;
+    if ((_customRent.text.trim().isNotEmpty) &&
+        (int.tryParse(_customRent.text) ?? 0) > 0) {
+      n++;
+    }
+    return n;
+  }
+
   @override
   void dispose() {
     _model.dispose();
@@ -41,7 +54,12 @@ class _BikesFormState extends State<BikesForm> {
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
     children: [
-      Text('Bike listing', style: Theme.of(context).textTheme.headlineMedium),
+      Text(
+        'Bikes',
+        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+          color: _domain.color,
+        ),
+      ),
       const SizedBox(height: 16),
       SingleChoiceChips(
         label: 'Vehicle',
@@ -61,11 +79,6 @@ class _BikesFormState extends State<BikesForm> {
         selected: _make,
         onSelected: (v) => setState(() => _make = v),
       ),
-      TextField(
-        controller: _model,
-        decoration: const InputDecoration(labelText: 'Model (optional)'),
-      ),
-      const SizedBox(height: 12),
       SingleChoiceChips(
         label: 'Hourly rent',
         values: BikesOffer.hourlyRentPresets,
@@ -73,14 +86,6 @@ class _BikesFormState extends State<BikesForm> {
         text: (v) => '₹$v',
         onSelected: (v) => setState(() => _rent = v),
       ),
-      TextField(
-        controller: _customRent,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(
-          labelText: 'Custom hourly rent (optional)',
-        ),
-      ),
-      const SizedBox(height: 12),
       MultiChoiceChips(
         label: 'Available days',
         values: BikesOffer.weekdays,
@@ -104,6 +109,7 @@ class _BikesFormState extends State<BikesForm> {
           ),
         ],
       ),
+      const SizedBox(height: 12),
       CityDropdown(value: _city, onChanged: (v) => setState(() => _city = v)),
       PhotoCountPicker(
         count: _photos,
@@ -112,7 +118,60 @@ class _BikesFormState extends State<BikesForm> {
         onPick: widget.onPickPhoto,
         onChanged: (v) => setState(() => _photos = v),
       ),
-      FilledButton(onPressed: _save, child: const Text('Save listing')),
+      Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 4),
+          leading: CircleAvatar(
+            backgroundColor: _domain.softColor,
+            child: Icon(Icons.add, color: _domain.color),
+          ),
+          title: Text(
+            'More',
+            style: TextStyle(
+              color: _domain.color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          trailing: _extraFilled == 0
+              ? null
+              : CircleAvatar(
+                  radius: 12,
+                  backgroundColor: _domain.softColor,
+                  child: Text(
+                    '$_extraFilled',
+                    style: TextStyle(
+                      color: _domain.color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+          children: [
+            TextField(
+              controller: _model,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Model'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _customRent,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Your price / hour'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: _domain.color),
+        onPressed: _save,
+        child: const Text('Save'),
+      ),
     ],
   );
 

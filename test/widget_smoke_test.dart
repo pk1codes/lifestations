@@ -4,6 +4,7 @@ import 'package:flut_marriage/screens/home_shell.dart';
 import 'package:flut_marriage/services/seed_repository.dart';
 import 'package:flut_marriage/services/share_card_repository.dart';
 import 'package:flut_marriage/state/app_stores.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -39,14 +40,24 @@ void main() {
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
     expect(find.text('My ads'), findsOneWidget);
-    expect(find.text('Get more views'), findsOneWidget);
+    expect(find.text('Get more views'), findsNothing);
+    expect(find.text('Settings & safety'), findsNothing);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Settings & safety'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings & safety'));
+    await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
     expect(find.text('How to use'), findsOneWidget);
     expect(find.text('Phone stays private'), findsOneWidget);
+
+    // Close settings sheet.
+    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('My ads'));
+    await tester.pumpAndSettle();
+    expect(find.text('Jobs'), findsOneWidget);
+    expect(find.text('Add ad'), findsNothing);
+    expect(find.byIcon(Icons.add_circle_outline), findsWidgets);
   });
 
   test('saved Guide tab index clamps to Me', () async {

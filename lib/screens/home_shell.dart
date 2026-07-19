@@ -1191,6 +1191,13 @@ class MeScreen extends StatelessWidget {
     final identity = context.watch<IdentityStore>();
     return _Page(
       title: 'Me',
+      actions: [
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: () => _showSettings(context),
+          icon: const Icon(Icons.settings_outlined),
+        ),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1210,70 +1217,118 @@ class MeScreen extends StatelessWidget {
                     ? identity.identity.displayName
                     : 'Add my details',
               ),
-              subtitle: Text(
-                identity.completed
-                    ? identity.identity.cityLabel
-                    : 'Name, city and phone',
-              ),
+              subtitle: identity.completed
+                  ? Text(identity.identity.cityLabel)
+                  : null,
               trailing: const Icon(Icons.edit_outlined),
               onTap: () => showIdentityForm(context),
             ),
           ),
           const SizedBox(height: 16),
-          Text('My ads', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 10),
-          ...AppDomains.all.map(
-            (domain) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: domain.softColor,
-                    child: Icon(_domainIcons[domain.id], color: domain.color),
-                  ),
-                  title: Text(domain.label),
-                  subtitle: Text(
-                    domain.enabled ? 'Tap to add or change' : 'Coming soon',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showDomainProfileForm(context, domain),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
           Card(
             child: ListTile(
-              leading: CircleAvatar(
+              leading: const CircleAvatar(
                 backgroundColor: AppColors.darkCream,
-                child: const Icon(Icons.trending_up, color: AppColors.rose),
+                child: Icon(Icons.campaign_outlined, color: AppColors.rose),
               ),
-              title: const Text('Get more views'),
-              subtitle: const Text('Show my ads to more people'),
+              title: const Text('My ads'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showGrowthSheet(context),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: AppColors.darkCream,
-                child: const Icon(
-                  Icons.settings_outlined,
-                  color: AppColors.muted,
-                ),
-              ),
-              title: const Text('Settings & safety'),
-              subtitle: const Text('Help, language, privacy'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showSettings(context),
+              onTap: () => _showMyAdsSheet(context),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+bool _userHasAnyAd(BuildContext context) {
+  final marriage = context.watch<ProfileStore>().value != null;
+  final jobs = context.watch<JobsProfileStore>().value != null;
+  final rooms = context.watch<RoomsOfferStore>().offers.isNotEmpty;
+  final bikes = context.watch<BikesOfferStore>().offers.isNotEmpty;
+  final help = context.watch<HomeHelpOfferStore>().offers.isNotEmpty;
+  return marriage || jobs || rooms || bikes || help;
+}
+
+bool _domainHasAd(BuildContext context, AppDomainId id) {
+  switch (id) {
+    case AppDomainId.marriage:
+      return context.read<ProfileStore>().value != null;
+    case AppDomainId.jobs:
+      return context.read<JobsProfileStore>().value != null;
+    case AppDomainId.rooms:
+      return context.read<RoomsOfferStore>().offers.isNotEmpty;
+    case AppDomainId.bikes:
+      return context.read<BikesOfferStore>().offers.isNotEmpty;
+    case AppDomainId.homeHelp:
+      return context.read<HomeHelpOfferStore>().offers.isNotEmpty;
+  }
+}
+
+Future<void> _showMyAdsSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) {
+      final hasAds = _userHasAnyAd(context);
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('My ads', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              ...AppDomains.all.map((domain) {
+                final hasAd = domain.enabled && _domainHasAd(context, domain.id);
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: domain.softColor,
+                    child: Icon(_domainIcons[domain.id], color: domain.color),
+                  ),
+                  title: Text(domain.label),
+                  trailing: !domain.enabled
+                      ? Text(
+                          'Soon',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppColors.muted),
+                        )
+                      : Icon(
+                          hasAd ? Icons.check_circle : Icons.add_circle_outline,
+                          color: hasAd ? domain.color : AppColors.muted,
+                        ),
+                  onTap: domain.enabled
+                      ? () {
+                          Navigator.pop(context);
+                          showDomainProfileForm(context, domain);
+                        }
+                      : null,
+                );
+              }),
+              if (hasAds) ...[
+                const Divider(height: 24),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.darkCream,
+                    child: Icon(Icons.trending_up, color: AppColors.rose),
+                  ),
+                  title: const Text('Get more views'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showGrowthSheet(context);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 const _domainIcons = <AppDomainId, IconData>{
@@ -1307,8 +1362,8 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
                   backgroundColor: AppColors.darkCream,
                   child: Icon(Icons.autorenew, color: AppColors.rose),
                 ),
-                title: const Text('Refresh my ads'),
-                subtitle: const Text('Free • once a day'),
+                title: const Text('Refresh'),
+                subtitle: const Text('Free • 1 a day'),
                 onTap: () async {
                   final uid = identity.identity.userId.isEmpty
                       ? (FirebaseBootstrap.ready
@@ -1323,7 +1378,7 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        ok ? 'Done. Your ads look new today.' : 'Already done today. Try tomorrow.',
+                        ok ? 'Done for today.' : 'Already done today.',
                       ),
                     ),
                   );
@@ -1333,19 +1388,24 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
                 const ListTile(
                   leading: CircleAvatar(
                     backgroundColor: AppColors.darkCream,
-                    child: Icon(Icons.rocket_launch_outlined, color: AppColors.rose),
+                    child: Icon(
+                      Icons.rocket_launch_outlined,
+                      color: AppColors.rose,
+                    ),
                   ),
                   title: Text('Boost is on'),
-                  subtitle: Text('Your ads show higher'),
                 )
               else if (billing.available)
                 ListTile(
                   leading: const CircleAvatar(
                     backgroundColor: AppColors.darkCream,
-                    child: Icon(Icons.rocket_launch_outlined, color: AppColors.rose),
+                    child: Icon(
+                      Icons.rocket_launch_outlined,
+                      color: AppColors.rose,
+                    ),
                   ),
-                  title: const Text('Boost for 7 days'),
-                  subtitle: const Text('Paid • ads show on top'),
+                  title: const Text('Boost 7 days'),
+                  subtitle: const Text('Paid'),
                   onTap: () async {
                     await billing.buyBoost();
                     final uid = identity.identity.userId;
@@ -1364,7 +1424,10 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
                   enabled: false,
                   leading: const CircleAvatar(
                     backgroundColor: AppColors.darkCream,
-                    child: Icon(Icons.rocket_launch_outlined, color: AppColors.muted),
+                    child: Icon(
+                      Icons.rocket_launch_outlined,
+                      color: AppColors.muted,
+                    ),
                   ),
                   title: const Text('Boost'),
                   subtitle: Text(billing.webMessage),
@@ -1377,12 +1440,11 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
                     color: trust.flags.idPlus ? Colors.green : AppColors.muted,
                   ),
                 ),
-                title: Text(
-                  trust.flags.idPlus ? 'ID badge added' : 'Add ID badge',
-                ),
-                subtitle: const Text(
-                  'Say you have Aadhaar and licence. No upload.',
-                ),
+                title: const Text('ID badge'),
+                subtitle: const Text('Aadhaar + licence. No upload.'),
+                trailing: trust.flags.idPlus
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : null,
                 onTap: trust.flags.idPlus
                     ? null
                     : () {
@@ -1393,9 +1455,7 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
                           ),
                         );
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('ID badge added. Nothing is uploaded.'),
-                          ),
+                          const SnackBar(content: Text('ID badge added.')),
                         );
                       },
               ),
@@ -1425,9 +1485,10 @@ Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void
 );
 
 class _Page extends StatelessWidget {
-  const _Page({required this.title, required this.child});
+  const _Page({required this.title, required this.child, this.actions});
   final String title;
   final Widget child;
+  final List<Widget>? actions;
 
   @override
   Widget build(BuildContext context) => CustomScrollView(
@@ -1436,6 +1497,7 @@ class _Page extends StatelessWidget {
         pinned: true,
         backgroundColor: AppColors.cream.withValues(alpha: .95),
         title: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        actions: actions,
       ),
       SliverPadding(
         padding: const EdgeInsets.all(16),
@@ -1666,7 +1728,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Settings & safety',
+                'Settings',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
@@ -1687,7 +1749,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                   child: Icon(Icons.radio, color: AppColors.rose),
                 ),
                 title: Text('Change world'),
-                subtitle: Text('Hold the radio button for Marriage, Jobs, Rooms…'),
+                subtitle: Text('Hold the radio to change world'),
               ),
               const ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1696,9 +1758,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                   child: Icon(Icons.lock_outline, color: AppColors.rose),
                 ),
                 title: Text('Phone stays private'),
-                subtitle: Text(
-                  'WhatsApp opens only when both like, after phone check.',
-                ),
+                subtitle: Text('Opens when both like'),
               ),
               const ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1711,7 +1771,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                 ),
                 title: Text('Stay safe'),
                 subtitle: Text(
-                  'ID badges are self-said, not checked by government. Block or report if worried.',
+                  'Badges are self-said. Block or report if worried.',
                 ),
               ),
               const SizedBox(height: 8),
@@ -1723,7 +1783,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                   children: [
                     RadioListTile(
                       value: null,
-                      title: Text('Use system language'),
+                      title: Text('Phone language'),
                     ),
                     RadioListTile(value: 'en', title: Text('English')),
                     RadioListTile(value: 'hi', title: Text('हिन्दी')),
@@ -1732,10 +1792,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
               ),
               ListTile(
                 leading: const Icon(Icons.gavel_outlined),
-                title: const Text('Community terms'),
-                subtitle: const Text(
-                  'Respect, consent, truth, and no harassment.',
-                ),
+                title: const Text('Terms'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -1745,8 +1802,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
               ),
               ListTile(
                 leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('Privacy policy'),
-                subtitle: const Text('What we collect and how it is used.'),
+                title: const Text('Privacy'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -1756,8 +1812,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline),
-                title: const Text('Data & account deletion'),
-                subtitle: const Text('Delete your account and data anytime.'),
+                title: const Text('Delete account'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -1803,16 +1858,13 @@ Future<void> showIdentityForm(BuildContext context) async {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Shared identity',
+                  'My details',
                   style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const Text(
-                  'Private contact is stored once and never copied into discovery cards.',
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: name,
-                  decoration: const InputDecoration(labelText: 'Display name'),
+                  decoration: const InputDecoration(labelText: 'Name'),
                   validator: (value) => (value?.trim().length ?? 0) < 2
                       ? 'Enter at least 2 characters'
                       : null,
