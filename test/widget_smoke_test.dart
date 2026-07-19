@@ -33,12 +33,29 @@ void main() {
     expect(find.text('Browse'), findsOneWidget);
     expect(find.text('Likes'), findsOneWidget);
     expect(find.text('Me'), findsOneWidget);
-    expect(find.text('Guide'), findsOneWidget);
+    expect(find.text('Guide'), findsNothing);
     expect(find.byType(DiscoveryCard), findsWidgets);
 
-    await tester.tap(find.text('Guide'));
+    await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
-    expect(find.text('A safer way to connect'), findsOneWidget);
-    expect(find.text('Contact is private'), findsOneWidget);
+    expect(find.text('My ads'), findsOneWidget);
+    expect(find.text('Get more views'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Settings & safety'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings & safety'));
+    await tester.pumpAndSettle();
+    expect(find.text('How to use'), findsOneWidget);
+    expect(find.text('Phone stays private'), findsOneWidget);
+  });
+
+  test('saved Guide tab index clamps to Me', () async {
+    SharedPreferences.setMockInitialValues({
+      'tab_marriage': 3,
+      'domain_coach_seen': true,
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final controller = DomainController(prefs);
+    expect(controller.selectedTab, DomainController.maxTabIndex);
   });
 }

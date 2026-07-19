@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
 import '../models/app_domain.dart';
+import '../models/card_side.dart';
 import '../models/discovery_card.dart';
 import '../models/domain_profiles.dart';
 import '../services/account_services.dart';
@@ -16,6 +17,7 @@ import 'legal_screens.dart';
 import '../services/contact_service.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/form_media_controller.dart';
+import '../services/likes_repository.dart';
 import '../services/listing_publisher.dart';
 import '../services/push_service.dart';
 import '../services/refresh_boost_service.dart';
@@ -50,7 +52,7 @@ class _HomeShellState extends State<HomeShell> {
       if (!controller.shouldShowCoachMark) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Long-press the radio to tune into another domain.'),
+          content: Text('Hold the radio button to change Marriage, Jobs, Rooms…'),
           duration: Duration(seconds: 8),
           showCloseIcon: true,
         ),
@@ -66,12 +68,11 @@ class _HomeShellState extends State<HomeShell> {
     final identity = context.read<IdentityStore>();
     final blocks = context.read<BlockStore>();
     final likes = context.read<LikesStore>();
-    final domain = context.read<DomainController>().selected;
     await identity.bindUserId(uid);
     if (!mounted) return;
     await blocks.hydrateRemote();
     if (!mounted) return;
-    await likes.hydrate(domain);
+    await likes.hydrateAll();
     await PushService().initialize(uid: uid);
   }
 
@@ -83,7 +84,6 @@ class _HomeShellState extends State<HomeShell> {
       const DiscoverScreen(),
       const LikesScreen(),
       const MeScreen(),
-      const GuideScreen(),
     ];
     return Scaffold(
       body: SafeArea(
@@ -103,7 +103,7 @@ class _HomeShellState extends State<HomeShell> {
               key: const Key('domain_tuner'),
               onLongPress: () => showDomainDial(context),
               child: const Tooltip(
-                message: 'Long-press to tune domains',
+                message: 'Hold to change Marriage, Jobs, Rooms…',
                 child: Icon(Icons.radio),
               ),
             ),
@@ -123,11 +123,6 @@ class _HomeShellState extends State<HomeShell> {
             selectedIcon: const Icon(Icons.person),
             label: l10n.text('me'),
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.auto_stories_outlined),
-            selectedIcon: const Icon(Icons.auto_stories),
-            label: l10n.text('guide'),
-          ),
         ],
       ),
     );
@@ -137,36 +132,61 @@ class _HomeShellState extends State<HomeShell> {
 Future<void> showDomainDial(BuildContext context) async {
   final controller = context.read<DomainController>();
   unawaited(AudioPlayer().play(AssetSource('audio/rotary.wav'), volume: .35));
+  var front = AppDomains.byId(controller.selected);
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (context) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Tune your world',
-              style: Theme.of(context).textTheme.headlineMedium,
+    backgroundColor: Colors.transparent,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setSheetState) => AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: front.softSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              front.color.withValues(alpha: .18),
+              front.softSurface,
+              AppColors.cream,
+            ],
+            stops: const [0, 0.35, 1],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose a world',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 4),
+                const Text('Same account. Five worlds.'),
+                const SizedBox(height: 8),
+                Center(
+                  child: DomainSphereSelector(
+                    selected: controller.selected,
+                    onFrontDomainChanged: (id) {
+                      final next = AppDomains.byId(id);
+                      if (next.id == front.id) return;
+                      setSheetState(() => front = next);
+                    },
+                    onDomainSelected: (id) {
+                      controller.selectDomain(id);
+                      Navigator.pop(context);
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'One account. Independent profiles for every part of life.',
-            ),
-            const SizedBox(height: 12),
-            Center(
-              child: DomainSphereSelector(
-                selected: controller.selected,
-                onDomainSelected: (id) {
-                  controller.selectDomain(id);
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     ),
@@ -202,13 +222,28 @@ class DiscoverScreen extends StatelessWidget {
       slivers: [
         SliverAppBar(
           pinned: true,
-          backgroundColor: AppColors.cream.withValues(alpha: .95),
+          backgroundColor: domain.softSurface.withValues(alpha: .96),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(domain.label, style: Theme.of(context).textTheme.titleLarge),
+              Row(
+                children: [
+                  Icon(
+                    _domainIcons[domain.id],
+                    color: domain.color,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    domain.label,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: domain.color,
+                    ),
+                  ),
+                ],
+              ),
               Text(
-                '${domain.frequency.toStringAsFixed(1)} FM • ${cards.length} nearby',
+                '${cards.length} nearby',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -217,7 +252,7 @@ class DiscoverScreen extends StatelessWidget {
             IconButton(
               tooltip: 'Filters',
               onPressed: () => _showFilters(context, domain),
-              icon: const Icon(Icons.tune),
+              icon: Icon(Icons.tune, color: domain.color),
             ),
           ],
         ),
@@ -263,102 +298,212 @@ class DiscoveryCard extends StatelessWidget {
   final VoidCallback onLike;
 
   @override
-  Widget build(BuildContext context) => Dismissible(
-    key: ValueKey(card.id),
-    background: _swipeBackground(
-      Alignment.centerLeft,
-      Icons.favorite,
-      AppColors.rose,
-    ),
-    secondaryBackground: _swipeBackground(
-      Alignment.centerRight,
-      Icons.close,
-      AppColors.muted,
-    ),
-    confirmDismiss: (direction) async {
-      direction == DismissDirection.startToEnd ? onLike() : onPass();
-      return true;
-    },
-    child: Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: PageView(
-              children: card.imageUrls
-                  .map(
-                    (url) => Image.asset(
-                      url,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => _SyntheticArtwork(
-                        label: card.title,
-                        seed: card.id.hashCode,
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    if (card.promoted) const Chip(label: Text('Ad')),
-                    if (card.verified)
-                      const Chip(label: Text('Self-attested ID')),
-                    if (card.refreshed) const Chip(label: Text('Fresh today')),
-                  ],
-                ),
-                Text(card.title, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 6),
-                Text(card.subtitle),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined, size: 18),
-                    const SizedBox(width: 4),
-                    Text(card.cityLabel),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    IconButton.outlined(
-                      tooltip: 'Share safely',
-                      onPressed: () => _share(context),
-                      icon: const Icon(Icons.share_outlined),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onPass,
-                        icon: const Icon(Icons.close),
-                        label: Text(AppLocalizations.of(context).text('pass')),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: onLike,
-                        icon: const Icon(Icons.favorite),
-                        label: Text(AppLocalizations.of(context).text('like')),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final side = cardSideMark(card);
+    final fact = cardFactLine(card);
+    final l10n = AppLocalizations.of(context);
+    final domainColor = AppDomains.byId(card.domain).color;
+    return Dismissible(
+      key: ValueKey(card.id),
+      background: _swipeBackground(
+        Alignment.centerLeft,
+        Icons.favorite,
+        domainColor,
       ),
-    ),
-  );
+      secondaryBackground: _swipeBackground(
+        Alignment.centerRight,
+        Icons.close,
+        AppColors.muted,
+      ),
+      confirmDismiss: (direction) async {
+        direction == DismissDirection.startToEnd ? onLike() : onPass();
+        return true;
+      },
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: domainColor, width: 5),
+            ),
+          ),
+          child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AspectRatio(
+              aspectRatio: 4 / 3,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PageView(
+                    children: card.imageUrls.isEmpty
+                        ? <Widget>[
+                            _SyntheticArtwork(
+                              label: card.title,
+                              seed: card.id.hashCode,
+                            ),
+                          ]
+                        : card.imageUrls
+                              .map(
+                                (url) => _BrowsePhoto(
+                                  url: url,
+                                  label: card.title,
+                                  seed: card.id.hashCode,
+                                ),
+                              )
+                              .toList(growable: false),
+                  ),
+                  if (card.promoted)
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: .55),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            'Ad',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (side != null)
+              ColoredBox(
+                color: side.color.withValues(alpha: .12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(side.icon, size: 18, color: side.color),
+                      const SizedBox(width: 8),
+                      Text(
+                        side.label,
+                        style: TextStyle(
+                          color: side.color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          card.title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: l10n.text('more'),
+                        onSelected: (value) async {
+                          if (value == 'share') {
+                            await _share(context);
+                          } else if (value == 'safety') {
+                            await showSafetySheet(
+                              context,
+                              domain: card.domain,
+                              targetId: card.id,
+                              ownerId: card.ownerId,
+                            );
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: 'share',
+                            child: Text(l10n.text('share')),
+                          ),
+                          PopupMenuItem(
+                            value: 'safety',
+                            child: Text(l10n.text('safety')),
+                          ),
+                        ],
+                        icon: const Icon(Icons.more_vert),
+                      ),
+                    ],
+                  ),
+                  if (fact.trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      fact,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 18,
+                        color: AppColors.muted,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          card.cityLabel,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppColors.muted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _RoundAction(
+                        key: const Key('skip_button'),
+                        tooltip: l10n.text('pass'),
+                        icon: Icons.close,
+                        color: AppColors.muted,
+                        filled: false,
+                        compact: true,
+                        onPressed: onPass,
+                      ),
+                      const SizedBox(width: 10),
+                      _RoundAction(
+                        key: const Key('interested_button'),
+                        tooltip: l10n.text('like'),
+                        icon: Icons.favorite,
+                        color: domainColor,
+                        filled: true,
+                        compact: true,
+                        onPressed: onLike,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _share(BuildContext context) async {
     try {
@@ -381,6 +526,80 @@ class DiscoveryCard extends StatelessWidget {
         ),
         child: Icon(icon, color: Colors.white, size: 42),
       );
+}
+
+class _RoundAction extends StatelessWidget {
+  const _RoundAction({
+    required this.tooltip,
+    required this.icon,
+    required this.color,
+    required this.filled,
+    required this.onPressed,
+    this.compact = false,
+    super.key,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final Color color;
+  final bool filled;
+  final VoidCallback onPressed;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = compact ? 26.0 : 34.0;
+    final padding = compact ? 12.0 : 16.0;
+    final button = filled
+        ? IconButton.filled(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            iconSize: iconSize,
+            padding: EdgeInsets.all(padding),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            style: IconButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+            ),
+          )
+        : IconButton.outlined(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            iconSize: iconSize,
+            padding: EdgeInsets.all(padding),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            style: IconButton.styleFrom(
+              foregroundColor: color,
+              side: BorderSide(color: color, width: 2),
+            ),
+          );
+    return Tooltip(message: tooltip, child: button);
+  }
+}
+
+class _BrowsePhoto extends StatelessWidget {
+  const _BrowsePhoto({
+    required this.url,
+    required this.label,
+    required this.seed,
+  });
+
+  final String url;
+  final String label;
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = _SyntheticArtwork(label: label, seed: seed);
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+      );
+    }
+    return Image.asset(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback);
+  }
 }
 
 class _SyntheticArtwork extends StatelessWidget {
@@ -418,7 +637,7 @@ class ComingSoonView extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 44,
-          backgroundColor: domain.color.withValues(alpha: .14),
+          backgroundColor: domain.softColor,
           child: Icon(
             Icons.construction_rounded,
             size: 44,
@@ -450,99 +669,516 @@ class LikesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final domain = context.watch<DomainController>().policy;
     final likes = context.watch<LikesStore>();
-    final identity = context.watch<IdentityStore>();
+    final empty = likes.outboundCount == 0 && likes.inboundCount == 0;
     return _Page(
-      title: '${domain.label} likes',
-      child: likes.outbound(domain.id).isEmpty
+      title: 'Likes',
+      child: empty
           ? const _InfoCard(
               icon: Icons.favorite_outline,
               title: 'No likes yet',
-              body: 'Swipe right when someone or something feels right.',
+              body: 'Tap Interested on Browse. Your likes show here.',
             )
           : Column(
-              children: likes
-                  .outbound(domain.id)
-                  .map(
-                    (id) => Card(
-                      child: ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.lock)),
-                        title: const Text('Contact stays private'),
-                        subtitle: Text(
-                          likes.isMutual(domain.id, id)
-                              ? 'Mutual interest • verify phone to connect'
-                              : 'Waiting for mutual interest',
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LikesSection(
+                  title: 'I liked',
+                  count: likes.outboundCount,
+                  icon: Icons.favorite,
+                  entriesFor: likes.outboundEntries,
+                  likes: likes,
+                ),
+                const SizedBox(height: 16),
+                _LikesSection(
+                  title: 'Liked me',
+                  count: likes.inboundCount,
+                  icon: Icons.favorite_border,
+                  entriesFor: likes.inboundEntries,
+                  likes: likes,
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _LikesSection extends StatelessWidget {
+  const _LikesSection({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.entriesFor,
+    required this.likes,
+  });
+
+  final String title;
+  final int count;
+  final IconData icon;
+  final List<LikeEntry> Function(AppDomainId domain) entriesFor;
+  final LikesStore likes;
+
+  @override
+  Widget build(BuildContext context) {
+    final domainsWithLikes = AppDomains.all
+        .where((policy) => entriesFor(policy.id).isNotEmpty)
+        .toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: AppColors.rose),
+              const SizedBox(width: 8),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const Spacer(),
+              Text(
+                '$count',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (domainsWithLikes.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('None yet'),
+          )
+        else
+          ...domainsWithLikes.map((policy) {
+            final entries = entriesFor(policy.id);
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  initiallyExpanded: domainsWithLikes.length == 1,
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                  childrenPadding: const EdgeInsets.only(bottom: 4),
+                  leading: CircleAvatar(
+                    backgroundColor: policy.softColor,
+                    child: Icon(
+                      _domainIcons[policy.id],
+                      color: policy.color,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(policy.label),
+                  subtitle: Text('${entries.length}'),
+                  children: entries
+                      .map(
+                        (entry) => _LikeRow(
+                          entry: entry,
+                          mutual: likes.isMutual(
+                            entry.domain,
+                            entry.otherUid,
+                          ),
+                          onOpen: () => _showLikeDetail(context, entry),
                         ),
-                        trailing: Wrap(
-                          spacing: 4,
-                          children: [
-                            IconButton(
-                              tooltip: 'Safety',
-                              icon: const Icon(Icons.more_vert),
-                              onPressed: () => showSafetySheet(
-                                context,
-                                domain: domain.id,
-                                targetId: id,
-                                ownerId: id,
-                              ),
-                            ),
-                            if (likes.isMutual(domain.id, id))
-                              FilledButton(
-                                onPressed: () async {
-                                  if (!identity.identity.phoneVerified) {
-                                    final ok = await showOtpSheet(context);
-                                    if (!ok || !context.mounted) return;
-                                  }
-                                  try {
-                                    final contact = await ContactService()
-                                        .unlock(
-                                          domain: domain.id,
-                                          targetUid: id,
-                                        );
-                                    if (!context.mounted) return;
-                                    if (contact == null) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Contact is not available yet',
-                                          ),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    await ContactService().openWhatsApp(
-                                      contact.whatsappNumber,
-                                    );
-                                    final telegram = contact.telegramHandle;
-                                    if (telegram != null &&
-                                        telegram.trim().isNotEmpty) {
-                                      await ContactService().openTelegram(
-                                        telegram,
-                                      );
-                                    }
-                                  } catch (_) {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Verify phone and mutual interest first',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                child: const Text('Connect'),
-                              ),
-                          ],
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _LikeRow extends StatelessWidget {
+  const _LikeRow({
+    required this.entry,
+    required this.mutual,
+    required this.onOpen,
+  });
+
+  final LikeEntry entry;
+  final bool mutual;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = entry.card;
+    final title = card?.title ?? 'Liked ad';
+    final city = card?.cityLabel ?? '';
+    final photo = card?.imageUrls.isNotEmpty == true
+        ? card!.imageUrls.first
+        : null;
+    return ListTile(
+      onTap: onOpen,
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: photo == null
+              ? _SyntheticArtwork(label: title, seed: entry.otherUid.hashCode)
+              : _LikePhoto(
+                  url: photo,
+                  label: title,
+                  seed: entry.otherUid.hashCode,
+                ),
+        ),
+      ),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        [
+          if (city.isNotEmpty) city,
+          mutual ? 'Both liked' : 'Waiting',
+        ].join(' • '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Icon(
+        mutual ? Icons.lock_open : Icons.lock_outline,
+        color: mutual ? CardSideMark.supplyColor : AppColors.muted,
+        size: 20,
+      ),
+    );
+  }
+}
+
+class _LikePhoto extends StatelessWidget {
+  const _LikePhoto({
+    required this.url,
+    required this.label,
+    required this.seed,
+  });
+
+  final String url;
+  final String label;
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = _SyntheticArtwork(label: label, seed: seed);
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+      );
+    }
+    return Image.asset(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallback,
+    );
+  }
+}
+
+Future<void> _showLikeDetail(BuildContext context, LikeEntry entry) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => _LikeDetailSheet(entry: entry),
+  );
+}
+
+class _LikeDetailSheet extends StatefulWidget {
+  const _LikeDetailSheet({required this.entry});
+
+  final LikeEntry entry;
+
+  @override
+  State<_LikeDetailSheet> createState() => _LikeDetailSheetState();
+}
+
+class _LikeDetailSheetState extends State<_LikeDetailSheet> {
+  PrivateContact? _contact;
+  bool _unlocking = false;
+
+  LikeEntry get entry => widget.entry;
+
+  Future<PrivateContact?> _ensureContact() async {
+    if (_contact != null) return _contact;
+    final identity = context.read<IdentityStore>();
+    final likes = context.read<LikesStore>();
+    if (!likes.isMutual(entry.domain, entry.otherUid)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wait until both like')),
+      );
+      return null;
+    }
+    if (!identity.identity.phoneVerified) {
+      final ok = await showOtpSheet(context);
+      if (!ok || !mounted) return null;
+    }
+    setState(() => _unlocking = true);
+    try {
+      final contact = await ContactService().unlock(
+        domain: entry.domain,
+        targetUid: entry.otherUid,
+      );
+      if (!mounted) return null;
+      if (contact == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Phone not ready yet')),
+        );
+        return null;
+      }
+      setState(() => _contact = contact);
+      return contact;
+    } catch (_) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Check phone first')),
+      );
+      return null;
+    } finally {
+      if (mounted) setState(() => _unlocking = false);
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    final contact = await _ensureContact();
+    if (contact == null) return;
+    await ContactService().openWhatsApp(contact.whatsappNumber);
+  }
+
+  Future<void> _openTelegram() async {
+    final contact = await _ensureContact();
+    if (contact == null) return;
+    final handle = contact.telegramHandle?.trim() ?? '';
+    if (handle.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No Telegram yet')),
+      );
+      return;
+    }
+    await ContactService().openTelegram(handle);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final likes = context.watch<LikesStore>();
+    final policy = AppDomains.byId(entry.domain);
+    final mutual = likes.isMutual(entry.domain, entry.otherUid);
+    final card = entry.card;
+    final title = card?.title ?? 'Liked ad';
+    final fact = card == null ? '' : cardFactLine(card);
+    final photos = card?.imageUrls ?? const <String>[];
+    final side = card == null ? null : cardSideMark(card);
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: policy.softColor,
+                    child: Icon(
+                      _domainIcons[policy.id],
+                      color: policy.color,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    policy.label,
+                    style: TextStyle(
+                      color: policy.color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Safety',
+                    onPressed: () => showSafetySheet(
+                      context,
+                      domain: entry.domain,
+                      targetId: entry.otherUid,
+                      ownerId: entry.otherUid,
+                    ),
+                    icon: const Icon(Icons.more_vert),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              AspectRatio(
+                aspectRatio: 4 / 3,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: photos.isEmpty
+                      ? _SyntheticArtwork(
+                          label: title,
+                          seed: entry.otherUid.hashCode,
+                        )
+                      : PageView(
+                          children: photos
+                              .map(
+                                (url) => _LikePhoto(
+                                  url: url,
+                                  label: title,
+                                  seed: entry.otherUid.hashCode,
+                                ),
+                              )
+                              .toList(growable: false),
                         ),
+                ),
+              ),
+              if (side != null) ...[
+                const SizedBox(height: 12),
+                ColoredBox(
+                  color: side.color.withValues(alpha: .12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(side.icon, size: 18, color: side.color),
+                        const SizedBox(width: 8),
+                        Text(
+                          side.label,
+                          style: TextStyle(
+                            color: side.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              if (fact.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(fact),
+              ],
+              if (card?.cityLabel.isNotEmpty ?? false) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 18,
+                      color: AppColors.muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      card!.cityLabel,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.muted,
                       ),
                     ),
-                  )
-                  .toList(),
-            ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                mutual ? 'Both liked — open chat' : 'Waiting — chat locked',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: mutual ? CardSideMark.supplyColor : AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ContactActionButton(
+                      label: 'WhatsApp',
+                      icon: Icons.chat,
+                      color: const Color(0xFF25D366),
+                      enabled: mutual && !_unlocking,
+                      locked: !mutual,
+                      busy: _unlocking,
+                      onPressed: _openWhatsApp,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ContactActionButton(
+                      label: 'Telegram',
+                      icon: Icons.send,
+                      color: const Color(0xFF229ED9),
+                      enabled: mutual && !_unlocking,
+                      locked: !mutual,
+                      busy: _unlocking,
+                      onPressed: _openTelegram,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactActionButton extends StatelessWidget {
+  const _ContactActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.enabled,
+    required this.locked,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool enabled;
+  final bool locked;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final faded = locked || !enabled;
+    return OutlinedButton.icon(
+      onPressed: faded
+          ? () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    locked ? 'Both must like first' : 'Please wait…',
+                  ),
+                ),
+              );
+            }
+          : onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: faded ? AppColors.muted : color,
+        side: BorderSide(color: faded ? AppColors.muted : color),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+      ),
+      icon: busy
+          ? SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: faded ? AppColors.muted : color,
+              ),
+            )
+          : Icon(locked ? Icons.lock_outline : icon),
+      label: Text(label),
     );
   }
 }
@@ -554,7 +1190,7 @@ class MeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final identity = context.watch<IdentityStore>();
     return _Page(
-      title: 'Your account',
+      title: 'Me',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -572,31 +1208,32 @@ class MeScreen extends StatelessWidget {
               title: Text(
                 identity.completed
                     ? identity.identity.displayName
-                    : 'Add shared identity',
+                    : 'Add my details',
               ),
               subtitle: Text(
                 identity.completed
-                    ? '${identity.identity.cityLabel} • used privately across domains'
-                    : 'Minimum details first. Domain profiles stay independent.',
+                    ? identity.identity.cityLabel
+                    : 'Name, city and phone',
               ),
               trailing: const Icon(Icons.edit_outlined),
               onTap: () => showIdentityForm(context),
             ),
           ),
           const SizedBox(height: 16),
-          Text('Your domains', style: Theme.of(context).textTheme.titleLarge),
+          Text('My ads', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
           ...AppDomains.all.map(
             (domain) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Card(
                 child: ListTile(
-                  leading: Icon(Icons.circle, size: 14, color: domain.color),
+                  leading: CircleAvatar(
+                    backgroundColor: domain.softColor,
+                    child: Icon(_domainIcons[domain.id], color: domain.color),
+                  ),
                   title: Text(domain.label),
                   subtitle: Text(
-                    domain.enabled
-                        ? 'Ready to create or edit'
-                        : 'Foundation ready • coming soon',
+                    domain.enabled ? 'Tap to add or change' : 'Coming soon',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => showDomainProfileForm(context, domain),
@@ -605,116 +1242,33 @@ class MeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Consumer2<BillingService, TrustService>(
-            builder: (context, billing, trust, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Growth & trust',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Chip(
-                      label: Text(
-                        trust.flags.idPlus
-                            ? 'ID+ self-attested'
-                            : 'Earn trust badges',
-                      ),
-                    ),
-                    if (billing.active)
-                      const Chip(label: Text('Boost active'))
-                    else if (!billing.available)
-                      Chip(label: Text(billing.webMessage)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final uid = identity.identity.userId.isEmpty
-                        ? (FirebaseBootstrap.ready
-                              ? (FirebaseAuth.instance.currentUser?.uid ??
-                                    'local')
-                              : 'local')
-                        : identity.identity.userId;
-                    final ok = await RefreshBoostService(
-                      await SharedPreferences.getInstance(),
-                    ).refreshOwnedCards(uid: uid, domains: AppDomainId.values);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          ok
-                              ? 'Listings refreshed for today'
-                              : 'Already refreshed today',
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.autorenew),
-                  label: const Text('Refresh today (1/day)'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    trust.applySelfAttested(
-                      trust.flags.copyWith(aadhaar: true, drivingLicence: true),
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Self-attested ID+ saved locally. Documents stay private.',
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.verified_user_outlined),
-                  label: const Text('Self-attest ID+'),
-                ),
-                if (billing.available)
-                  FilledButton.tonalIcon(
-                    onPressed: () async {
-                      await billing.buyBoost();
-                      final uid = identity.identity.userId;
-                      if (uid.isEmpty || !billing.active) return;
-                      await RefreshBoostService(
-                        await SharedPreferences.getInstance(),
-                      ).fanOutBoost(
-                        uid: uid,
-                        billing: billing,
-                        domains: AppDomainId.values,
-                      );
-                    },
-                    icon: const Icon(Icons.rocket_launch_outlined),
-                    label: const Text('Boost for 7 days'),
-                  ),
-                if (kDebugMode && !billing.available)
-                  TextButton(
-                    onPressed: () async {
-                      billing.debugGrant(DateTime.now());
-                      final uid = identity.identity.userId.isEmpty
-                          ? 'local'
-                          : identity.identity.userId;
-                      await RefreshBoostService(
-                        await SharedPreferences.getInstance(),
-                      ).fanOutBoost(
-                        uid: uid,
-                        billing: billing,
-                        domains: AppDomainId.values,
-                      );
-                    },
-                    child: const Text('Debug grant boost'),
-                  ),
-              ],
+          Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: AppColors.darkCream,
+                child: const Icon(Icons.trending_up, color: AppColors.rose),
+              ),
+              title: const Text('Get more views'),
+              subtitle: const Text('Show my ads to more people'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showGrowthSheet(context),
             ),
           ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _showSettings(context),
-            icon: const Icon(Icons.settings_outlined),
-            label: const Text('Settings & safety'),
+          Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: AppColors.darkCream,
+                child: const Icon(
+                  Icons.settings_outlined,
+                  color: AppColors.muted,
+                ),
+              ),
+              title: const Text('Settings & safety'),
+              subtitle: const Text('Help, language, privacy'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showSettings(context),
+            ),
           ),
         ],
       ),
@@ -722,52 +1276,153 @@ class MeScreen extends StatelessWidget {
   }
 }
 
-class GuideScreen extends StatelessWidget {
-  const GuideScreen({super.key});
+const _domainIcons = <AppDomainId, IconData>{
+  AppDomainId.marriage: Icons.favorite,
+  AppDomainId.jobs: Icons.work,
+  AppDomainId.rooms: Icons.hotel,
+  AppDomainId.bikes: Icons.pedal_bike,
+  AppDomainId.homeHelp: Icons.cleaning_services,
+};
 
-  @override
-  Widget build(BuildContext context) => const _Page(
-    title: 'A safer way to connect',
-    child: Column(
-      children: [
-        _InfoCard(
-          icon: Icons.swipe,
-          title: 'Swipe with intent',
-          body:
-              'Right means interested. Left passes. Buttons provide the same actions.',
-        ),
-        SizedBox(height: 12),
-        _InfoCard(
-          icon: Icons.radio,
-          title: 'Long-press the radio',
-          body:
-              'Tune between independent domains while keeping one shared identity.',
-        ),
-        SizedBox(height: 12),
-        _InfoCard(
-          icon: Icons.lock_outline,
-          title: 'Contact is private',
-          body:
-              'Only mutual interest plus a verified phone session can unlock contact.',
-        ),
-        SizedBox(height: 12),
-        _InfoCard(
-          icon: Icons.health_and_safety_outlined,
-          title: 'Use your judgment',
-          body:
-              'Trust labels are self-attested, not government verification. Block and report concerns.',
-        ),
-        SizedBox(height: 12),
-        _InfoCard(
-          icon: Icons.science_outlined,
-          title: 'Synthetic starter cards',
-          body:
-              'Demo inventory is fictional and contains no real people or release contact details.',
-        ),
-      ],
+Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void>(
+  context: context,
+  showDragHandle: true,
+  builder: (context) => SafeArea(
+    child: Consumer2<BillingService, TrustService>(
+      builder: (context, billing, trust, _) {
+        final identity = context.read<IdentityStore>();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Get more views',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: AppColors.darkCream,
+                  child: Icon(Icons.autorenew, color: AppColors.rose),
+                ),
+                title: const Text('Refresh my ads'),
+                subtitle: const Text('Free • once a day'),
+                onTap: () async {
+                  final uid = identity.identity.userId.isEmpty
+                      ? (FirebaseBootstrap.ready
+                            ? (FirebaseAuth.instance.currentUser?.uid ??
+                                  'local')
+                            : 'local')
+                      : identity.identity.userId;
+                  final ok = await RefreshBoostService(
+                    await SharedPreferences.getInstance(),
+                  ).refreshOwnedCards(uid: uid, domains: AppDomainId.values);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        ok ? 'Done. Your ads look new today.' : 'Already done today. Try tomorrow.',
+                      ),
+                    ),
+                  );
+                },
+              ),
+              if (billing.active)
+                const ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.darkCream,
+                    child: Icon(Icons.rocket_launch_outlined, color: AppColors.rose),
+                  ),
+                  title: Text('Boost is on'),
+                  subtitle: Text('Your ads show higher'),
+                )
+              else if (billing.available)
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.darkCream,
+                    child: Icon(Icons.rocket_launch_outlined, color: AppColors.rose),
+                  ),
+                  title: const Text('Boost for 7 days'),
+                  subtitle: const Text('Paid • ads show on top'),
+                  onTap: () async {
+                    await billing.buyBoost();
+                    final uid = identity.identity.userId;
+                    if (uid.isEmpty || !billing.active) return;
+                    await RefreshBoostService(
+                      await SharedPreferences.getInstance(),
+                    ).fanOutBoost(
+                      uid: uid,
+                      billing: billing,
+                      domains: AppDomainId.values,
+                    );
+                  },
+                )
+              else
+                ListTile(
+                  enabled: false,
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.darkCream,
+                    child: Icon(Icons.rocket_launch_outlined, color: AppColors.muted),
+                  ),
+                  title: const Text('Boost'),
+                  subtitle: Text(billing.webMessage),
+                ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.darkCream,
+                  child: Icon(
+                    Icons.verified_user_outlined,
+                    color: trust.flags.idPlus ? Colors.green : AppColors.muted,
+                  ),
+                ),
+                title: Text(
+                  trust.flags.idPlus ? 'ID badge added' : 'Add ID badge',
+                ),
+                subtitle: const Text(
+                  'Say you have Aadhaar and licence. No upload.',
+                ),
+                onTap: trust.flags.idPlus
+                    ? null
+                    : () {
+                        trust.applySelfAttested(
+                          trust.flags.copyWith(
+                            aadhaar: true,
+                            drivingLicence: true,
+                          ),
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('ID badge added. Nothing is uploaded.'),
+                          ),
+                        );
+                      },
+              ),
+              if (kDebugMode && !billing.available)
+                TextButton(
+                  onPressed: () async {
+                    billing.debugGrant(DateTime.now());
+                    final uid = identity.identity.userId.isEmpty
+                        ? 'local'
+                        : identity.identity.userId;
+                    await RefreshBoostService(
+                      await SharedPreferences.getInstance(),
+                    ).fanOutBoost(
+                      uid: uid,
+                      billing: billing,
+                      domains: AppDomainId.values,
+                    );
+                  },
+                  child: const Text('Debug grant boost'),
+                ),
+            ],
+          ),
+        );
+      },
     ),
-  );
-}
+  ),
+);
 
 class _Page extends StatelessWidget {
   const _Page({required this.title, required this.child});
@@ -838,11 +1493,11 @@ class _EmptyFeed extends StatelessWidget {
         children: [
           const Icon(Icons.travel_explore, size: 54),
           const SizedBox(height: 16),
-          const Text('You reached the end for now.'),
+          const Text('Nothing more here for now.'),
           const SizedBox(height: 12),
           FilledButton.tonal(
             onPressed: onReset,
-            child: const Text('Browse again'),
+            child: const Text('Show again'),
           ),
         ],
       ),
@@ -929,9 +1584,9 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                   initialValue: role,
                   decoration: const InputDecoration(labelText: 'Looking for'),
                   items: const [
-                    DropdownMenuItem(value: null, child: Text('Any role')),
-                    DropdownMenuItem(value: 'seek', child: Text('Workers')),
-                    DropdownMenuItem(value: 'offer', child: Text('Jobs')),
+                    DropdownMenuItem(value: null, child: Text('Any')),
+                    DropdownMenuItem(value: 'seek', child: Text('I have')),
+                    DropdownMenuItem(value: 'offer', child: Text('I need')),
                   ],
                   onChanged: (v) => setState(() => role = v),
                 ),
@@ -999,69 +1654,119 @@ Future<void> _showMatch(
 Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
   context: context,
   showDragHandle: true,
+  isScrollControlled: true,
   builder: (context) {
     final locale = context.watch<LocaleController>();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Settings & safety',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            RadioGroup<String?>(
-              groupValue: locale.localeCode,
-              onChanged: locale.setLocale,
-              child: const Column(
-                children: [
-                  RadioListTile(
-                    value: null,
-                    title: Text('Use system language'),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Settings & safety',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text('How to use', style: Theme.of(context).textTheme.titleMedium),
+              const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.darkCream,
+                  child: Icon(Icons.swipe, color: AppColors.rose),
+                ),
+                title: Text('Swipe cards'),
+                subtitle: Text('Right = like. Left = skip.'),
+              ),
+              const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.darkCream,
+                  child: Icon(Icons.radio, color: AppColors.rose),
+                ),
+                title: Text('Change world'),
+                subtitle: Text('Hold the radio button for Marriage, Jobs, Rooms…'),
+              ),
+              const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.darkCream,
+                  child: Icon(Icons.lock_outline, color: AppColors.rose),
+                ),
+                title: Text('Phone stays private'),
+                subtitle: Text(
+                  'WhatsApp opens only when both like, after phone check.',
+                ),
+              ),
+              const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.darkCream,
+                  child: Icon(
+                    Icons.health_and_safety_outlined,
+                    color: AppColors.rose,
                   ),
-                  RadioListTile(value: 'en', title: Text('English')),
-                  RadioListTile(value: 'hi', title: Text('हिन्दी')),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.gavel_outlined),
-              title: const Text('Community terms'),
-              subtitle: const Text(
-                'Respect, consent, truth, and no harassment.',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const LegalPageScreen.terms(),
+                ),
+                title: Text('Stay safe'),
+                subtitle: Text(
+                  'ID badges are self-said, not checked by government. Block or report if worried.',
                 ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.privacy_tip_outlined),
-              title: const Text('Privacy policy'),
-              subtitle: const Text('What we collect and how it is used.'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const LegalPageScreen.privacy(),
+              const SizedBox(height: 8),
+              Text('Language', style: Theme.of(context).textTheme.titleMedium),
+              RadioGroup<String?>(
+                groupValue: locale.localeCode,
+                onChanged: locale.setLocale,
+                child: const Column(
+                  children: [
+                    RadioListTile(
+                      value: null,
+                      title: Text('Use system language'),
+                    ),
+                    RadioListTile(value: 'en', title: Text('English')),
+                    RadioListTile(value: 'hi', title: Text('हिन्दी')),
+                  ],
                 ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Data & account deletion'),
-              subtitle: const Text('Delete your account and data anytime.'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const LegalPageScreen.dataDeletion(),
+              ListTile(
+                leading: const Icon(Icons.gavel_outlined),
+                title: const Text('Community terms'),
+                subtitle: const Text(
+                  'Respect, consent, truth, and no harassment.',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LegalPageScreen.terms(),
+                  ),
                 ),
               ),
-            ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('Privacy policy'),
+                subtitle: const Text('What we collect and how it is used.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LegalPageScreen.privacy(),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Data & account deletion'),
+                subtitle: const Text('Delete your account and data anytime.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LegalPageScreen.dataDeletion(),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

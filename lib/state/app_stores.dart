@@ -13,17 +13,19 @@ class DomainController extends ChangeNotifier {
     : _selected = AppDomainId.values[_prefs.getInt(_domainKey) ?? 0],
       _tabs = {
         for (final domain in AppDomainId.values)
-          domain: _prefs.getInt('tab_${domain.name}') ?? 0,
+          domain: (_prefs.getInt('tab_${domain.name}') ?? 0).clamp(0, maxTabIndex),
       };
 
   static const _domainKey = 'selected_domain';
+  /// Browse = 0, Likes = 1, Me = 2.
+  static const maxTabIndex = 2;
   final SharedPreferences _prefs;
   AppDomainId _selected;
   final Map<AppDomainId, int> _tabs;
 
   AppDomainId get selected => _selected;
   DomainPolicy get policy => AppDomains.byId(_selected);
-  int get selectedTab => _tabs[_selected] ?? 0;
+  int get selectedTab => (_tabs[_selected] ?? 0).clamp(0, maxTabIndex);
   bool get shouldShowCoachMark =>
       !(_prefs.getBool('domain_coach_seen') ?? false);
 
@@ -37,9 +39,10 @@ class DomainController extends ChangeNotifier {
   }
 
   void selectTab(int value) {
-    if (_tabs[_selected] == value) return;
-    _tabs[_selected] = value;
-    _prefs.setInt('tab_${_selected.name}', value);
+    final next = value.clamp(0, maxTabIndex);
+    if (_tabs[_selected] == next) return;
+    _tabs[_selected] = next;
+    _prefs.setInt('tab_${_selected.name}', next);
     notifyListeners();
   }
 }
@@ -184,11 +187,25 @@ class LikesStore extends ChangeNotifier {
   final LikesRepository _repository;
   final Map<AppDomainId, Set<String>> _outbound = <AppDomainId, Set<String>>{};
   final Map<AppDomainId, Set<String>> _inbound = <AppDomainId, Set<String>>{};
+  final Map<AppDomainId, List<LikeEntry>> _outboundEntries =
+      <AppDomainId, List<LikeEntry>>{};
+  final Map<AppDomainId, List<LikeEntry>> _inboundEntries =
+      <AppDomainId, List<LikeEntry>>{};
 
   Set<String> outbound(AppDomainId domain) =>
       Set.unmodifiable(_outbound[domain] ?? <String>{});
   Set<String> inbound(AppDomainId domain) =>
       Set.unmodifiable(_inbound[domain] ?? <String>{});
+
+  List<LikeEntry> outboundEntries(AppDomainId domain) =>
+      List.unmodifiable(_outboundEntries[domain] ?? const <LikeEntry>[]);
+  List<LikeEntry> inboundEntries(AppDomainId domain) =>
+      List.unmodifiable(_inboundEntries[domain] ?? const <LikeEntry>[]);
+
+  int get outboundCount =>
+      _outbound.values.fold<int>(0, (sum, ids) => sum + ids.length);
+  int get inboundCount =>
+      _inbound.values.fold<int>(0, (sum, ids) => sum + ids.length);
 
   bool like(
     AppDomainId domain,
@@ -197,6 +214,18 @@ class LikesStore extends ChangeNotifier {
   }) {
     final added = (_outbound[domain] ??= <String>{}).add(targetId);
     if (added) {
+      final entries = _outboundEntries[domain] ??= <LikeEntry>[];
+      entries.removeWhere((entry) => entry.otherUid == targetId);
+      entries.insert(
+        0,
+        LikeEntry(
+          domain: domain,
+          otherUid: targetId,
+          direction: LikeDirection.outbound,
+          card: snapshot,
+          createdAt: DateTime.now(),
+        ),
+      );
       notifyListeners();
       unawaited(
         _repository
@@ -208,7 +237,19 @@ class LikesStore extends ChangeNotifier {
   }
 
   void receiveLike(AppDomainId domain, String ownerId) {
-    if ((_inbound[domain] ??= <String>{}).add(ownerId)) notifyListeners();
+    if (!(_inbound[domain] ??= <String>{}).add(ownerId)) return;
+    final entries = _inboundEntries[domain] ??= <LikeEntry>[];
+    entries.removeWhere((entry) => entry.otherUid == ownerId);
+    entries.insert(
+      0,
+      LikeEntry(
+        domain: domain,
+        otherUid: ownerId,
+        direction: LikeDirection.inbound,
+        createdAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
   }
 
   bool isMutual(AppDomainId domain, String otherId) =>
@@ -223,11 +264,22 @@ class LikesStore extends ChangeNotifier {
   }) => !anonymous && phoneVerified && isMutual(domain, otherId);
 
   Future<void> hydrate(AppDomainId domain) async {
+    await _loadDomain(domain);
+    notifyListeners();
+  }
+
+  Future<void> hydrateAll() async {
+    await Future.wait(AppDomainId.values.map(_loadDomain));
+    notifyListeners();
+  }
+
+  Future<void> _loadDomain(AppDomainId domain) async {
     final outbound = await _repository.loadOutbound(domain);
     final inbound = await _repository.loadInbound(domain);
-    _outbound[domain] = {...outbound};
-    _inbound[domain] = {...inbound};
-    notifyListeners();
+    _outboundEntries[domain] = List<LikeEntry>.from(outbound);
+    _inboundEntries[domain] = List<LikeEntry>.from(inbound);
+    _outbound[domain] = {for (final entry in outbound) entry.otherUid};
+    _inbound[domain] = {for (final entry in inbound) entry.otherUid};
   }
 }
 

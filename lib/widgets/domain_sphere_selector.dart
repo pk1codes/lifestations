@@ -1,28 +1,27 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 import '../models/app_domain.dart';
+import '../theme/app_theme.dart';
 
 /// 3D domain picker: five station icons ride a translucent wireframe sphere.
-/// Drag to rotate (with fling momentum), tap a front-facing icon to select.
-///
-/// Pure math — no 3D engine. Base positions come from a Fibonacci lattice,
-/// then rigid yaw/pitch rotation matrices are applied, projected to 2D with
-/// mild perspective, and painted back-to-front. Each icon is additionally
-/// tilted onto the sphere's tangent plane so it appears stuck to the surface
-/// (foreshortening toward the limb) instead of billboarding at the camera.
+/// Drag to rotate (with fling + snap), tap a front-facing icon to select.
 class DomainSphereSelector extends StatefulWidget {
   const DomainSphereSelector({
     required this.selected,
     required this.onDomainSelected,
+    this.onFrontDomainChanged,
     this.size = 300,
     super.key,
   });
 
   final AppDomainId selected;
   final ValueChanged<AppDomainId> onDomainSelected;
+  final ValueChanged<AppDomainId>? onFrontDomainChanged;
   final double size;
 
   @override
@@ -38,9 +37,6 @@ class _Projected {
   });
 
   final DomainPolicy domain;
-
-  /// Rotated unit position and tangent basis vectors, world space
-  /// (x right, y up, z toward viewer).
   final (double, double, double) position;
   final (double, double, double) east;
   final (double, double, double) north;
@@ -50,18 +46,29 @@ class _Projected {
   double get z => position.$3;
 }
 
-/// Perspective factor shared by grid and icons so icons sit on the grid.
 const double _kPerspective = 0.22;
 
 double _persp(double z) => 1 / (1 - z * _kPerspective);
 
+String domainShortLine(AppDomainId id) => switch (id) {
+  AppDomainId.marriage => 'Find a life partner',
+  AppDomainId.jobs => 'Find work',
+  AppDomainId.rooms => 'Find a room',
+  AppDomainId.bikes => 'Rent a bike',
+  AppDomainId.homeHelp => 'Get help at home',
+};
+
 class _DomainSphereSelectorState extends State<DomainSphereSelector>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _dragFactor = 0.01;
-  static const _idleYawSpeed = 0.25; // rad/s gentle spin while untouched
+  static const _idleYawSpeed = 0.18;
   static const _pitchLimit = 1.1;
+  static const _snapSpeed = 3.2;
+  static const _velocityFloor = 0.35;
 
   late final Ticker _ticker;
+  late final AnimationController _enter;
+  late final AnimationController _pulse;
   Duration _lastTick = Duration.zero;
 
   double _yaw = 0;
@@ -69,6 +76,8 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
   double _yawVelocity = 0;
   double _pitchVelocity = 0;
   bool _dragging = false;
+  bool _allowSnap = false;
+  AppDomainId? _lastFront;
 
   static const _icons = <AppDomainId, IconData>{
     AppDomainId.marriage: Icons.favorite,
@@ -82,11 +91,21 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
   void initState() {
     super.initState();
     _ticker = createTicker(_onTick)..start();
+    _enter = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..forward();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
     _ticker.dispose();
+    _enter.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 
@@ -94,16 +113,52 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
     final dt = (elapsed - _lastTick).inMicroseconds / 1e6;
     _lastTick = elapsed;
     if (dt <= 0 || dt > 0.1 || _dragging) return;
-    final damping = math.exp(-2.4 * dt);
+
+    final speed = math.sqrt(
+      _yawVelocity * _yawVelocity + _pitchVelocity * _pitchVelocity,
+    );
+    final damping = math.exp(-2.2 * dt);
     _yawVelocity *= damping;
     _pitchVelocity *= damping;
+
     setState(() {
-      _yaw += (_yawVelocity + _idleYawSpeed) * dt;
-      _pitch = (_pitch + _pitchVelocity * dt).clamp(-_pitchLimit, _pitchLimit);
+      if (speed > _velocityFloor) {
+        _yaw += (_yawVelocity + _idleYawSpeed) * dt;
+        _pitch = (_pitch + _pitchVelocity * dt).clamp(
+          -_pitchLimit,
+          _pitchLimit,
+        );
+      } else if (_allowSnap) {
+        _yawVelocity = 0;
+        _pitchVelocity = 0;
+        _snapTowardFront(dt);
+        _yaw += _idleYawSpeed * dt * 0.35;
+      } else {
+        _yaw += (_yawVelocity + _idleYawSpeed) * dt;
+        _pitch = (_pitch + _pitchVelocity * dt).clamp(
+          -_pitchLimit,
+          _pitchLimit,
+        );
+      }
     });
   }
 
-  /// Applies the sphere's rigid Y-axis (yaw) then X-axis (pitch) rotation.
+  void _snapTowardFront(double dt) {
+    final projected = _allProjected();
+    if (projected.isEmpty) return;
+    projected.sort((a, b) => a.z.compareTo(b.z));
+    final front = projected.last;
+    final x = front.x;
+    final y = front.y;
+    final z = front.z;
+    final yawFix = math.atan2(x, z);
+    final horiz = math.sqrt(x * x + z * z);
+    final pitchFix = math.atan2(y, horiz <= 1e-6 ? 1e-6 : horiz);
+    final t = math.min(1.0, _snapSpeed * dt);
+    _yaw -= yawFix * t;
+    _pitch = (_pitch - pitchFix * t).clamp(-_pitchLimit, _pitchLimit);
+  }
+
   (double, double, double) _rotate(double x, double y, double z) {
     final cy = math.cos(_yaw);
     final sy = math.sin(_yaw);
@@ -117,9 +172,6 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
     return (x1, y2, z2);
   }
 
-  /// Fibonacci lattice base position (unit sphere) plus its tangent basis
-  /// (east/north), all rotated by the same sphere rotation so icons share
-  /// the surface's coordinate frame exactly.
   _Projected _project(int index, int count, DomainPolicy domain) {
     final phi = math.acos(1 - 2 * (index + 0.5) / count);
     final theta = math.pi * (1 + math.sqrt(5)) * index;
@@ -127,7 +179,6 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
     final y0 = math.cos(phi);
     final z0 = math.sin(phi) * math.sin(theta);
 
-    // Tangent basis at the base point: east = up × p, north = p × east.
     final horizontal = math.sqrt(x0 * x0 + z0 * z0);
     final ex = z0 / horizontal;
     final ez = -x0 / horizontal;
@@ -143,21 +194,36 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
     );
   }
 
+  List<_Projected> _allProjected() {
+    final domains = AppDomains.all;
+    return [
+      for (var i = 0; i < domains.length; i++)
+        _project(i, domains.length, domains[i]),
+    ];
+  }
+
+  void _notifyFront(DomainPolicy front) {
+    if (_lastFront == front.id) return;
+    _lastFront = front.id;
+    widget.onFrontDomainChanged?.call(front.id);
+  }
+
+  void _select(AppDomainId id) {
+    unawaited(HapticFeedback.selectionClick());
+    widget.onDomainSelected(id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = widget.size;
     final center = size / 2;
-    final orbit = size * 0.36;
-    const iconExtent = 56.0;
+    final orbit = size * 0.38;
+    const iconExtent = 64.0;
 
-    final domains = AppDomains.all;
-    final projected = [
-      for (var i = 0; i < domains.length; i++)
-        _project(i, domains.length, domains[i]),
-    ]..sort((a, b) => a.z.compareTo(b.z)); // back first, front painted last
-
+    final projected = _allProjected()..sort((a, b) => a.z.compareTo(b.z));
     final front = projected.last.domain;
-    // Grid lines must paint above back-hemisphere icons but below front ones.
+    _notifyFront(front);
+
     final backStations = projected.where((p) => p.z <= 0);
     final frontStations = projected.where((p) => p.z > 0);
 
@@ -168,8 +234,14 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
       extent: iconExtent,
     );
 
+    final enter = CurvedAnimation(parent: _enter, curve: Curves.easeOutBack);
+
     return GestureDetector(
-      onPanStart: (_) => _dragging = true,
+      onPanStart: (_) {
+        _dragging = true;
+        _yawVelocity = 0;
+        _pitchVelocity = 0;
+      },
       onPanUpdate: (details) => setState(() {
         _yaw += details.delta.dx * _dragFactor;
         _pitch = (_pitch + details.delta.dy * _dragFactor).clamp(
@@ -179,68 +251,128 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
       }),
       onPanEnd: (details) {
         _dragging = false;
+        _allowSnap = true;
         _yawVelocity = details.velocity.pixelsPerSecond.dx * _dragFactor;
         _pitchVelocity = details.velocity.pixelsPerSecond.dy * _dragFactor;
       },
-      onPanCancel: () => _dragging = false,
-      child: SizedBox(
-        width: size,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: size,
-              height: size,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Translucent sphere shell
-                  Container(
-                    width: orbit * 2,
-                    height: orbit * 2,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        center: const Alignment(-0.3, -0.4),
-                        colors: [
-                          front.color.withValues(alpha: .05),
-                          front.color.withValues(alpha: .16),
-                        ],
+      onPanCancel: () {
+        _dragging = false;
+        _allowSnap = true;
+      },
+      child: FadeTransition(
+        opacity: enter,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.86, end: 1).animate(enter),
+          child: SizedBox(
+            width: size,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: size,
+                  height: size,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Soft outer glow wash
+                      Container(
+                        width: orbit * 2.55,
+                        height: orbit * 2.55,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              front.color.withValues(alpha: .28),
+                              front.color.withValues(alpha: .08),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.35, 0.7, 1],
+                          ),
+                        ),
                       ),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: .12),
+                      // Atmosphere dust
+                      IgnorePointer(
+                        child: CustomPaint(
+                          size: Size.square(size),
+                          painter: _AtmospherePainter(color: front.color),
+                        ),
                       ),
-                    ),
+                      // Sphere shell
+                      Container(
+                        width: orbit * 2,
+                        height: orbit * 2,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.35, -0.45),
+                            colors: [
+                              Colors.white.withValues(alpha: .22),
+                              front.color.withValues(alpha: .18),
+                              front.color.withValues(alpha: .32),
+                            ],
+                            stops: const [0, 0.45, 1],
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .35),
+                            width: 1.4,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: front.color.withValues(alpha: .35),
+                              blurRadius: 28,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                      ...backStations.map(station),
+                      IgnorePointer(
+                        child: CustomPaint(
+                          size: Size.square(size),
+                          painter: _SphereGridPainter(
+                            yaw: _yaw,
+                            pitch: _pitch,
+                            radius: orbit,
+                            color: front.color,
+                          ),
+                        ),
+                      ),
+                      ...frontStations.map(station),
+                    ],
                   ),
-                  ...backStations.map(station),
-                  IgnorePointer(
-                    child: CustomPaint(
-                      size: Size.square(size),
-                      painter: _SphereGridPainter(
-                        yaw: _yaw,
-                        pitch: _pitch,
-                        radius: orbit,
+                ),
+                const SizedBox(height: 10),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 220),
+                  style:
+                      Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: front.color,
-                      ),
+                        fontWeight: FontWeight.w700,
+                      ) ??
+                      TextStyle(color: front.color, fontSize: 24),
+                  child: Text(front.label),
+                ),
+                const SizedBox(height: 2),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: Text(
+                    domainShortLine(front.id),
+                    key: ValueKey(front.id),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.muted,
                     ),
                   ),
-                  ...frontStations.map(station),
-                ],
-              ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Turn · tap',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.muted.withValues(alpha: .8),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              front.label,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: front.color,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              'Drag the sphere · tap a station',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -252,20 +384,13 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
     required double top,
     required double extent,
   }) {
-    final depth = (p.z + 1) / 2; // 0 back … 1 front
-    // Scale by the same perspective factor as the grid so icon size tracks
-    // the surface exactly; the tangent tilt supplies the foreshortening.
+    final depth = (p.z + 1) / 2;
     final scale = _persp(p.z);
-    final opacity = (0.25 + 0.75 * depth).clamp(0.0, 1.0);
+    final opacity = (0.22 + 0.78 * depth).clamp(0.0, 1.0);
     final isFrontFacing = p.z > 0;
     final isSelected = p.domain.id == widget.selected;
+    final isFrontMost = p.z > 0.55;
 
-    // Map the icon plane directly onto the sphere's rotated tangent frame:
-    // local +x → surface east, local +y (screen down) → surface south, so the
-    // icon co-rotates with the surface like a sticker on a globe. World
-    // vectors (y up, z toward viewer) convert to Flutter transform space
-    // (y down, z into screen) by negating y and z. The perspective entry is
-    // pre-multiplied so out-of-plane depth foreshortens near the limb.
     final (ex, ey, ez) = p.east;
     final (nx, ny, nz) = p.north;
     final (rx, ry, rz) = p.position;
@@ -273,17 +398,14 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
       ..setEntry(3, 2, 0.0015)
       ..multiply(
         Matrix4(
-          // column 0: image of local +x
           ex,
           -ey,
           -ez,
           0,
-          // column 1: image of local +y (down) → -north
           -nx,
           ny,
           nz,
           0,
-          // column 2: image of local +z → radial normal
           rx,
           -ry,
           -rz,
@@ -295,16 +417,17 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
         ),
       );
 
+    final pulse = isSelected || isFrontMost ? 1 + 0.06 * _pulse.value : 1.0;
+
     return Positioned(
       left: left,
       top: top,
       child: IgnorePointer(
-        // Back-hemisphere icons must never steal taps from front ones.
         ignoring: !isFrontFacing,
         child: Opacity(
           opacity: opacity,
           child: Transform.scale(
-            scale: scale,
+            scale: scale * pulse,
             child: Transform(
               transform: tilt,
               alignment: Alignment.center,
@@ -313,36 +436,39 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
                 label: '${p.domain.label}${isSelected ? ', selected' : ''}',
                 child: GestureDetector(
                   key: Key('sphere_domain_${p.domain.id.name}'),
-                  onTap: p.domain.enabled
-                      ? () => widget.onDomainSelected(p.domain.id)
-                      : null,
+                  onTap: p.domain.enabled ? () => _select(p.domain.id) : null,
                   child: Container(
                     width: extent,
                     height: extent,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: p.domain.color.withValues(
-                        alpha: isFrontFacing ? .95 : .55,
+                        alpha: isFrontFacing ? 1 : .5,
                       ),
                       border: Border.all(
-                        color: isSelected
+                        color: isSelected || isFrontMost
                             ? Colors.white
-                            : Colors.white.withValues(alpha: .25),
-                        width: isSelected ? 3 : 1,
+                            : Colors.white.withValues(alpha: .3),
+                        width: isSelected || isFrontMost ? 3 : 1.2,
                       ),
                       boxShadow: isFrontFacing
                           ? [
                               BoxShadow(
-                                color: p.domain.color.withValues(alpha: .4),
-                                blurRadius: 14,
+                                color: p.domain.color.withValues(alpha: .55),
+                                blurRadius: 18,
                                 spreadRadius: 1,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: .12),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
                               ),
                             ]
                           : null,
                     ),
                     child: Icon(
                       _icons[p.domain.id],
-                      size: 26,
+                      size: 30,
                       color: Colors.white,
                     ),
                   ),
@@ -356,9 +482,35 @@ class _DomainSphereSelectorState extends State<DomainSphereSelector>
   }
 }
 
-/// Latitude/longitude wireframe rotated by the same yaw/pitch as the icons.
-/// Front-facing segments are brighter; back-facing ones show faintly through
-/// the translucent shell.
+class _AtmospherePainter extends CustomPainter {
+  const _AtmospherePainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = math.Random(7);
+    final paint = Paint()..color = color.withValues(alpha: .35);
+    final center = size.center(Offset.zero);
+    for (var i = 0; i < 28; i++) {
+      final angle = rnd.nextDouble() * math.pi * 2;
+      final dist = size.width * (0.18 + rnd.nextDouble() * 0.32);
+      final r = 1.0 + rnd.nextDouble() * 2.2;
+      canvas.drawCircle(
+        Offset(
+          center.dx + math.cos(angle) * dist,
+          center.dy + math.sin(angle) * dist,
+        ),
+        r,
+        paint..color = color.withValues(alpha: 0.12 + rnd.nextDouble() * 0.25),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AtmospherePainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class _SphereGridPainter extends CustomPainter {
   const _SphereGridPainter({
     required this.yaw,
@@ -374,19 +526,19 @@ class _SphereGridPainter extends CustomPainter {
 
   static const _samples = 64;
   static const _latitudes = <double>[-60, -30, 0, 30, 60];
-  static const _meridians = 6;
+  static const _meridians = 8;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final frontPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = color.withValues(alpha: .35);
+      ..strokeWidth = 1.2
+      ..color = color.withValues(alpha: .45);
     final backPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8
-      ..color = color.withValues(alpha: .09);
+      ..strokeWidth = 0.9
+      ..color = color.withValues(alpha: .12);
 
     for (final latDeg in _latitudes) {
       final lat = latDeg * math.pi / 180;

@@ -42,14 +42,19 @@ class DomainPolicy {
   String get collection => storageKind == DomainStorageKind.profiles
       ? 'domains/$slug/profiles'
       : 'domains/$slug/offers';
+
+  /// Soft wash for backgrounds / avatars — same hue, low opacity.
+  Color get softColor => color.withValues(alpha: .14);
+  Color get softSurface => Color.alphaBlend(softColor, const Color(0xFFFFF8F3));
 }
 
 abstract final class AppDomains {
+  /// Marriage — warm rose (love).
   static const marriage = DomainPolicy(
     id: AppDomainId.marriage,
     label: 'Marriage',
     frequency: 91.2,
-    color: Color(0xFF9B3B5A),
+    color: Color(0xFFBE185D),
     storageKind: DomainStorageKind.profiles,
     subject: OfferSubject.person,
     mediaPolicy: MediaPolicy.face,
@@ -59,11 +64,13 @@ abstract final class AppDomains {
     roles: <String>[],
     enabled: true,
   );
+
+  /// Jobs — deep work blue.
   static const jobs = DomainPolicy(
     id: AppDomainId.jobs,
     label: 'Jobs',
     frequency: 94.5,
-    color: Color(0xFF229ED9),
+    color: Color(0xFF1D4ED8),
     storageKind: DomainStorageKind.profiles,
     subject: OfferSubject.person,
     mediaPolicy: MediaPolicy.face,
@@ -73,11 +80,13 @@ abstract final class AppDomains {
     roles: <String>['seek', 'offer'],
     enabled: true,
   );
+
+  /// Rooms — terracotta / home wood.
   static const rooms = DomainPolicy(
     id: AppDomainId.rooms,
     label: 'Rooms',
     frequency: 98.1,
-    color: Color(0xFFD4A373),
+    color: Color(0xFFC2410C),
     storageKind: DomainStorageKind.offers,
     subject: OfferSubject.asset,
     mediaPolicy: MediaPolicy.asset,
@@ -87,11 +96,13 @@ abstract final class AppDomains {
     roles: <String>['have'],
     enabled: true,
   );
+
+  /// Bikes — forest green (wheels / road).
   static const bikes = DomainPolicy(
     id: AppDomainId.bikes,
     label: 'Bikes',
     frequency: 101.7,
-    color: Color(0xFF5B7C5A),
+    color: Color(0xFF15803D),
     storageKind: DomainStorageKind.offers,
     subject: OfferSubject.asset,
     mediaPolicy: MediaPolicy.asset,
@@ -101,11 +112,13 @@ abstract final class AppDomains {
     roles: <String>['lend'],
     enabled: true,
   );
+
+  /// Home Help — violet (care).
   static const homeHelp = DomainPolicy(
     id: AppDomainId.homeHelp,
     label: 'Home Help',
     frequency: 107.7,
-    color: Color(0xFF2A9D8F),
+    color: Color(0xFF7C3AED),
     storageKind: DomainStorageKind.offers,
     subject: OfferSubject.person,
     mediaPolicy: MediaPolicy.either,

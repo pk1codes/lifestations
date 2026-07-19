@@ -35,8 +35,10 @@ class SeedRepository {
             : null,
         attributes: <String, Object?>{
           'synthetic': true,
-          if (domain == AppDomainId.marriage)
+          if (domain == AppDomainId.marriage) ...{
             'gender': <String>['woman', 'man', 'other'][index % 3],
+            'seeking': <String>['man', 'woman', 'everyone'][index % 3],
+          },
         },
         verified: index.isEven,
         refreshed: index % 3 == 0,
@@ -71,19 +73,29 @@ class SeedRepository {
         );
       case AppDomainId.rooms:
         final types = <String>['Room', 'Studio', '1 BHK'];
+        final role = index.isEven ? 'have' : 'need';
+        final rent = <int>[8000, 12000, 15000][index % 3];
         return (
-          '${types[index % 3]} for rent',
-          'From ₹${<int>[8000, 12000, 15000][index % 3]}/month',
+          role == 'have'
+              ? '${types[index % 3]} for rent'
+              : 'Looking for ${types[index % 3]}',
+          role == 'have'
+              ? '₹$rent/month'
+              : 'Budget about ₹$rent/month',
           types[index % 3].toLowerCase(),
-          'have',
+          role,
         );
       case AppDomainId.bikes:
         final types = <String>['Honda scooter', 'TVS bike', 'Bajaj bike'];
+        final role = index.isEven ? 'lend' : 'need';
+        final rate = <int>[50, 80, 100][index % 3];
         return (
-          types[index % 3],
-          '₹${<int>[50, 80, 100][index % 3]}/hour • 9 AM–8 PM',
+          role == 'lend' ? types[index % 3] : 'Need ${types[index % 3]}',
+          role == 'lend'
+              ? '₹$rate/hour • 9 AM–8 PM'
+              : 'Budget ₹$rate/hour',
           index.isEven ? 'scooter' : 'bike',
-          'lend',
+          role,
         );
       case AppDomainId.homeHelp:
         final roles = <String>['Cook', 'Maid', 'Elder care'];

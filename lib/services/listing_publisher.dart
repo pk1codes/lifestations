@@ -96,6 +96,7 @@ class ListingPublisher {
       cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
       categoryTags: [offer.type, ...offer.amenities.take(3)],
       imageUrls: photoUrls,
+      role: 'have',
       attributes: {
         'type': offer.type,
         'furnishing': offer.furnishing,
@@ -124,6 +125,7 @@ class ListingPublisher {
       cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
       categoryTags: [offer.type, offer.make],
       imageUrls: photoUrls,
+      role: 'lend',
       attributes: offer.publicAttributes,
     );
     return _persist(card);
