@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,8 +8,30 @@ import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
 
 class HomeHelpForm extends StatefulWidget {
-  const HomeHelpForm({this.onPickPhoto, this.onAfterSave, super.key});
-  final Future<bool> Function()? onPickPhoto;
+  const HomeHelpForm({
+    this.initial,
+    this.editIndex,
+    this.onPickPhoto,
+    this.onRemovePhoto,
+    this.photoUrls = const <String>[],
+    this.photoPreviews = const <Uint8List?>[],
+    this.busySlot,
+    this.uploadProgress,
+    this.photoStatus,
+    this.photoError,
+    this.onAfterSave,
+    super.key,
+  });
+  final HomeHelpOffer? initial;
+  final int? editIndex;
+  final Future<bool> Function(int slot)? onPickPhoto;
+  final ValueChanged<int>? onRemovePhoto;
+  final List<String> photoUrls;
+  final List<Uint8List?> photoPreviews;
+  final int? busySlot;
+  final double? uploadProgress;
+  final String? photoStatus;
+  final String? photoError;
   final Future<void> Function(HomeHelpOffer offer)? onAfterSave;
 
   @override
@@ -16,15 +39,30 @@ class HomeHelpForm extends StatefulWidget {
 }
 
 class _HomeHelpFormState extends State<HomeHelpForm> {
-  String _role = HomeHelpOffer.roles.first;
-  String _service = HomeHelpOffer.services.first;
-  String _shift = HomeHelpOffer.shifts.first;
-  String _salary = HomeHelpOffer.salaryBands.first;
-  String _city = 'mumbai';
-  Set<String> _languages = {'Hindi'};
-  int _photos = 0;
+  late String _role;
+  late String _service;
+  late String _shift;
+  late String _salary;
+  late String _city;
+  late Set<String> _languages;
 
   DomainPolicy get _domain => AppDomains.homeHelp;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _role = initial?.role ?? HomeHelpOffer.roles.first;
+    _service = initial?.service ?? HomeHelpOffer.services.first;
+    _shift = initial?.shift ?? HomeHelpOffer.shifts.first;
+    _salary = initial?.salaryBand ?? HomeHelpOffer.salaryBands.first;
+    _city = initial?.cityId ?? 'mumbai';
+    _languages = {
+      ...(initial?.languages ?? const <String>['Hindi']),
+    };
+  }
+
+  int get _minPhotos => _role == 'have' ? 1 : 0;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -69,13 +107,22 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
         onChanged: (v) => setState(() => _languages = v),
       ),
       CityDropdown(value: _city, onChanged: (v) => setState(() => _city = v)),
-      PhotoCountPicker(
-        count: _photos,
-        minimum: _role == 'have' ? 1 : 0,
-        maximum: 4,
-        onPick: widget.onPickPhoto,
-        onChanged: (v) => setState(() => _photos = v),
+      const SizedBox(height: 8),
+      PhotoSlotStrip(
+        urls: widget.photoUrls,
+        previews: widget.photoPreviews,
+        minimum: _minPhotos,
+        maximum: _domain.maxPhotos,
+        accent: _domain.color,
+        softAccent: _domain.softColor,
+        busySlot: widget.busySlot,
+        uploadProgress: widget.uploadProgress,
+        statusText: widget.photoStatus,
+        errorText: widget.photoError,
+        onPick: (slot) async => await widget.onPickPhoto?.call(slot) ?? false,
+        onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
+      const SizedBox(height: 12),
       FilledButton(
         style: FilledButton.styleFrom(backgroundColor: _domain.color),
         onPressed: () async {
@@ -87,7 +134,7 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
             shift: _shift,
             salaryBand: _salary,
             languages: _languages.toList(),
-            photoCount: _photos,
+            photoCount: widget.photoUrls.length,
             cityId: _city,
           );
           if (!offer.isValid) {
@@ -103,7 +150,10 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
             return;
           }
           try {
-            context.read<HomeHelpOfferStore>().upsert(offer);
+            context.read<HomeHelpOfferStore>().upsert(
+              offer,
+              index: widget.editIndex,
+            );
             await widget.onAfterSave?.call(offer);
             navigator.pop();
           } on StateError catch (error) {

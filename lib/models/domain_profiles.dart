@@ -105,7 +105,6 @@ class MarriageProfile {
       age >= 18 &&
       genders.contains(gender) &&
       seekingOptions.contains(seeking) &&
-      bio.trim().length >= 10 &&
       bio.trim().length <= 240 &&
       cityId.isNotEmpty &&
       photoCount >= 1 &&

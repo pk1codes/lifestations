@@ -71,4 +71,12 @@ void main() {
       expect(line.split(' ').length, lessThanOrEqualTo(5));
     }
   });
+
+  test('domain post lines say what the user can put up', () {
+    expect(domainPostLine(AppDomainId.marriage), 'Looking for marriage');
+    expect(domainPostLine(AppDomainId.jobs), 'I need work / I have work');
+    expect(domainPostLine(AppDomainId.rooms), 'I have a room');
+    expect(domainPostLine(AppDomainId.bikes), 'Lend my bike');
+    expect(domainPostLine(AppDomainId.homeHelp), 'I need help / I can help');
+  });
 }

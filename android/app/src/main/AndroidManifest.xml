@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Android 13+ runtime notification permission for FCM match/safety alerts. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Optional camera for Take photo on posts (gallery still works without it). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
 
     <application
         android:label="Life Stations"

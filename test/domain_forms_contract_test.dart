@@ -2,13 +2,13 @@ import 'package:flut_marriage/models/domain_profiles.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('marriage form model validates age bio photos', () {
+  test('marriage form model validates age and photos; bio optional', () {
     expect(
       const MarriageProfile(
         age: 28,
         gender: 'woman',
         seeking: 'man',
-        bio: 'A thoughtful synthetic profile.',
+        bio: '',
         cityId: 'mumbai',
         photoCount: 1,
       ).isValid,

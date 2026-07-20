@@ -1,10 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
-const cityLabels = <String, String>{
-  'mumbai': 'Mumbai & MMR',
-  'delhi': 'Delhi NCR',
-  'bengaluru': 'Bengaluru',
-};
+import '../../models/cities.dart';
+import '../../theme/app_theme.dart';
+
+export '../../models/cities.dart' show cityLabels, citiesAz;
 
 class SingleChoiceChips<T> extends StatelessWidget {
   const SingleChoiceChips({
@@ -86,50 +87,312 @@ class MultiChoiceChips<T> extends StatelessWidget {
   );
 }
 
-class PhotoCountPicker extends StatelessWidget {
-  const PhotoCountPicker({
-    required this.count,
+/// Visual photo slots — tap empty to add, tap filled to replace, ✕ to remove.
+class PhotoSlotStrip extends StatelessWidget {
+  const PhotoSlotStrip({
+    required this.urls,
     required this.minimum,
     required this.maximum,
-    required this.onChanged,
-    this.onPick,
+    required this.accent,
+    required this.softAccent,
+    required this.onPick,
+    required this.onRemove,
+    this.previews = const <Uint8List?>[],
+    this.busySlot,
+    this.uploadProgress,
+    this.statusText,
+    this.errorText,
+    this.motivation =
+        'No photo → many people pass.',
     super.key,
   });
 
-  final int count;
+  final List<String> urls;
+  final List<Uint8List?> previews;
   final int minimum;
   final int maximum;
-  final ValueChanged<int> onChanged;
-  final Future<bool> Function()? onPick;
+  final Color accent;
+  final Color softAccent;
+  final Future<bool> Function(int slot) onPick;
+  final ValueChanged<int> onRemove;
+  final int? busySlot;
+  /// 0.0–1.0 while uploading; null when idle.
+  final double? uploadProgress;
+  final String? statusText;
+  final String? errorText;
+  final String motivation;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          const Icon(Icons.photo_library_outlined),
-          const SizedBox(width: 10),
-          Expanded(child: Text('$count / $maximum photos (minimum $minimum)')),
-          IconButton(
-            tooltip: 'Remove photo',
-            onPressed: count == 0 ? null : () => onChanged(count - 1),
-            icon: const Icon(Icons.remove_circle_outline),
+  Widget build(BuildContext context) {
+    final progress = uploadProgress;
+    final progressLabel = progress == null
+        ? null
+        : 'Uploading… ${(progress.clamp(0.0, 1.0) * 100).round()}%';
+    final hint = minimum <= 0
+        ? 'Optional — camera or gallery'
+        : minimum == maximum
+        ? 'Add $minimum — camera or gallery'
+        : 'At least $minimum — camera or gallery';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Photos', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          motivation,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: accent,
+            fontWeight: FontWeight.w600,
           ),
-          IconButton(
-            tooltip: 'Add photo',
-            onPressed: count >= maximum
-                ? null
-                : () async {
-                    final ok = onPick == null ? true : await onPick!();
-                    if (ok) onChanged(count + 1);
-                  },
-            icon: const Icon(Icons.add_a_photo_outlined),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          hint,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 92,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: maximum,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final url = index < urls.length ? urls[index] : null;
+              final preview = index < previews.length
+                  ? previews[index]
+                  : null;
+              final filled =
+                  (url != null && url.isNotEmpty) || preview != null;
+              final required = index < minimum;
+              final busy = busySlot == index;
+              final filledCount = [
+                for (var i = 0; i < maximum; i++)
+                  if ((i < urls.length && urls[i].isNotEmpty) ||
+                      (i < previews.length && previews[i] != null))
+                    i,
+              ].length;
+              final canEdit =
+                  !busy &&
+                  busySlot == null &&
+                  (filled || index == filledCount);
+              return _PhotoSlot(
+                url: url,
+                previewBytes: preview,
+                accent: accent,
+                softAccent: softAccent,
+                requiredEmpty: required && !filled,
+                enabled: canEdit || busy,
+                busy: busy,
+                onTap: canEdit ? () => onPick(index) : null,
+                onRemove: filled && !busy ? () => onRemove(index) : null,
+              );
+            },
+          ),
+        ),
+        if (progressLabel != null) ...[
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 4,
+              color: accent,
+              backgroundColor: softAccent,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            progressLabel,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+          ),
+        ] else if (errorText != null && errorText!.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            errorText!,
+            style: TextStyle(color: accent, fontWeight: FontWeight.w600),
+          ),
+        ] else if (statusText != null && statusText!.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            statusText!,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _PhotoSlot extends StatelessWidget {
+  const _PhotoSlot({
+    required this.url,
+    required this.previewBytes,
+    required this.accent,
+    required this.softAccent,
+    required this.requiredEmpty,
+    required this.enabled,
+    required this.busy,
+    this.onTap,
+    this.onRemove,
+  });
+
+  final String? url;
+  final Uint8List? previewBytes;
+  final Color accent;
+  final Color softAccent;
+  final bool requiredEmpty;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final filled =
+        previewBytes != null || (url != null && url!.isNotEmpty);
+    return Opacity(
+      opacity: enabled || filled || busy ? 1 : 0.45,
+      child: SizedBox(
+        width: 84,
+        height: 92,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: Material(
+                color: softAccent,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(14),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: requiredEmpty
+                            ? accent
+                            : accent.withValues(alpha: .35),
+                        width: requiredEmpty ? 2 : 1,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: busy
+                          ? Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: accent,
+                                ),
+                              ),
+                            )
+                          : filled
+                          ? _SlotImage(url: url, previewBytes: previewBytes)
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add_a_photo_outlined,
+                                  color: accent,
+                                  size: 26,
+                                ),
+                                if (requiredEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Need',
+                                    style: TextStyle(
+                                      color: accent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (onRemove != null)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Material(
+                  color: Colors.white,
+                  shape: const CircleBorder(),
+                  elevation: 1,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onRemove,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.close, size: 16, color: accent),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _SlotImage extends StatelessWidget {
+  const _SlotImage({this.url, this.previewBytes});
+  final String? url;
+  final Uint8List? previewBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = ColoredBox(
+      color: AppColors.darkCream,
+      child: Icon(Icons.broken_image_outlined, color: AppColors.muted),
+    );
+    if (previewBytes != null && previewBytes!.isNotEmpty) {
+      return Image.memory(
+        previewBytes!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, _, _) => fallback,
+      );
+    }
+    final remote = url ?? '';
+    if (remote.startsWith('http://') || remote.startsWith('https://')) {
+      return Image.network(
+        remote,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, _, _) => fallback,
+      );
+    }
+    if (remote.startsWith('local://')) {
+      return ColoredBox(
+        color: AppColors.darkCream,
+        child: Icon(Icons.check_circle_outline, color: AppColors.muted),
+      );
+    }
+    if (remote.isEmpty) return fallback;
+    return Image.asset(
+      remote,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, _, _) => fallback,
+    );
+  }
 }
 
 class CityDropdown extends StatelessWidget {
@@ -139,17 +402,21 @@ class CityDropdown extends StatelessWidget {
   final ValueChanged<String> onChanged;
 
   @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
-    initialValue: value,
-    decoration: const InputDecoration(labelText: 'City'),
-    items: cityLabels.entries
-        .map(
-          (entry) =>
-              DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-        )
-        .toList(),
-    onChanged: (next) {
-      if (next != null) onChanged(next);
-    },
-  );
+  Widget build(BuildContext context) {
+    final items = citiesAz;
+    final selected = cityLabels.containsKey(value) ? value : items.first.key;
+    return DropdownButtonFormField<String>(
+      initialValue: selected,
+      decoration: const InputDecoration(labelText: 'City'),
+      items: items
+          .map(
+            (entry) =>
+                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+          )
+          .toList(growable: false),
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    );
+  }
 }

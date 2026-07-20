@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,8 +8,30 @@ import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
 
 class BikesForm extends StatefulWidget {
-  const BikesForm({this.onPickPhoto, this.onAfterSave, super.key});
-  final Future<bool> Function()? onPickPhoto;
+  const BikesForm({
+    this.initial,
+    this.editIndex,
+    this.onPickPhoto,
+    this.onRemovePhoto,
+    this.photoUrls = const <String>[],
+    this.photoPreviews = const <Uint8List?>[],
+    this.busySlot,
+    this.uploadProgress,
+    this.photoStatus,
+    this.photoError,
+    this.onAfterSave,
+    super.key,
+  });
+  final BikesOffer? initial;
+  final int? editIndex;
+  final Future<bool> Function(int slot)? onPickPhoto;
+  final ValueChanged<int>? onRemovePhoto;
+  final List<String> photoUrls;
+  final List<Uint8List?> photoPreviews;
+  final int? busySlot;
+  final double? uploadProgress;
+  final String? photoStatus;
+  final String? photoError;
   final Future<void> Function(BikesOffer offer)? onAfterSave;
 
   @override
@@ -16,19 +39,54 @@ class BikesForm extends StatefulWidget {
 }
 
 class _BikesFormState extends State<BikesForm> {
-  final _model = TextEditingController();
-  final _customRent = TextEditingController();
-  String _type = BikesOffer.types.first;
-  String _transmission = BikesOffer.transmissions.first;
-  String _make = BikesOffer.makes.first;
-  int _rent = BikesOffer.hourlyRentPresets.first;
-  String _city = 'mumbai';
-  Set<String> _days = BikesOffer.weekdays.toSet();
-  TimeOfDay _from = const TimeOfDay(hour: 9, minute: 0);
-  TimeOfDay _to = const TimeOfDay(hour: 20, minute: 0);
-  int _photos = 0;
+  late final TextEditingController _model;
+  late final TextEditingController _customRent;
+  late String _type;
+  late String _transmission;
+  late String _make;
+  late int _rent;
+  late String _city;
+  late Set<String> _days;
+  late TimeOfDay _from;
+  late TimeOfDay _to;
 
   DomainPolicy get _domain => AppDomains.bikes;
+
+  TimeOfDay _parseTime(String value, TimeOfDay fallback) {
+    final parts = value.split(':');
+    if (parts.length < 2) return fallback;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return fallback;
+    return TimeOfDay(hour: hour.clamp(0, 23), minute: minute.clamp(0, 59));
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _model = TextEditingController(text: initial?.model ?? '');
+    final hourly = initial?.hourlyRent;
+    final inPresets =
+        hourly != null && BikesOffer.hourlyRentPresets.contains(hourly);
+    _customRent = TextEditingController(
+      text: hourly != null && !inPresets ? '$hourly' : '',
+    );
+    _type = initial?.type ?? BikesOffer.types.first;
+    _transmission = initial?.transmission ?? BikesOffer.transmissions.first;
+    _make = initial?.make ?? BikesOffer.makes.first;
+    _rent = inPresets ? hourly : BikesOffer.hourlyRentPresets.first;
+    _city = initial?.cityId ?? 'mumbai';
+    _days = {...(initial?.availableWeekdays ?? BikesOffer.weekdays)};
+    _from = _parseTime(
+      initial?.fromTime ?? '09:00',
+      const TimeOfDay(hour: 9, minute: 0),
+    );
+    _to = _parseTime(
+      initial?.toTime ?? '20:00',
+      const TimeOfDay(hour: 20, minute: 0),
+    );
+  }
 
   int get _extraFilled {
     var n = 0;
@@ -111,12 +169,20 @@ class _BikesFormState extends State<BikesForm> {
       ),
       const SizedBox(height: 12),
       CityDropdown(value: _city, onChanged: (v) => setState(() => _city = v)),
-      PhotoCountPicker(
-        count: _photos,
-        minimum: 4,
-        maximum: 4,
-        onPick: widget.onPickPhoto,
-        onChanged: (v) => setState(() => _photos = v),
+      const SizedBox(height: 8),
+      PhotoSlotStrip(
+        urls: widget.photoUrls,
+        previews: widget.photoPreviews,
+        minimum: _domain.minPhotos,
+        maximum: _domain.maxPhotos,
+        accent: _domain.color,
+        softAccent: _domain.softColor,
+        busySlot: widget.busySlot,
+        uploadProgress: widget.uploadProgress,
+        statusText: widget.photoStatus,
+        errorText: widget.photoError,
+        onPick: (slot) async => await widget.onPickPhoto?.call(slot) ?? false,
+        onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
       Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -195,7 +261,7 @@ class _BikesFormState extends State<BikesForm> {
       availableWeekdays: _days.toList(),
       fromTime: _time(_from),
       toTime: _time(_to),
-      photoCount: _photos,
+      photoCount: widget.photoUrls.length,
     );
     if (!offer.isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,7 +274,7 @@ class _BikesFormState extends State<BikesForm> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      context.read<BikesOfferStore>().upsert(offer);
+      context.read<BikesOfferStore>().upsert(offer, index: widget.editIndex);
       await widget.onAfterSave?.call(offer);
       navigator.pop();
     } on StateError catch (error) {

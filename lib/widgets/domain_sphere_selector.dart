@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import '../models/app_domain.dart';
 import '../theme/app_theme.dart';
 
@@ -57,6 +58,19 @@ String domainShortLine(AppDomainId id) => switch (id) {
   AppDomainId.bikes => 'Rent a bike',
   AppDomainId.homeHelp => 'Get help at home',
 };
+
+/// Post / offer side — what the user can put up (not browse).
+String domainPostLine(AppDomainId id, [AppLocalizations? l10n]) {
+  final key = switch (id) {
+    AppDomainId.marriage => 'postMarriage',
+    AppDomainId.jobs => 'postJobs',
+    AppDomainId.rooms => 'postRooms',
+    AppDomainId.bikes => 'postBikes',
+    AppDomainId.homeHelp => 'postHomeHelp',
+  };
+  if (l10n != null) return l10n.text(key);
+  return const AppLocalizations(Locale('en')).text(key);
+}
 
 class _DomainSphereSelectorState extends State<DomainSphereSelector>
     with TickerProviderStateMixin {

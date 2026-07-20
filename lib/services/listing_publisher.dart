@@ -1,4 +1,5 @@
 import '../models/app_domain.dart';
+import '../models/cities.dart';
 import '../models/discovery_card.dart';
 import '../models/domain_profiles.dart';
 import 'action_throttle.dart';
@@ -7,11 +8,7 @@ import 'firebase_bootstrap.dart';
 import 'moderation/moderation_service.dart';
 import 'share_card_repository.dart';
 
-const cityLabels = <String, String>{
-  'mumbai': 'Mumbai & MMR',
-  'delhi': 'Delhi NCR',
-  'bengaluru': 'Bengaluru',
-};
+export '../models/cities.dart' show cityLabels;
 
 /// Maps typed domain forms into privacy-safe discovery documents and syncs.
 class ListingPublisher {
@@ -25,141 +22,188 @@ class ListingPublisher {
   final DomainRepository _repository;
   final ShareCardRepository _share;
 
+  DiscoveryCardModel buildMarriageCard({
+    required String ownerId,
+    required MarriageProfile profile,
+    List<String> photoUrls = const <String>[],
+  }) => DiscoveryCardModel(
+    id: ownerId,
+    domain: AppDomainId.marriage,
+    ownerId: ownerId,
+    title: 'Marriage · ${profile.ageBand}',
+    subtitle: 'Seeking ${profile.seeking}',
+    cityId: profile.cityId,
+    cityLabel: cityLabels[profile.cityId] ?? profile.cityId,
+    categoryTags: [
+      profile.gender,
+      if (profile.religion != null) profile.religion!,
+    ],
+    imageUrls: photoUrls,
+    role: profile.seeking,
+    ageBand: profile.ageBand,
+    attributes: {
+      'gender': profile.gender,
+      'seeking': profile.seeking,
+      if (profile.salaryBand != null) 'salaryBand': profile.salaryBand,
+      if (profile.education != null) 'education': profile.education,
+      if (profile.occupation != null) 'occupation': profile.occupation,
+      if (profile.diet != null) 'diet': profile.diet,
+      if (profile.heightCm != null) 'heightCm': profile.heightCm,
+      // Bio stays off public discovery documents.
+    },
+  );
+
+  DiscoveryCardModel buildJobsCard({
+    required String ownerId,
+    required JobsProfile profile,
+    List<String> photoUrls = const <String>[],
+  }) => DiscoveryCardModel(
+    id: ownerId,
+    domain: AppDomainId.jobs,
+    ownerId: ownerId,
+    title: profile.needLine,
+    subtitle: profile.salaryBand,
+    cityId: profile.cityId,
+    cityLabel: cityLabels[profile.cityId] ?? profile.cityId,
+    categoryTags: [profile.tradeId],
+    imageUrls: photoUrls,
+    role: profile.role,
+    attributes: {
+      'tradeId': profile.tradeId,
+      'salaryBand': profile.salaryBand,
+    },
+  );
+
+  DiscoveryCardModel buildRoomsCard({
+    required String ownerId,
+    required RoomsOffer offer,
+    required String offerId,
+    List<String> photoUrls = const <String>[],
+  }) => DiscoveryCardModel(
+    id: offerId,
+    domain: AppDomainId.rooms,
+    ownerId: ownerId,
+    title: offer.title,
+    subtitle: offer.subtitle,
+    cityId: offer.cityId,
+    cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
+    categoryTags: [offer.type, ...offer.amenities.take(3)],
+    imageUrls: photoUrls,
+    role: 'have',
+    attributes: {
+      'type': offer.type,
+      'furnishing': offer.furnishing,
+      'monthlyRent': offer.monthlyRent,
+      'depositMonths': offer.depositMonths,
+      'amenities': offer.amenities,
+      'hasAddressProof': offer.hasAddressProof,
+    },
+  );
+
+  DiscoveryCardModel buildBikesCard({
+    required String ownerId,
+    required BikesOffer offer,
+    required String offerId,
+    List<String> photoUrls = const <String>[],
+  }) => DiscoveryCardModel(
+    id: offerId,
+    domain: AppDomainId.bikes,
+    ownerId: ownerId,
+    title: offer.title,
+    subtitle: offer.subtitle,
+    cityId: offer.cityId,
+    cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
+    categoryTags: [offer.type, offer.make],
+    imageUrls: photoUrls,
+    role: 'lend',
+    attributes: offer.publicAttributes,
+  );
+
+  DiscoveryCardModel buildHomeHelpCard({
+    required String ownerId,
+    required HomeHelpOffer offer,
+    required String offerId,
+    List<String> photoUrls = const <String>[],
+  }) => DiscoveryCardModel(
+    id: offerId,
+    domain: AppDomainId.homeHelp,
+    ownerId: ownerId,
+    title: offer.title,
+    subtitle: offer.subtitle,
+    cityId: offer.cityId,
+    cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
+    categoryTags: [offer.service, ...offer.languages.take(2)],
+    imageUrls: photoUrls,
+    role: offer.role,
+    attributes: {
+      'service': offer.service,
+      'shift': offer.shift,
+      'salaryBand': offer.salaryBand,
+      'languages': offer.languages,
+    },
+  );
+
   Future<DiscoveryCardModel> publishMarriage({
     required String ownerId,
     required MarriageProfile profile,
     List<String> photoUrls = const <String>[],
-  }) async {
-    final card = DiscoveryCardModel(
-      id: ownerId,
-      domain: AppDomainId.marriage,
+  }) => _persist(
+    buildMarriageCard(
       ownerId: ownerId,
-      title: 'Marriage · ${profile.ageBand}',
-      subtitle: 'Seeking ${profile.seeking}',
-      cityId: profile.cityId,
-      cityLabel: cityLabels[profile.cityId] ?? profile.cityId,
-      categoryTags: [
-        profile.gender,
-        if (profile.religion != null) profile.religion!,
-      ],
-      imageUrls: photoUrls,
-      role: profile.seeking,
-      ageBand: profile.ageBand,
-      attributes: {
-        'gender': profile.gender,
-        'seeking': profile.seeking,
-        if (profile.salaryBand != null) 'salaryBand': profile.salaryBand,
-        if (profile.education != null) 'education': profile.education,
-        if (profile.occupation != null) 'occupation': profile.occupation,
-        if (profile.diet != null) 'diet': profile.diet,
-        if (profile.heightCm != null) 'heightCm': profile.heightCm,
-        // Bio stays off public discovery documents.
-      },
-    );
-    return _persist(card);
-  }
+      profile: profile,
+      photoUrls: photoUrls,
+    ),
+  );
 
   Future<DiscoveryCardModel> publishJobs({
     required String ownerId,
     required JobsProfile profile,
     List<String> photoUrls = const <String>[],
-  }) async {
-    final card = DiscoveryCardModel(
-      id: ownerId,
-      domain: AppDomainId.jobs,
-      ownerId: ownerId,
-      title: profile.needLine,
-      subtitle: profile.salaryBand,
-      cityId: profile.cityId,
-      cityLabel: cityLabels[profile.cityId] ?? profile.cityId,
-      categoryTags: [profile.tradeId],
-      imageUrls: photoUrls,
-      role: profile.role,
-      attributes: {
-        'tradeId': profile.tradeId,
-        'salaryBand': profile.salaryBand,
-      },
-    );
-    return _persist(card);
-  }
+  }) => _persist(
+    buildJobsCard(ownerId: ownerId, profile: profile, photoUrls: photoUrls),
+  );
 
   Future<DiscoveryCardModel> publishRooms({
     required String ownerId,
     required RoomsOffer offer,
     required String offerId,
     List<String> photoUrls = const <String>[],
-  }) async {
-    final card = DiscoveryCardModel(
-      id: offerId,
-      domain: AppDomainId.rooms,
+  }) => _persist(
+    buildRoomsCard(
       ownerId: ownerId,
-      title: offer.title,
-      subtitle: offer.subtitle,
-      cityId: offer.cityId,
-      cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
-      categoryTags: [offer.type, ...offer.amenities.take(3)],
-      imageUrls: photoUrls,
-      role: 'have',
-      attributes: {
-        'type': offer.type,
-        'furnishing': offer.furnishing,
-        'monthlyRent': offer.monthlyRent,
-        'depositMonths': offer.depositMonths,
-        'amenities': offer.amenities,
-        'hasAddressProof': offer.hasAddressProof,
-      },
-    );
-    return _persist(card);
-  }
+      offer: offer,
+      offerId: offerId,
+      photoUrls: photoUrls,
+    ),
+  );
 
   Future<DiscoveryCardModel> publishBikes({
     required String ownerId,
     required BikesOffer offer,
     required String offerId,
     List<String> photoUrls = const <String>[],
-  }) async {
-    final card = DiscoveryCardModel(
-      id: offerId,
-      domain: AppDomainId.bikes,
+  }) => _persist(
+    buildBikesCard(
       ownerId: ownerId,
-      title: offer.title,
-      subtitle: offer.subtitle,
-      cityId: offer.cityId,
-      cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
-      categoryTags: [offer.type, offer.make],
-      imageUrls: photoUrls,
-      role: 'lend',
-      attributes: offer.publicAttributes,
-    );
-    return _persist(card);
-  }
+      offer: offer,
+      offerId: offerId,
+      photoUrls: photoUrls,
+    ),
+  );
 
   Future<DiscoveryCardModel> publishHomeHelp({
     required String ownerId,
     required HomeHelpOffer offer,
     required String offerId,
     List<String> photoUrls = const <String>[],
-  }) async {
-    final card = DiscoveryCardModel(
-      id: offerId,
-      domain: AppDomainId.homeHelp,
+  }) => _persist(
+    buildHomeHelpCard(
       ownerId: ownerId,
-      title: offer.title,
-      subtitle: offer.subtitle,
-      cityId: offer.cityId,
-      cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
-      categoryTags: [offer.service, ...offer.languages.take(2)],
-      imageUrls: photoUrls,
-      role: offer.role,
-      attributes: {
-        'service': offer.service,
-        'shift': offer.shift,
-        'salaryBand': offer.salaryBand,
-        'languages': offer.languages,
-      },
-    );
-    return _persist(card);
-  }
+      offer: offer,
+      offerId: offerId,
+      photoUrls: photoUrls,
+    ),
+  );
 
   Future<DiscoveryCardModel> _persist(DiscoveryCardModel card) async {
     _assertTextSafe(card);

@@ -12,6 +12,7 @@ import '../models/app_domain.dart';
 import '../models/card_side.dart';
 import '../models/discovery_card.dart';
 import '../models/domain_profiles.dart';
+import '../models/owned_post.dart';
 import '../services/account_services.dart';
 import 'legal_screens.dart';
 import '../services/contact_service.dart';
@@ -19,6 +20,8 @@ import '../services/firebase_bootstrap.dart';
 import '../services/form_media_controller.dart';
 import '../services/likes_repository.dart';
 import '../services/listing_publisher.dart';
+import '../services/owned_listing_cache.dart';
+import '../services/owned_posts.dart';
 import '../services/push_service.dart';
 import '../services/refresh_boost_service.dart';
 import '../services/share_service.dart';
@@ -31,7 +34,9 @@ import '../widgets/forms/jobs_form.dart';
 import '../widgets/forms/marriage_form.dart';
 import '../widgets/domain_sphere_selector.dart';
 import '../widgets/forms/rooms_form.dart';
+import '../widgets/forms/photo_source_sheet.dart';
 import '../widgets/onboarding/otp_sheet.dart';
+import '../widgets/photo_pager.dart';
 import '../widgets/safety/safety_sheet.dart';
 
 class HomeShell extends StatefulWidget {
@@ -418,52 +423,48 @@ class DiscoveryCard extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 4 / 3,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  PageView(
-                    children: card.imageUrls.isEmpty
-                        ? <Widget>[
-                            _SyntheticArtwork(
+              child: PhotoGalleryPager(
+                overlay: card.promoted
+                    ? Positioned(
+                        right: 12,
+                        top: 12,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: .55),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            child: Text(
+                              'Top',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : null,
+                children: card.imageUrls.isEmpty
+                    ? <Widget>[
+                        _SyntheticArtwork(
+                          label: card.title,
+                          seed: card.id.hashCode,
+                        ),
+                      ]
+                    : card.imageUrls
+                          .map(
+                            (url) => _BrowsePhoto(
+                              url: url,
                               label: card.title,
                               seed: card.id.hashCode,
                             ),
-                          ]
-                        : card.imageUrls
-                              .map(
-                                (url) => _BrowsePhoto(
-                                  url: url,
-                                  label: card.title,
-                                  seed: card.id.hashCode,
-                                ),
-                              )
-                              .toList(growable: false),
-                  ),
-                  if (card.promoted)
-                    Positioned(
-                      right: 12,
-                      top: 12,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: .55),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          child: Text(
-                            'Top',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+                          )
+                          .toList(growable: false),
               ),
             ),
             if (side != null)
@@ -958,10 +959,23 @@ class _LikeRow extends StatelessWidget {
                           label: title,
                           seed: entry.otherUid.hashCode,
                         )
-                      : _LikePhoto(
-                          url: photo,
-                          label: title,
-                          seed: entry.otherUid.hashCode,
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _LikePhoto(
+                              url: photo,
+                              label: title,
+                              seed: entry.otherUid.hashCode,
+                            ),
+                            if ((card?.imageUrls.length ?? 0) > 1)
+                              Positioned(
+                                right: 4,
+                                bottom: 4,
+                                child: PhotoExtraBadge(
+                                  extraCount: card!.imageUrls.length - 1,
+                                ),
+                              ),
+                          ],
                         ),
                 ),
               ),
@@ -1218,7 +1232,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                           label: title,
                           seed: entry.otherUid.hashCode,
                         )
-                      : PageView(
+                      : PhotoGalleryPager(
                           children: photos
                               .map(
                                 (url) => _LikePhoto(
@@ -1439,7 +1453,7 @@ class MeScreen extends StatelessWidget {
             title: 'My posts',
             subtitle: posted.isEmpty
                 ? 'Add your first post'
-                : '${posted.length} posted',
+                : '${_totalPostCount(context)} posted',
           ),
         ],
       ),
@@ -1575,32 +1589,83 @@ class _MeActionCard extends StatelessWidget {
   }
 }
 
-List<DomainPolicy> _postedDomains(BuildContext context) {
+void _watchPostStores(BuildContext context) {
   context.watch<ProfileStore>();
   context.watch<JobsProfileStore>();
   context.watch<RoomsOfferStore>();
   context.watch<BikesOfferStore>();
   context.watch<HomeHelpOfferStore>();
+  context.watch<OwnedListingCache>();
+}
+
+String _ownerUid(BuildContext context) {
+  final identity = context.read<IdentityStore>();
+  if (identity.identity.userId.isNotEmpty) return identity.identity.userId;
+  if (FirebaseBootstrap.ready) {
+    final authUid = FirebaseAuth.instance.currentUser?.uid;
+    if (authUid != null && authUid.isNotEmpty) return authUid;
+  }
+  return 'local';
+}
+
+List<OwnedPost> _ownedPosts(BuildContext context) {
+  _watchPostStores(context);
+  return collectOwnedPosts(
+    ownerId: _ownerUid(context),
+    marriage: context.read<ProfileStore>(),
+    jobs: context.read<JobsProfileStore>(),
+    rooms: context.read<RoomsOfferStore>(),
+    bikes: context.read<BikesOfferStore>(),
+    homeHelp: context.read<HomeHelpOfferStore>(),
+    media: context.read<OwnedListingCache>(),
+    publisher: context.read<ListingPublisher>(),
+  );
+}
+
+List<DomainPolicy> _postedDomains(BuildContext context) {
+  _watchPostStores(context);
   return AppDomains.all
-      .where((domain) => domain.enabled && _domainHasAd(context, domain.id))
+      .where((domain) => domain.enabled && _domainPostCount(context, domain.id) > 0)
       .toList(growable: false);
 }
 
-bool _userHasAnyAd(BuildContext context) => _postedDomains(context).isNotEmpty;
+int _totalPostCount(BuildContext context) {
+  _watchPostStores(context);
+  return AppDomainId.values.fold<int>(
+    0,
+    (sum, id) => sum + _domainPostCount(context, id),
+  );
+}
 
-bool _domainHasAd(BuildContext context, AppDomainId id) {
+int _domainPostCount(BuildContext context, AppDomainId id) {
   switch (id) {
     case AppDomainId.marriage:
-      return context.read<ProfileStore>().value != null;
+      return context.read<ProfileStore>().value != null ? 1 : 0;
     case AppDomainId.jobs:
-      return context.read<JobsProfileStore>().value != null;
+      return context.read<JobsProfileStore>().value != null ? 1 : 0;
     case AppDomainId.rooms:
-      return context.read<RoomsOfferStore>().offers.isNotEmpty;
+      return context.read<RoomsOfferStore>().offers.length;
     case AppDomainId.bikes:
-      return context.read<BikesOfferStore>().offers.isNotEmpty;
+      return context.read<BikesOfferStore>().offers.length;
     case AppDomainId.homeHelp:
-      return context.read<HomeHelpOfferStore>().offers.isNotEmpty;
+      return context.read<HomeHelpOfferStore>().offers.length;
   }
+}
+
+/// True until the domain's [DomainPolicy.maxProfiles] cap is reached.
+bool _domainCanAddPost(BuildContext context, AppDomainId id) {
+  final policy = AppDomains.byId(id);
+  return _domainPostCount(context, id) < policy.maxProfiles;
+}
+
+String _domainPostSubtitle(BuildContext context, DomainPolicy domain) {
+  final l10n = AppLocalizations.of(context);
+  final action = domainPostLine(domain.id, l10n);
+  final count = _domainPostCount(context, domain.id);
+  final max = domain.maxProfiles;
+  if (max <= 1) return action;
+  if (count <= 0) return action;
+  return '$count of $max · $action';
 }
 
 Future<void> _showMyPostsSheet(BuildContext context) {
@@ -1608,14 +1673,13 @@ Future<void> _showMyPostsSheet(BuildContext context) {
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (context) {
-      final hasAds = _userHasAnyAd(context);
-      final posted = AppDomains.all
-          .where((domain) => domain.enabled && _domainHasAd(context, domain.id))
-          .toList(growable: false);
+    builder: (sheetContext) {
+      final posts = _ownedPosts(sheetContext);
       final canPostMore = AppDomains.all.any(
-        (domain) => domain.enabled && !_domainHasAd(context, domain.id),
+        (domain) =>
+            domain.enabled && _domainCanAddPost(sheetContext, domain.id),
       );
+      final hasAds = posts.isNotEmpty;
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -1623,40 +1687,66 @@ Future<void> _showMyPostsSheet(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('My posts', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              ...posted.map(
-                (domain) => _DomainAdRow(
-                  domain: domain,
-                  trailing: Icon(Icons.check_circle, color: domain.color),
-                  onTap: () {
-                    Navigator.pop(context);
-                    showDomainProfileForm(context, domain);
-                  },
-                ),
+              Text(
+                'My posts',
+                style: Theme.of(sheetContext).textTheme.titleLarge,
               ),
+              const SizedBox(height: 8),
+              if (posts.isEmpty)
+                Text(
+                  'No posts yet',
+                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.muted,
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.55,
+                  ),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: posts
+                        .map(
+                          (post) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _OwnedPostRow(
+                              post: post,
+                              onOpen: () =>
+                                  _showOwnedPostDetail(sheetContext, post),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
               if (canPostMore)
                 ListTile(
+                  contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(
                     backgroundColor: AppColors.darkCream,
-                    child: Icon(Icons.add_circle_outline, color: AppColors.rose),
+                    child: Icon(
+                      Icons.add_circle_outline,
+                      color: AppColors.rose,
+                    ),
                   ),
-                  title: const Text('New post'),
+                  title: Text(posts.isEmpty ? 'New post' : 'Add another'),
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                     _showNewPostPicker(context);
                   },
                 ),
               if (hasAds) ...[
                 const Divider(height: 24),
                 ListTile(
+                  contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(
                     backgroundColor: AppColors.darkCream,
                     child: Icon(Icons.trending_up, color: AppColors.rose),
                   ),
                   title: const Text('Get more views'),
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                     _showGrowthSheet(context);
                   },
                 ),
@@ -1669,14 +1759,292 @@ Future<void> _showMyPostsSheet(BuildContext context) {
   );
 }
 
+Future<void> _showOwnedPostDetail(BuildContext context, OwnedPost post) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheetContext) => _OwnedPostDetailSheet(
+      post: post,
+      hostContext: context,
+    ),
+  );
+}
+
+class _OwnedPostRow extends StatelessWidget {
+  const _OwnedPostRow({required this.post, required this.onOpen});
+
+  final OwnedPost post;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = post.card;
+    final title = card.title;
+    final city = card.cityLabel;
+    final photo = card.imageUrls.isNotEmpty ? card.imageUrls.first : null;
+    final policy = AppDomains.byId(post.domain);
+    return Material(
+      color: policy.softColor.withValues(alpha: .35),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: photo == null
+                      ? _SyntheticArtwork(
+                          label: title,
+                          seed: card.id.hashCode,
+                        )
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _LikePhoto(
+                              url: photo,
+                              label: title,
+                              seed: card.id.hashCode,
+                            ),
+                            if (card.imageUrls.length > 1)
+                              Positioned(
+                                right: 4,
+                                bottom: 4,
+                                child: PhotoExtraBadge(
+                                  extraCount: card.imageUrls.length - 1,
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (city.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 16,
+                            color: AppColors.muted,
+                          ),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              city,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      policy.label,
+                      style: TextStyle(
+                        color: policy.color,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: policy.color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OwnedPostDetailSheet extends StatelessWidget {
+  const _OwnedPostDetailSheet({
+    required this.post,
+    required this.hostContext,
+  });
+
+  final OwnedPost post;
+  final BuildContext hostContext;
+
+  @override
+  Widget build(BuildContext context) {
+    final policy = AppDomains.byId(post.domain);
+    final card = post.card;
+    final title = card.title;
+    final fact = cardFactLine(card);
+    final photos = card.imageUrls;
+    final side = cardSideMark(card);
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: policy.color, width: 4),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: policy.softColor,
+                        child: Icon(
+                          _domainIcons[policy.id],
+                          color: policy.color,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        policy.label,
+                        style: TextStyle(
+                          color: policy.color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: photos.isEmpty
+                          ? _SyntheticArtwork(
+                              label: title,
+                              seed: card.id.hashCode,
+                            )
+                          : PhotoGalleryPager(
+                              children: photos
+                                  .map(
+                                    (url) => _LikePhoto(
+                                      url: url,
+                                      label: title,
+                                      seed: card.id.hashCode,
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            ),
+                    ),
+                  ),
+                  if (side != null) ...[
+                    const SizedBox(height: 12),
+                    ColoredBox(
+                      color: side.color.withValues(alpha: .12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(side.icon, size: 18, color: side.color),
+                            const SizedBox(width: 8),
+                            Text(
+                              side.label,
+                              style: TextStyle(
+                                color: side.color,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(title, style: Theme.of(context).textTheme.titleLarge),
+                  if (fact.trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(fact),
+                  ],
+                  if (card.cityLabel.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 18,
+                          color: AppColors.muted,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          card.cityLabel,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: policy.color,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      showDomainProfileForm(
+                        hostContext,
+                        policy,
+                        edit: post,
+                      );
+                    },
+                    child: const Text('Edit'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> _showNewPostPicker(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
     builder: (context) {
+      _watchPostStores(context);
       final open = AppDomains.all
-          .where((domain) => domain.enabled && !_domainHasAd(context, domain.id))
+          .where(
+            (domain) =>
+                domain.enabled && _domainCanAddPost(context, domain.id),
+          )
           .toList(growable: false);
       return SafeArea(
         child: Padding(
@@ -1687,19 +2055,28 @@ Future<void> _showNewPostPicker(BuildContext context) {
             children: [
               Text('New post', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              ...open.map(
-                (domain) => _DomainAdRow(
-                  domain: domain,
-                  trailing: const Icon(
-                    Icons.add_circle_outline,
+              if (open.isEmpty)
+                Text(
+                  'All post slots are full.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppColors.muted,
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    showDomainProfileForm(context, domain);
-                  },
+                )
+              else
+                ...open.map(
+                  (domain) => _DomainAdRow(
+                    domain: domain,
+                    subtitle: _domainPostSubtitle(context, domain),
+                    trailing: const Icon(
+                      Icons.add_circle_outline,
+                      color: AppColors.muted,
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      showDomainProfileForm(context, domain);
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1713,14 +2090,17 @@ class _DomainAdRow extends StatelessWidget {
     required this.domain,
     required this.trailing,
     required this.onTap,
+    this.subtitle,
   });
 
   final DomainPolicy domain;
   final Widget trailing;
   final VoidCallback onTap;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -1739,6 +2119,12 @@ class _DomainAdRow extends StatelessWidget {
             style: TextStyle(
               color: domain.color,
               fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            subtitle ?? domainPostLine(domain.id, l10n),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.muted,
             ),
           ),
           trailing: trailing,
@@ -2330,89 +2716,219 @@ Future<void> showIdentityForm(BuildContext context) async {
   phone.dispose();
 }
 
-Future<void> showDomainProfileForm(BuildContext context, DomainPolicy domain) {
+Future<void> showDomainProfileForm(
+  BuildContext context,
+  DomainPolicy domain, {
+  OwnedPost? edit,
+}) {
   final identity = context.read<IdentityStore>();
   final publisher = context.read<ListingPublisher>();
+  final mediaCache = context.read<OwnedListingCache>();
   final uid = identity.identity.userId.isEmpty
       ? (FirebaseBootstrap.ready
             ? (FirebaseAuth.instance.currentUser?.uid ?? 'local')
             : 'local')
       : identity.identity.userId;
   final media = FormMediaController(domain: domain.id, uid: uid);
-  final offerId = '${domain.id.name}_${DateTime.now().millisecondsSinceEpoch}';
+  if (edit != null) {
+    media.seedUrls(edit.card.imageUrls);
+  }
+  final editingOffer = edit?.offerIndex != null;
+  final offerId = editingOffer
+      ? edit!.card.id
+      : '${domain.id.name}_${DateTime.now().millisecondsSinceEpoch}';
   final requireFace =
       domain.id == AppDomainId.marriage || domain.id == AppDomainId.jobs;
 
-  Future<bool> pickPhoto() async {
+  Future<void> rememberMedia({int? offerIndex}) async {
+    final urls = List<String>.from(media.urls);
+    if (domain.storageKind == DomainStorageKind.offers) {
+      final index = offerIndex ??
+          edit?.offerIndex ??
+          (switch (domain.id) {
+            AppDomainId.rooms =>
+              context.read<RoomsOfferStore>().offers.length - 1,
+            AppDomainId.bikes =>
+              context.read<BikesOfferStore>().offers.length - 1,
+            AppDomainId.homeHelp =>
+              context.read<HomeHelpOfferStore>().offers.length - 1,
+            _ => 0,
+          });
+      if (index < 0) return;
+      await mediaCache.setPhotos(domain.id, urls, index: index);
+      await mediaCache.setOfferId(domain.id, index, offerId);
+    } else {
+      await mediaCache.setPhotos(domain.id, urls);
+    }
+  }
+
+  Future<bool> pickPhoto(BuildContext hostContext, int slot) async {
+    if (!hostContext.mounted) return false;
+    final source = await showPhotoSourceSheet(
+      hostContext,
+      accent: domain.color,
+    );
+    if (source == null) return false;
     final ok = await media.pickAndUpload(
-      slot: media.urls.length,
+      slot: slot,
       requireFace: requireFace,
+      source: source,
       offerId: domain.storageKind == DomainStorageKind.offers ? offerId : null,
     );
-    if (!ok && context.mounted && media.lastError != null) {
+    if (!ok && hostContext.mounted && media.lastError != null) {
       ScaffoldMessenger.of(
-        context,
+        hostContext,
       ).showSnackBar(SnackBar(content: Text(media.lastError!)));
     }
     return ok;
   }
 
+  void removePhoto(int slot) => media.removeAt(slot);
+
+  final marriageInitial = edit?.domain == AppDomainId.marriage
+      ? context.read<ProfileStore>().value
+      : null;
+  final jobsInitial = edit?.domain == AppDomainId.jobs
+      ? context.read<JobsProfileStore>().value
+      : null;
+  final roomsInitial = edit != null
+      ? roomsFromOwned(edit, context.read<RoomsOfferStore>())
+      : null;
+  final bikesInitial = edit != null
+      ? bikesFromOwned(edit, context.read<BikesOfferStore>())
+      : null;
+  final homeHelpInitial = edit != null
+      ? homeHelpFromOwned(edit, context.read<HomeHelpOfferStore>())
+      : null;
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (context) => DraggableScrollableSheet(
+    useRootNavigator: true,
+    builder: (sheetContext) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: .9,
-      builder: (context, scrollController) {
-        final form = switch (domain.id) {
-          AppDomainId.marriage => MarriageForm(
-            onPickPhoto: pickPhoto,
-            onAfterSave: (profile) => publisher.publishMarriage(
-              ownerId: uid,
-              profile: profile,
-              photoUrls: List<String>.from(media.urls),
-            ),
-          ),
-          AppDomainId.jobs => JobsForm(
-            onPickPhoto: pickPhoto,
-            onAfterSave: (profile) => publisher.publishJobs(
-              ownerId: uid,
-              profile: profile,
-              photoUrls: List<String>.from(media.urls),
-            ),
-          ),
-          AppDomainId.rooms => RoomsForm(
-            onPickPhoto: pickPhoto,
-            onAfterSave: (offer) => publisher.publishRooms(
-              ownerId: uid,
-              offer: offer,
-              offerId: offerId,
-              photoUrls: List<String>.from(media.urls),
-            ),
-          ),
-          AppDomainId.bikes => BikesForm(
-            onPickPhoto: pickPhoto,
-            onAfterSave: (offer) => publisher.publishBikes(
-              ownerId: uid,
-              offer: offer,
-              offerId: offerId,
-              photoUrls: List<String>.from(media.urls),
-            ),
-          ),
-          AppDomainId.homeHelp => HomeHelpForm(
-            onPickPhoto: pickPhoto,
-            onAfterSave: (offer) => publisher.publishHomeHelp(
-              ownerId: uid,
-              offer: offer,
-              offerId: offerId,
-              photoUrls: List<String>.from(media.urls),
-            ),
-          ),
-        };
-        return PrimaryScrollController(
-          controller: scrollController,
-          child: form,
+      builder: (formContext, scrollController) {
+        return ListenableBuilder(
+          listenable: media,
+          builder: (context, _) {
+            final urls = List<String>.from(media.urls);
+            final previews = List<Uint8List?>.from(media.previews);
+            final busy = media.busySlot;
+            final progress = media.uploadProgress;
+            Future<bool> onPick(int slot) => pickPhoto(formContext, slot);
+            final form = switch (domain.id) {
+              AppDomainId.marriage => MarriageForm(
+                initial: marriageInitial,
+                photoUrls: urls,
+                photoPreviews: previews,
+                busySlot: busy,
+                uploadProgress: progress,
+                photoStatus: media.lastStatus,
+                photoError: media.lastError,
+                onPickPhoto: onPick,
+                onRemovePhoto: removePhoto,
+                onAfterSave: (profile) async {
+                  await publisher.publishMarriage(
+                    ownerId: media.uid,
+                    profile: profile,
+                    photoUrls: List<String>.from(media.urls),
+                  );
+                  await rememberMedia();
+                },
+              ),
+              AppDomainId.jobs => JobsForm(
+                initial: jobsInitial,
+                photoUrls: urls,
+                photoPreviews: previews,
+                busySlot: busy,
+                uploadProgress: progress,
+                photoStatus: media.lastStatus,
+                photoError: media.lastError,
+                onPickPhoto: onPick,
+                onRemovePhoto: removePhoto,
+                onAfterSave: (profile) async {
+                  await publisher.publishJobs(
+                    ownerId: media.uid,
+                    profile: profile,
+                    photoUrls: List<String>.from(media.urls),
+                  );
+                  await rememberMedia();
+                },
+              ),
+              AppDomainId.rooms => RoomsForm(
+                initial: roomsInitial,
+                editIndex: edit?.offerIndex,
+                photoUrls: urls,
+                photoPreviews: previews,
+                busySlot: busy,
+                uploadProgress: progress,
+                photoStatus: media.lastStatus,
+                photoError: media.lastError,
+                onPickPhoto: onPick,
+                onRemovePhoto: removePhoto,
+                onAfterSave: (offer) async {
+                  await publisher.publishRooms(
+                    ownerId: media.uid,
+                    offer: offer,
+                    offerId: offerId,
+                    photoUrls: List<String>.from(media.urls),
+                  );
+                  await rememberMedia(offerIndex: edit?.offerIndex);
+                },
+              ),
+              AppDomainId.bikes => BikesForm(
+                initial: bikesInitial,
+                editIndex: edit?.offerIndex,
+                photoUrls: urls,
+                photoPreviews: previews,
+                busySlot: busy,
+                uploadProgress: progress,
+                photoStatus: media.lastStatus,
+                photoError: media.lastError,
+                onPickPhoto: onPick,
+                onRemovePhoto: removePhoto,
+                onAfterSave: (offer) async {
+                  await publisher.publishBikes(
+                    ownerId: media.uid,
+                    offer: offer,
+                    offerId: offerId,
+                    photoUrls: List<String>.from(media.urls),
+                  );
+                  await rememberMedia(offerIndex: edit?.offerIndex);
+                },
+              ),
+              AppDomainId.homeHelp => HomeHelpForm(
+                initial: homeHelpInitial,
+                editIndex: edit?.offerIndex,
+                photoUrls: urls,
+                photoPreviews: previews,
+                busySlot: busy,
+                uploadProgress: progress,
+                photoStatus: media.lastStatus,
+                photoError: media.lastError,
+                onPickPhoto: onPick,
+                onRemovePhoto: removePhoto,
+                onAfterSave: (offer) async {
+                  await publisher.publishHomeHelp(
+                    ownerId: media.uid,
+                    offer: offer,
+                    offerId: offerId,
+                    photoUrls: List<String>.from(media.urls),
+                  );
+                  await rememberMedia(offerIndex: edit?.offerIndex);
+                },
+              ),
+            };
+            return Scaffold(
+              backgroundColor: Colors.transparent,
+              body: PrimaryScrollController(
+                controller: scrollController,
+                child: form,
+              ),
+            );
+          },
         );
       },
     ),

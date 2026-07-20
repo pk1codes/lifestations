@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,8 +8,28 @@ import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
 
 class JobsForm extends StatefulWidget {
-  const JobsForm({this.onPickPhoto, this.onAfterSave, super.key});
-  final Future<bool> Function()? onPickPhoto;
+  const JobsForm({
+    this.initial,
+    this.onPickPhoto,
+    this.onRemovePhoto,
+    this.photoUrls = const <String>[],
+    this.photoPreviews = const <Uint8List?>[],
+    this.busySlot,
+    this.uploadProgress,
+    this.photoStatus,
+    this.photoError,
+    this.onAfterSave,
+    super.key,
+  });
+  final JobsProfile? initial;
+  final Future<bool> Function(int slot)? onPickPhoto;
+  final ValueChanged<int>? onRemovePhoto;
+  final List<String> photoUrls;
+  final List<Uint8List?> photoPreviews;
+  final int? busySlot;
+  final double? uploadProgress;
+  final String? photoStatus;
+  final String? photoError;
   final Future<void> Function(JobsProfile profile)? onAfterSave;
 
   @override
@@ -16,13 +37,22 @@ class JobsForm extends StatefulWidget {
 }
 
 class _JobsFormState extends State<JobsForm> {
-  String _role = 'seek';
-  String _trade = JobsProfile.trades.first;
-  String _salary = JobsProfile.salaryBands.first;
-  String _city = 'mumbai';
-  int _photos = 0;
+  late String _role;
+  late String _trade;
+  late String _salary;
+  late String _city;
 
   DomainPolicy get _domain => AppDomains.jobs;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _role = initial?.role ?? 'seek';
+    _trade = initial?.tradeId ?? JobsProfile.trades.first;
+    _salary = initial?.salaryBand ?? JobsProfile.salaryBands.first;
+    _city = initial?.cityId ?? 'mumbai';
+  }
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -60,19 +90,28 @@ class _JobsFormState extends State<JobsForm> {
         _role == 'seek' ? 'Looking for $_trade work' : 'Need $_trade help',
         style: Theme.of(context).textTheme.titleMedium,
       ),
-      PhotoCountPicker(
-        count: _photos,
-        minimum: 1,
-        maximum: 3,
-        onPick: widget.onPickPhoto,
-        onChanged: (v) => setState(() => _photos = v),
+      const SizedBox(height: 8),
+      PhotoSlotStrip(
+        urls: widget.photoUrls,
+        previews: widget.photoPreviews,
+        minimum: _domain.minPhotos,
+        maximum: _domain.maxPhotos,
+        accent: _domain.color,
+        softAccent: _domain.softColor,
+        busySlot: widget.busySlot,
+        uploadProgress: widget.uploadProgress,
+        statusText: widget.photoStatus,
+        errorText: widget.photoError,
+        onPick: (slot) async => await widget.onPickPhoto?.call(slot) ?? false,
+        onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
+      const SizedBox(height: 12),
       FilledButton(
         style: FilledButton.styleFrom(backgroundColor: _domain.color),
         onPressed: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
-          if (_photos < 1) {
+          if (widget.photoUrls.length < _domain.minPhotos) {
             messenger.showSnackBar(
               const SnackBar(content: Text('Add at least one clear portrait.')),
             );

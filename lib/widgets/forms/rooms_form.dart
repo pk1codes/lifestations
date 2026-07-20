@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,8 +8,30 @@ import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
 
 class RoomsForm extends StatefulWidget {
-  const RoomsForm({this.onPickPhoto, this.onAfterSave, super.key});
-  final Future<bool> Function()? onPickPhoto;
+  const RoomsForm({
+    this.initial,
+    this.editIndex,
+    this.onPickPhoto,
+    this.onRemovePhoto,
+    this.photoUrls = const <String>[],
+    this.photoPreviews = const <Uint8List?>[],
+    this.busySlot,
+    this.uploadProgress,
+    this.photoStatus,
+    this.photoError,
+    this.onAfterSave,
+    super.key,
+  });
+  final RoomsOffer? initial;
+  final int? editIndex;
+  final Future<bool> Function(int slot)? onPickPhoto;
+  final ValueChanged<int>? onRemovePhoto;
+  final List<String> photoUrls;
+  final List<Uint8List?> photoPreviews;
+  final int? busySlot;
+  final double? uploadProgress;
+  final String? photoStatus;
+  final String? photoError;
   final Future<void> Function(RoomsOffer offer)? onAfterSave;
 
   @override
@@ -16,15 +39,29 @@ class RoomsForm extends StatefulWidget {
 }
 
 class _RoomsFormState extends State<RoomsForm> {
-  String _type = RoomsOffer.types.first;
-  String _furnishing = RoomsOffer.furnishingOptions.first;
-  int _rent = RoomsOffer.rentPresets.first;
-  int _deposit = 0;
-  String _city = 'mumbai';
-  Set<String> _amenities = {};
-  int _photos = 0;
+  late String _type;
+  late String _furnishing;
+  late int _rent;
+  late int _deposit;
+  late String _city;
+  late Set<String> _amenities;
 
   DomainPolicy get _domain => AppDomains.rooms;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _type = initial?.type ?? RoomsOffer.types.first;
+    _furnishing = initial?.furnishing ?? RoomsOffer.furnishingOptions.first;
+    final rent = initial?.monthlyRent;
+    _rent = rent != null && RoomsOffer.rentPresets.contains(rent)
+        ? rent
+        : RoomsOffer.rentPresets.first;
+    _deposit = initial?.depositMonths ?? 0;
+    _city = initial?.cityId ?? 'mumbai';
+    _amenities = {...?initial?.amenities};
+  }
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -70,13 +107,22 @@ class _RoomsFormState extends State<RoomsForm> {
         onChanged: (v) => setState(() => _amenities = v),
       ),
       CityDropdown(value: _city, onChanged: (v) => setState(() => _city = v)),
-      PhotoCountPicker(
-        count: _photos,
-        minimum: 2,
-        maximum: 8,
-        onPick: widget.onPickPhoto,
-        onChanged: (v) => setState(() => _photos = v),
+      const SizedBox(height: 8),
+      PhotoSlotStrip(
+        urls: widget.photoUrls,
+        previews: widget.photoPreviews,
+        minimum: _domain.minPhotos,
+        maximum: _domain.maxPhotos,
+        accent: _domain.color,
+        softAccent: _domain.softColor,
+        busySlot: widget.busySlot,
+        uploadProgress: widget.uploadProgress,
+        statusText: widget.photoStatus,
+        errorText: widget.photoError,
+        onPick: (slot) async => await widget.onPickPhoto?.call(slot) ?? false,
+        onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
+      const SizedBox(height: 12),
       FilledButton(
         style: FilledButton.styleFrom(backgroundColor: _domain.color),
         onPressed: () async {
@@ -88,7 +134,7 @@ class _RoomsFormState extends State<RoomsForm> {
             monthlyRent: _rent,
             depositMonths: _deposit,
             cityId: _city,
-            photoCount: _photos,
+            photoCount: widget.photoUrls.length,
             amenities: _amenities.toList(),
           );
           if (!offer.isValid) {
@@ -98,7 +144,10 @@ class _RoomsFormState extends State<RoomsForm> {
             return;
           }
           try {
-            context.read<RoomsOfferStore>().upsert(offer);
+            context.read<RoomsOfferStore>().upsert(
+              offer,
+              index: widget.editIndex,
+            );
             await widget.onAfterSave?.call(offer);
             navigator.pop();
           } on StateError catch (error) {

@@ -19,6 +19,7 @@ import 'services/account_services.dart';
 import 'services/domain_repository.dart';
 import 'services/firebase_bootstrap.dart';
 import 'services/listing_publisher.dart';
+import 'services/owned_listing_cache.dart';
 import 'services/push_service.dart';
 import 'services/seed_repository.dart';
 import 'services/share_card_repository.dart';
@@ -111,6 +112,9 @@ class FlutMarriageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => RoomsOfferStore()),
         ChangeNotifierProvider(create: (_) => BikesOfferStore()),
         ChangeNotifierProvider(create: (_) => HomeHelpOfferStore()),
+        ChangeNotifierProvider(
+          create: (_) => OwnedListingCache(preferences),
+        ),
         ChangeNotifierProvider(create: (_) => MatchPreferencesStore()),
         ChangeNotifierProvider(create: (_) => JobsDiscoverPrefsStore()),
         ChangeNotifierProvider(

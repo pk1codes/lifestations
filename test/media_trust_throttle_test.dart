@@ -28,6 +28,21 @@ void main() {
     expect(GoogleVisionSafeSearchClient().enabled, isFalse);
   });
 
+  test('photo errors map to short user lines', () {
+    expect(
+      ImagePipeline.friendlyError(StateError('Portrait must show exactly one face')),
+      'Use a clear photo of one face.',
+    );
+    expect(
+      ImagePipeline.friendlyError(const FormatException('Image must be 5 MiB or smaller')),
+      'Photo is too large. Choose a smaller one.',
+    );
+    expect(
+      ImagePipeline.friendlyError(Exception('firebase_storage/unauthorized')),
+      'Could not upload. Check your connection and try again.',
+    );
+  });
+
   test('trust flags expose honest self-attested badges', () {
     const flags = TrustFlags(aadhaar: true, drivingLicence: true);
     expect(flags.idPlus, isTrue);

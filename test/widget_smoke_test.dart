@@ -64,6 +64,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('New post'), findsOneWidget);
     expect(find.text('Jobs'), findsOneWidget);
+    expect(find.text('I need work / I have work'), findsOneWidget);
+    expect(find.text('Lend my bike'), findsOneWidget);
     expect(find.text('Add ad'), findsNothing);
     expect(find.byIcon(Icons.add_circle_outline), findsWidgets);
   });

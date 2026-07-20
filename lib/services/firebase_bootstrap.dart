@@ -25,12 +25,13 @@ class FirebaseBootstrap {
       );
       const webSiteKey = String.fromEnvironment('RECAPTCHA_V3_SITE_KEY');
       if (kIsWeb) {
-        // Web App Check uses reCAPTCHA Enterprise. Passing an empty key makes
-        // reCAPTCHA throw during startup and can leave Chrome blank.
+        // Web App Check: use v3 provider with the site key from dart-defines.
+        // (Enterprise provider + a v3 key produces invalid tokens → Storage denies.)
         if (webSiteKey.isNotEmpty) {
           await FirebaseAppCheck.instance.activate(
-            providerWeb: ReCaptchaEnterpriseProvider(webSiteKey),
+            providerWeb: ReCaptchaV3Provider(webSiteKey),
           );
+          await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
         }
       } else {
         await FirebaseAppCheck.instance.activate(
@@ -41,6 +42,7 @@ class FirebaseBootstrap {
               ? const AppleDebugProvider()
               : const AppleAppAttestProvider(),
         );
+        await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
       }
       if (FirebaseAuth.instance.currentUser == null) {
         try {

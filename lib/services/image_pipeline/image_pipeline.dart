@@ -10,11 +10,13 @@ class ProcessedImage {
     required this.medium,
     required this.large,
     required this.mimeType,
+    required this.extension,
   });
   final Uint8List thumb;
   final Uint8List medium;
   final Uint8List large;
   final String mimeType;
+  final String extension;
 }
 
 /// Quality ladder keyed by source byte size. Small sources keep higher
@@ -35,7 +37,6 @@ class CompressionLadder {
   /// Picks qualities from the raw source size before any resize.
   static CompressionLadder forSourceBytes(int bytes) {
     if (bytes < 200 * 1024) {
-      // Already small — preserve detail; WebP still shrinks vs JPEG/PNG.
       return const CompressionLadder(
         thumbQuality: 72,
         mediumQuality: 84,
@@ -74,40 +75,63 @@ class ImagePipeline {
 
   final ImagePicker _picker;
 
-  Future<XFile?> pick() => _picker.pickImage(
-    source: ImageSource.gallery,
+  Future<XFile?> pick(ImageSource source) => _picker.pickImage(
+    source: source,
     imageQuality: 100,
     requestFullMetadata: false,
+    preferredCameraDevice: CameraDevice.front,
   );
 
   Future<ProcessedImage> process(XFile source, DomainPolicy policy) async {
     final bytes = await source.readAsBytes();
     if (bytes.length > maxUploadBytes) {
-      throw const FormatException('Image must be 5 MiB or smaller');
+      throw const FormatException('Photo is too large. Choose a smaller one.');
     }
     final ladder = CompressionLadder.forSourceBytes(bytes.length);
+    // Prefer WebP; on web fall back to JPEG if WebP/pica fails.
+    try {
+      return await _encode(bytes, ladder, CompressFormat.webp, 'image/webp', 'webp');
+    } catch (_) {
+      if (!kIsWeb) rethrow;
+      return _encode(bytes, ladder, CompressFormat.jpeg, 'image/jpeg', 'jpg');
+    }
+  }
+
+  Future<ProcessedImage> _encode(
+    Uint8List bytes,
+    CompressionLadder ladder,
+    CompressFormat format,
+    String mimeType,
+    String extension,
+  ) async {
     final variants = await Future.wait([
-      _compress(bytes, thumbWidth, ladder.thumbQuality),
-      _compress(bytes, mediumWidth, ladder.mediumQuality),
-      _compress(bytes, largeWidth, ladder.largeQuality),
+      _compress(bytes, thumbWidth, ladder.thumbQuality, format),
+      _compress(bytes, mediumWidth, ladder.mediumQuality, format),
+      _compress(bytes, largeWidth, ladder.largeQuality, format),
     ]);
-    if (variants.any((bytes) => bytes.isEmpty)) {
-      throw const FormatException('Image could not be processed');
+    if (variants.any((part) => part.isEmpty)) {
+      throw const FormatException('Could not prepare photo. Try another image.');
     }
     return ProcessedImage(
       thumb: variants[0],
       medium: variants[1],
       large: variants[2],
-      mimeType: 'image/webp',
+      mimeType: mimeType,
+      extension: extension,
     );
   }
 
-  Future<Uint8List> _compress(Uint8List source, int width, int quality) async {
+  Future<Uint8List> _compress(
+    Uint8List source,
+    int width,
+    int quality,
+    CompressFormat format,
+  ) async {
     final result = await FlutterImageCompress.compressWithList(
       source,
       minWidth: width,
       quality: quality,
-      format: CompressFormat.webp,
+      format: format,
       keepExif: false,
       autoCorrectionAngle: true,
     );
@@ -129,4 +153,41 @@ class ImagePipeline {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// Maps raw plugin/Firebase errors into short user-facing lines.
+  static String friendlyError(Object error) {
+    final text = '$error'.toLowerCase();
+    if (text.contains('one face') || text.contains('portrait must')) {
+      return 'Use a clear photo of one face.';
+    }
+    if (text.contains('too large') || text.contains('5 mib')) {
+      return 'Photo is too large. Choose a smaller one.';
+    }
+    if (text.contains('safesearch')) {
+      return 'This photo cannot be used. Try another.';
+    }
+    if (text.contains('permission-denied') ||
+        text.contains('unauthorized') ||
+        text.contains('app check') ||
+        text.contains('firebase_storage')) {
+      return 'Could not upload. Check your connection and try again.';
+    }
+    if (text.contains('camera') &&
+        (text.contains('permission') || text.contains('access'))) {
+      return 'Allow camera access to take a photo.';
+    }
+    if (text.contains('photo') && text.contains('permission')) {
+      return 'Allow photo access to choose a picture.';
+    }
+    if (text.contains('pica') ||
+        text.contains('compress') ||
+        text.contains('prepare photo') ||
+        text.contains("type 'function'")) {
+      return 'Could not prepare photo. Try another image.';
+    }
+    if (text.contains('network') || text.contains('socket')) {
+      return 'Network problem. Try again.';
+    }
+    return 'Could not add photo. Try again.';
+  }
 }

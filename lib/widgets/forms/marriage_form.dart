@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,13 +10,27 @@ import 'form_fields.dart';
 
 class MarriageForm extends StatefulWidget {
   const MarriageForm({
+    this.initial,
     this.onPickPhoto,
+    this.onRemovePhoto,
     this.photoUrls = const <String>[],
+    this.photoPreviews = const <Uint8List?>[],
+    this.busySlot,
+    this.uploadProgress,
+    this.photoStatus,
+    this.photoError,
     this.onAfterSave,
     super.key,
   });
-  final Future<bool> Function()? onPickPhoto;
+  final MarriageProfile? initial;
+  final Future<bool> Function(int slot)? onPickPhoto;
+  final ValueChanged<int>? onRemovePhoto;
   final List<String> photoUrls;
+  final List<Uint8List?> photoPreviews;
+  final int? busySlot;
+  final double? uploadProgress;
+  final String? photoStatus;
+  final String? photoError;
   final Future<void> Function(MarriageProfile profile)? onAfterSave;
 
   @override
@@ -23,12 +39,11 @@ class MarriageForm extends StatefulWidget {
 
 class _MarriageFormState extends State<MarriageForm> {
   final _key = GlobalKey<FormState>();
-  final _age = TextEditingController(text: '25');
-  final _bio = TextEditingController();
-  String _gender = MarriageProfile.genders.first;
-  String _seeking = MarriageProfile.seekingOptions.first;
-  String _city = 'mumbai';
-  int _photos = 0;
+  late final TextEditingController _age;
+  late final TextEditingController _bio;
+  late String _gender;
+  late String _seeking;
+  late String _city;
   String? _salary;
   String? _religion;
   String? _language;
@@ -37,8 +52,31 @@ class _MarriageFormState extends State<MarriageForm> {
   String? _education;
   String? _occupation;
   String? _diet;
+  String? _saveMessage;
 
   DomainPolicy get _domain => AppDomains.marriage;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _age = TextEditingController(text: '${initial?.age ?? 25}');
+    _bio = TextEditingController(text: initial?.bio ?? '');
+    _gender = initial?.gender ?? 'woman';
+    _seeking = initial?.seeking ??
+        (_gender == 'woman' ? 'man' : (_gender == 'man' ? 'woman' : 'everyone'));
+    _city = initial?.cityId ?? 'mumbai';
+    _salary = initial?.salaryBand;
+    _religion = initial?.religion;
+    _language = initial?.nativeLanguage;
+    _status = initial?.maritalStatus;
+    _height = initial?.heightCm;
+    _education = initial?.education;
+    _occupation = initial?.occupation;
+    _diet = initial?.diet;
+  }
+
+  int get _photoCount => widget.photoUrls.length;
 
   int get _extraFilled => [
     _salary,
@@ -50,6 +88,17 @@ class _MarriageFormState extends State<MarriageForm> {
     _occupation,
     _diet,
   ].where((v) => v != null).length;
+
+  void _onGender(String value) {
+    setState(() {
+      _gender = value;
+      if (value == 'woman') {
+        _seeking = 'man';
+      } else if (value == 'man') {
+        _seeking = 'woman';
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -78,7 +127,7 @@ class _MarriageFormState extends State<MarriageForm> {
           validator: (value) {
             final age = int.tryParse(value ?? '');
             return age == null || age < 18 || age > 99
-                ? 'Enter an age from 18 to 99'
+                ? 'Enter age 18–99'
                 : null;
           },
         ),
@@ -87,7 +136,7 @@ class _MarriageFormState extends State<MarriageForm> {
           label: 'I am',
           values: MarriageProfile.genders,
           selected: _gender,
-          onSelected: (value) => setState(() => _gender = value),
+          onSelected: _onGender,
         ),
         SingleChoiceChips(
           label: 'Seeking',
@@ -102,18 +151,39 @@ class _MarriageFormState extends State<MarriageForm> {
           minLines: 2,
           maxLines: 4,
           maxLength: 240,
-          decoration: const InputDecoration(labelText: 'Short bio'),
-          validator: (value) => (value?.trim().length ?? 0) < 10
-              ? 'Write at least 10 characters'
-              : null,
+          decoration: const InputDecoration(labelText: 'Bio'),
+          validator: (value) {
+            final length = value?.trim().length ?? 0;
+            if (length > 240) return 'Too long';
+            return null;
+          },
         ),
-        PhotoCountPicker(
-          count: _photos,
-          minimum: 1,
-          maximum: 3,
-          onPick: widget.onPickPhoto,
-          onChanged: (value) => setState(() => _photos = value),
+        const SizedBox(height: 8),
+        PhotoSlotStrip(
+          urls: widget.photoUrls,
+          previews: widget.photoPreviews,
+          minimum: _domain.minPhotos,
+          maximum: _domain.maxPhotos,
+          accent: _domain.color,
+          softAccent: _domain.softColor,
+          busySlot: widget.busySlot,
+          uploadProgress: widget.uploadProgress,
+          statusText: widget.photoStatus,
+          errorText: widget.photoError,
+          onPick: (slot) async =>
+              await widget.onPickPhoto?.call(slot) ?? false,
+          onRemove: (slot) => widget.onRemovePhoto?.call(slot),
         ),
+        if (_saveMessage != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _saveMessage!,
+            style: TextStyle(
+              color: _domain.color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
         const SizedBox(height: 4),
         Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -221,6 +291,7 @@ class _MarriageFormState extends State<MarriageForm> {
   );
 
   Future<void> _save() async {
+    setState(() => _saveMessage = null);
     if (!_key.currentState!.validate()) return;
     final profile = MarriageProfile(
       age: int.parse(_age.text),
@@ -228,7 +299,7 @@ class _MarriageFormState extends State<MarriageForm> {
       seeking: _seeking,
       bio: _bio.text.trim(),
       cityId: _city,
-      photoCount: _photos,
+      photoCount: _photoCount,
       salaryBand: _salary,
       religion: _religion,
       nativeLanguage: _language,
@@ -239,17 +310,27 @@ class _MarriageFormState extends State<MarriageForm> {
       diet: _diet,
     );
     if (!profile.isValid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one clear portrait.')),
+      setState(() => _saveMessage = 'Add at least one photo first.');
+      return;
+    }
+    if (widget.photoUrls.isEmpty) {
+      setState(
+        () => _saveMessage =
+            'Photo not uploaded yet. Wait for “Photo added” then Save.',
       );
       return;
     }
     final store = context.read<ProfileStore>();
     final navigator = Navigator.of(context);
-    store.saveLocal(profile);
-    await store.synchronize((value) async {
-      await widget.onAfterSave?.call(value);
-    });
-    navigator.pop();
+    try {
+      setState(() => _saveMessage = 'Saving…');
+      store.saveLocal(profile);
+      await store.synchronize((value) async {
+        await widget.onAfterSave?.call(value);
+      });
+      navigator.pop();
+    } catch (_) {
+      setState(() => _saveMessage = 'Could not save. Try again.');
+    }
   }
 }

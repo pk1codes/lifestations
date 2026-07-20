@@ -70,6 +70,7 @@ class MediaUploadService {
     required int slot,
     required ProcessedImage image,
     required bool requireFace,
+    void Function(double progress)? onProgress,
   }) async {
     if (requireFace) {
       await _faceGate.requireSingleFace(image.large);
@@ -80,7 +81,7 @@ class MediaUploadService {
     }
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final prefix = 'profile_photos/$uid/$slug/$slot';
-    return _putVariants(prefix, image);
+    return _putVariants(prefix, image, onProgress: onProgress);
   }
 
   Future<UploadedVariants> uploadOfferSlot({
@@ -89,6 +90,7 @@ class MediaUploadService {
     required String offerId,
     required int slot,
     required ProcessedImage image,
+    void Function(double progress)? onProgress,
   }) async {
     final search = await _safeSearch.inspect(image.medium);
     if (!search.safe) {
@@ -96,7 +98,7 @@ class MediaUploadService {
     }
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final prefix = 'media/$uid/$slug/$offerId/$slot';
-    return _putVariants(prefix, image);
+    return _putVariants(prefix, image, onProgress: onProgress);
   }
 
   Future<void> uploadVerifyStaging({
@@ -130,9 +132,9 @@ class MediaUploadService {
   Future<void> clearSlot(String prefix) async {
     if (!FirebaseBootstrap.ready) return;
     await Future.wait([
-      _deleteQuietly('$prefix/thumb.webp'),
-      _deleteQuietly('$prefix/medium.webp'),
-      _deleteQuietly('$prefix/large.webp'),
+      for (final name in const ['thumb', 'medium', 'large'])
+        for (final ext in const ['webp', 'jpg', 'jpeg', 'png'])
+          _deleteQuietly('$prefix/$name.$ext'),
     ]);
   }
 
@@ -146,35 +148,61 @@ class MediaUploadService {
 
   Future<UploadedVariants> _putVariants(
     String prefix,
-    ProcessedImage image,
-  ) async {
+    ProcessedImage image, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final ext = image.extension;
     if (!FirebaseBootstrap.ready) {
+      onProgress?.call(1);
       return UploadedVariants(
-        thumbUrl: 'local://$prefix/thumb.webp',
-        mediumUrl: 'local://$prefix/medium.webp',
-        largeUrl: 'local://$prefix/large.webp',
+        thumbUrl: 'local://$prefix/thumb.$ext',
+        mediumUrl: 'local://$prefix/medium.$ext',
+        largeUrl: 'local://$prefix/large.$ext',
         pathPrefix: prefix,
       );
     }
     await clearSlot(prefix);
-    final thumb = _db.ref('$prefix/thumb.webp');
-    final medium = _db.ref('$prefix/medium.webp');
-    final large = _db.ref('$prefix/large.webp');
+    final thumb = _db.ref('$prefix/thumb.$ext');
+    final medium = _db.ref('$prefix/medium.$ext');
+    final large = _db.ref('$prefix/large.$ext');
     final meta = SettableMetadata(
-      contentType: 'image/webp',
+      contentType: image.mimeType,
       cacheControl: mediaCacheControl,
     );
+    final totals = <int>[
+      image.thumb.length,
+      image.medium.length,
+      image.large.length,
+    ];
+    final sent = <int>[0, 0, 0];
+    void report() {
+      final total = totals.fold<int>(0, (a, b) => a + b);
+      final done = sent.fold<int>(0, (a, b) => a + b);
+      if (total <= 0) return;
+      onProgress?.call((done / total).clamp(0.0, 1.0));
+    }
+
+    Future<void> put(int index, Reference ref, Uint8List bytes) async {
+      final task = ref.putData(bytes, meta);
+      await for (final snap in task.snapshotEvents) {
+        sent[index] = snap.bytesTransferred;
+        report();
+      }
+      await task;
+      sent[index] = bytes.length;
+      report();
+    }
+
     await Future.wait([
-      thumb.putData(image.thumb, meta),
-      medium.putData(image.medium, meta),
-      large.putData(image.large, meta),
+      put(0, thumb, image.thumb),
+      put(1, medium, image.medium),
+      put(2, large, image.large),
     ]);
-    // Prefer Hosting-CDN URLs over signed Storage download URLs so repeat
-    // views are served from the edge with immutable caching.
+    onProgress?.call(1);
     return UploadedVariants(
-      thumbUrl: mediaCdnUrl('$prefix/thumb.webp'),
-      mediumUrl: mediaCdnUrl('$prefix/medium.webp'),
-      largeUrl: mediaCdnUrl('$prefix/large.webp'),
+      thumbUrl: mediaCdnUrl('$prefix/thumb.$ext'),
+      mediumUrl: mediaCdnUrl('$prefix/medium.$ext'),
+      largeUrl: mediaCdnUrl('$prefix/large.$ext'),
       pathPrefix: prefix,
     );
   }
