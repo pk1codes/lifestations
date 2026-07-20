@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
@@ -23,20 +24,24 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
   Set<String> _languages = {'Hindi'};
   int _photos = 0;
 
+  DomainPolicy get _domain => AppDomains.homeHelp;
+
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
     children: [
       Text(
-        'Home Help listing',
-        style: Theme.of(context).textTheme.headlineMedium,
+        'Home Help',
+        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+          color: _domain.color,
+        ),
       ),
       const SizedBox(height: 16),
       SingleChoiceChips(
-        label: 'I am',
+        label: 'Looking for',
         values: HomeHelpOffer.roles,
         selected: _role,
-        text: (v) => v == 'have' ? 'Available for work' : 'Hiring',
+        text: (v) => v == 'have' ? 'I have' : 'I need',
         onSelected: (v) => setState(() => _role = v),
       ),
       SingleChoiceChips(
@@ -72,6 +77,7 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
         onChanged: (v) => setState(() => _photos = v),
       ),
       FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: _domain.color),
         onPressed: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
@@ -104,7 +110,7 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
             messenger.showSnackBar(SnackBar(content: Text(error.message)));
           }
         },
-        child: const Text('Save listing'),
+        child: const Text('Save'),
       ),
     ],
   );

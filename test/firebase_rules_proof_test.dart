@@ -32,6 +32,7 @@ void main() {
       expect(vault.contains('mutualLike(userId)'), isFalse);
       expect(firestoreRules.contains('function mutualLikeInDomain'), isTrue);
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);
+      expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
     });
 
     test('rate_limits collection caps hits at 10', () {
@@ -129,10 +130,11 @@ void main() {
       expect(functionsSrc.contains('exports.onReportCreated'), isTrue);
       expect(functionsSrc.contains('exports.onImageFlagCreated'), isTrue);
       expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
+      expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
       expect(functionsSrc.contains('exports.onInboundLikeCreated'), isTrue);
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);
-      expect(functionsSrc.contains('maxHits = 10'), isTrue);
-      expect(functionsSrc.contains('windowMs = 30_000'), isTrue);
+      expect(functionsSrc.contains('maxHits: 10'), isTrue);
+      expect(functionsSrc.contains('windowMs: 30_000'), isTrue);
       expect(functionsSrc.contains('flut_likes_high'), isTrue);
     });
   });

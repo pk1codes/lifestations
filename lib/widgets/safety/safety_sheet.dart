@@ -33,7 +33,7 @@ Future<void> showSafetySheet(
             ),
             ListTile(
               leading: const Icon(Icons.flag_outlined),
-              title: const Text('Report listing'),
+              title: const Text('Report post'),
               onTap: () async {
                 await SafetyRepository().report(
                   domain: domain,

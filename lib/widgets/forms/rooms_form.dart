@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
@@ -23,11 +24,18 @@ class _RoomsFormState extends State<RoomsForm> {
   Set<String> _amenities = {};
   int _photos = 0;
 
+  DomainPolicy get _domain => AppDomains.rooms;
+
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
     children: [
-      Text('Room listing', style: Theme.of(context).textTheme.headlineMedium),
+      Text(
+        'Rooms',
+        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+          color: _domain.color,
+        ),
+      ),
       const SizedBox(height: 16),
       SingleChoiceChips(
         label: 'Type',
@@ -70,6 +78,7 @@ class _RoomsFormState extends State<RoomsForm> {
         onChanged: (v) => setState(() => _photos = v),
       ),
       FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: _domain.color),
         onPressed: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
@@ -96,7 +105,7 @@ class _RoomsFormState extends State<RoomsForm> {
             messenger.showSnackBar(SnackBar(content: Text(error.message)));
           }
         },
-        child: const Text('Save listing'),
+        child: const Text('Save'),
       ),
     ],
   );

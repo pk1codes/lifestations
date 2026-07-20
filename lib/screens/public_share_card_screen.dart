@@ -159,7 +159,7 @@ class _ReadyCard extends StatelessWidget {
                     Chip(label: Text(AppDomains.byId(card.domain).label)),
                     if (card.verified)
                       const Chip(label: Text('Self-attested ID')),
-                    if (card.promoted) const Chip(label: Text('Ad')),
+                    if (card.promoted) const Chip(label: Text('Top')),
                   ],
                 ),
                 const SizedBox(height: 8),

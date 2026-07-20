@@ -43,7 +43,8 @@ void main() {
 
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
-    expect(find.text('My ads'), findsOneWidget);
+    expect(find.text('My posts'), findsOneWidget);
+    expect(find.text('Add your first post'), findsOneWidget);
     expect(find.text('Get more views'), findsNothing);
     expect(find.text('Settings & safety'), findsNothing);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
@@ -51,17 +52,17 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
-    expect(find.text('How to use'), findsOneWidget);
-    expect(find.text('Phone stays private'), findsOneWidget);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Delete account'), findsOneWidget);
 
     // Close settings sheet.
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();
 
-    // Zero ads: My ads skips the empty layer and opens the post picker.
-    await tester.tap(find.text('My ads'));
+    // Zero posts: My posts skips the empty layer and opens the new-post picker.
+    await tester.tap(find.text('My posts'));
     await tester.pumpAndSettle();
-    expect(find.text('Post an ad'), findsOneWidget);
+    expect(find.text('New post'), findsOneWidget);
     expect(find.text('Jobs'), findsOneWidget);
     expect(find.text('Add ad'), findsNothing);
     expect(find.byIcon(Icons.add_circle_outline), findsWidgets);

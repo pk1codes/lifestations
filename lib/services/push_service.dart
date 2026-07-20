@@ -84,7 +84,7 @@ class PushService {
     await _local.show(
       notification.hashCode,
       notification.title ?? 'Update',
-      notification.body ?? 'Someone interacted with your listing',
+      notification.body ?? 'Someone is interested in your post',
       const NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,

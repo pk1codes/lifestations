@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
+import 'feed_throttle.dart';
 import 'firebase_bootstrap.dart';
 
 class DiscoverPage {
@@ -27,6 +28,7 @@ abstract interface class DomainRepository {
 
 class FirestoreDomainRepository implements DomainRepository {
   FirestoreDomainRepository({this.firestore});
+  static final FeedFetchThrottle _feedThrottle = FeedFetchThrottle();
 
   final FirebaseFirestore? firestore;
 
@@ -56,6 +58,9 @@ class FirestoreDomainRepository implements DomainRepository {
   }) async {
     if (!FirebaseBootstrap.ready) {
       return const DiscoverPage(cards: <DiscoveryCardModel>[]);
+    }
+    if (!await _feedThrottle.allow()) {
+      throw StateError('Feed is moving too fast. Try again soon.');
     }
     final policy = AppDomains.byId(domain);
     Query<Map<String, dynamic>> query = db

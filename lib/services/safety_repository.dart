@@ -3,10 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/app_domain.dart';
+import 'action_throttle.dart';
 import 'firebase_bootstrap.dart';
 
 class SafetyRepository {
   SafetyRepository({this.firestore, this.auth});
+  static const ActionThrottleService _throttle = ActionThrottleService();
 
   final FirebaseFirestore? firestore;
   final FirebaseAuth? auth;
@@ -22,9 +24,11 @@ class SafetyRepository {
     }
     final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
     if (uid == null) return;
+    await _throttle.claim(ThrottledAction.report);
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final urgent = reason == 'underage' || reason == 'child_safety';
     await (firestore ?? FirebaseFirestore.instance).collection('reports').add({
+      'kind': 'user',
       'reporterUid': uid,
       'targetId': targetId,
       'domain': slug,
@@ -43,6 +47,7 @@ class SafetyRepository {
     if (!FirebaseBootstrap.ready) return;
     final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
     if (uid == null) return;
+    await _throttle.claim(ThrottledAction.imageFlag);
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     await (firestore ?? FirebaseFirestore.instance)
         .collection('image_flags')

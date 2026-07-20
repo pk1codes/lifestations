@@ -1,6 +1,7 @@
 import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
 import '../models/domain_profiles.dart';
+import 'action_throttle.dart';
 import 'domain_repository.dart';
 import 'firebase_bootstrap.dart';
 import 'share_card_repository.dart';
@@ -18,6 +19,7 @@ class ListingPublisher {
     ShareCardRepository? shareRepository,
   }) : _repository = repository ?? FirestoreDomainRepository(),
        _share = shareRepository ?? ShareCardRepository();
+  static const ActionThrottleService _throttle = ActionThrottleService();
 
   final DomainRepository _repository;
   final ShareCardRepository _share;
@@ -159,6 +161,7 @@ class ListingPublisher {
   }
 
   Future<DiscoveryCardModel> _persist(DiscoveryCardModel card) async {
+    await _throttle.claim(ThrottledAction.post);
     if (FirebaseBootstrap.ready) {
       final policy = AppDomains.byId(card.domain);
       if (policy.storageKind == DomainStorageKind.profiles) {

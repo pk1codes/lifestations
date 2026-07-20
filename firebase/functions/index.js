@@ -68,19 +68,9 @@ exports.onImageFlagCreated = onDocumentCreated(
   },
 );
 
-/** Server-side feed throttle — pairs with client FeedFetchThrottle. */
-exports.checkFeedThrottle = onCall(async (request) => {
-  if (!request.auth?.uid) {
-    throw new HttpsError("unauthenticated", "Sign in required.");
-  }
-  const uid = request.auth.uid;
+async function claimRateLimit(ref, {now, windowMs, maxHits}) {
   const db = getFirestore();
-  const ref = db.collection("rate_limits").doc(uid);
-  const now = Date.now();
-  const windowMs = 30_000;
-  const maxHits = 10;
-
-  const result = await db.runTransaction(async (tx) => {
+  return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.exists ? snap.data() : {};
     let hits = typeof data.hits === "number" ? data.hits : 0;
@@ -90,7 +80,7 @@ exports.checkFeedThrottle = onCall(async (request) => {
       typeof data.lockedUntilMs === "number" ? data.lockedUntilMs : 0;
 
     if (lockedUntilMs > now) {
-      return { allowed: false, lockedUntilMs };
+      return {allowed: false, lockedUntilMs};
     }
     if (now - windowStartMs > windowMs) {
       hits = 0;
@@ -99,31 +89,62 @@ exports.checkFeedThrottle = onCall(async (request) => {
     hits += 1;
     if (hits > maxHits) {
       lockedUntilMs = now + windowMs;
-      tx.set(
-        ref,
-        {
-          hits,
-          windowStartMs,
-          lockedUntilMs,
-          updatedAt: now,
-        },
-        { merge: true },
-      );
-      return { allowed: false, lockedUntilMs };
-    }
-    tx.set(
-      ref,
-      {
+      tx.set(ref, {
         hits,
         windowStartMs,
-        lockedUntilMs: 0,
+        lockedUntilMs,
         updatedAt: now,
-      },
-      { merge: true },
-    );
-    return { allowed: true, lockedUntilMs: 0 };
+      }, {merge: true});
+      return {allowed: false, lockedUntilMs};
+    }
+    tx.set(ref, {
+      hits,
+      windowStartMs,
+      lockedUntilMs: 0,
+      updatedAt: now,
+    }, {merge: true});
+    return {allowed: true, lockedUntilMs: 0};
   });
+}
 
+/** Server-side feed throttle — pairs with client FeedFetchThrottle. */
+exports.checkFeedThrottle = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+  const uid = request.auth.uid;
+  return claimRateLimit(
+    getFirestore().collection("rate_limits").doc(uid),
+    {now: Date.now(), windowMs: 30_000, maxHits: 10},
+  );
+});
+
+exports.claimActionThrottle = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+  const action = String(request.data?.action || "");
+  const configs = {
+    like: {windowMs: 60_000, maxHits: 20},
+    report: {windowMs: 10 * 60_000, maxHits: 6},
+    image_flag: {windowMs: 10 * 60_000, maxHits: 6},
+    post: {windowMs: 30 * 60_000, maxHits: 8},
+  };
+  const config = configs[action];
+  if (!config) {
+    throw new HttpsError("invalid-argument", "Unknown action.");
+  }
+  const uid = request.auth.uid;
+  const ref = getFirestore()
+    .doc(`users/${uid}/private/rate_limit_${action}`);
+  const result = await claimRateLimit(ref, {
+    now: Date.now(),
+    windowMs: config.windowMs,
+    maxHits: config.maxHits,
+  });
+  if (!result.allowed) {
+    throw new HttpsError("resource-exhausted", "Too many attempts. Try again later.");
+  }
   return result;
 });
 

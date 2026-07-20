@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -113,8 +114,12 @@ class _OtpSheetState extends State<OtpSheet> {
       );
       return;
     }
+    if (!await _claimRemoteOtpWindow()) {
+      return;
+    }
     if (!FirebaseBootstrap.ready) {
       if (kDebugMode) {
+        if (!mounted) return;
         final identity = context.read<IdentityStore>();
         await identity.save(identity.identity.copyWith(phoneVerified: true));
         if (mounted) Navigator.pop(context, true);
@@ -153,6 +158,25 @@ class _OtpSheetState extends State<OtpSheet> {
         if (mounted) _verificationId ??= verificationId;
       },
     );
+  }
+
+  Future<bool> _claimRemoteOtpWindow() async {
+    if (!FirebaseBootstrap.ready) return true;
+    final user = (widget.auth ?? FirebaseAuth.instance).currentUser;
+    final uid = user?.uid;
+    if (uid == null) return true;
+    try {
+      await FirebaseFirestore.instance.doc('otp_trackers/$uid').set({
+        'uid': uid,
+        'lastSentAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return true;
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Try again in 60s.');
+      }
+      return false;
+    }
   }
 
   Future<void> _verify() async {

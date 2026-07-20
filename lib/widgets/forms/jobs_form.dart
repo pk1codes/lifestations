@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
@@ -21,17 +22,24 @@ class _JobsFormState extends State<JobsForm> {
   String _city = 'mumbai';
   int _photos = 0;
 
+  DomainPolicy get _domain => AppDomains.jobs;
+
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
     children: [
-      Text('Jobs profile', style: Theme.of(context).textTheme.headlineMedium),
-      const Text('Build a clear need line without writing a biography.'),
+      Text(
+        'Jobs',
+        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+          color: _domain.color,
+        ),
+      ),
       const SizedBox(height: 16),
       SingleChoiceChips(
-        label: 'I want to',
+        label: 'Looking for',
         values: const ['seek', 'offer'],
         selected: _role,
+        text: (v) => v == 'seek' ? 'I have' : 'I need',
         onSelected: (v) => setState(() => _role = v),
       ),
       SingleChoiceChips(
@@ -60,6 +68,7 @@ class _JobsFormState extends State<JobsForm> {
         onChanged: (v) => setState(() => _photos = v),
       ),
       FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: _domain.color),
         onPressed: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
@@ -82,7 +91,7 @@ class _JobsFormState extends State<JobsForm> {
           });
           navigator.pop();
         },
-        child: const Text('Save profile'),
+        child: const Text('Save'),
       ),
     ],
   );

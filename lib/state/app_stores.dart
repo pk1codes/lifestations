@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
+import '../services/firebase_bootstrap.dart';
 import '../services/identity_repository.dart';
 import '../services/likes_repository.dart';
 
@@ -57,6 +59,7 @@ class IdentityStore extends ChangeNotifier {
       cityId: _prefs.getString('identity_city_id') ?? '',
       cityLabel: _prefs.getString('identity_city_label') ?? '',
       nativeLanguage: _prefs.getString('identity_language') ?? '',
+      photoUrls: _prefs.getStringList('identity_photo_urls') ?? const <String>[],
       phoneVerified: _prefs.getBool('identity_phone_verified') ?? false,
     );
   }
@@ -74,6 +77,25 @@ class IdentityStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> hydrateRemote() async {
+    if (!FirebaseBootstrap.ready || identity.userId.isEmpty) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .doc('users/${identity.userId}')
+          .get();
+      if (!doc.exists) return;
+      final remotePhotos = List<String>.from(
+        doc.data()?['photoUrls'] as List? ?? const <dynamic>[],
+      );
+      if (listEquals(remotePhotos, identity.photoUrls)) return;
+      identity = identity.copyWith(photoUrls: remotePhotos);
+      await _prefs.setStringList('identity_photo_urls', identity.photoUrls);
+      notifyListeners();
+    } catch (_) {
+      // Local identity stays authoritative when remote is unavailable.
+    }
+  }
+
   Future<void> save(Identity value) async {
     identity = value.copyWith(
       userId: value.userId.isEmpty ? identity.userId : value.userId,
@@ -86,6 +108,7 @@ class IdentityStore extends ChangeNotifier {
       _prefs.setString('identity_city_id', identity.cityId),
       _prefs.setString('identity_city_label', identity.cityLabel),
       _prefs.setString('identity_language', identity.nativeLanguage),
+      _prefs.setStringList('identity_photo_urls', identity.photoUrls),
       _prefs.setBool('identity_phone_verified', identity.phoneVerified),
     ]);
     try {

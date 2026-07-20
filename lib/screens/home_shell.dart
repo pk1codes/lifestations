@@ -70,6 +70,8 @@ class _HomeShellState extends State<HomeShell> {
     final likes = context.read<LikesStore>();
     await identity.bindUserId(uid);
     if (!mounted) return;
+    await identity.hydrateRemote();
+    if (!mounted) return;
     await blocks.hydrateRemote();
     if (!mounted) return;
     await likes.hydrateAll();
@@ -452,7 +454,7 @@ class DiscoveryCard extends StatelessWidget {
                             vertical: 4,
                           ),
                           child: Text(
-                            'Ad',
+                            'Top',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
@@ -930,7 +932,7 @@ class _LikeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final card = entry.card;
-    final title = card?.title ?? 'Liked ad';
+    final title = card?.title ?? 'Liked post';
     final city = card?.cityLabel ?? '';
     final photo = card?.imageUrls.isNotEmpty == true
         ? card!.imageUrls.first
@@ -1008,7 +1010,7 @@ class _LikeRow extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          mutual ? 'Both liked' : 'Waiting',
+                          mutual ? 'Both interested' : 'Waiting',
                           style: TextStyle(
                             color: mutual
                                 ? CardSideMark.supplyColor
@@ -1090,7 +1092,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final likes = context.read<LikesStore>();
     if (!likes.isMutual(entry.domain, entry.otherUid)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wait until both like')),
+        const SnackBar(content: Text('Both must be interested')),
       );
       return null;
     }
@@ -1150,7 +1152,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final policy = AppDomains.byId(entry.domain);
     final mutual = likes.isMutual(entry.domain, entry.otherUid);
     final card = entry.card;
-    final title = card?.title ?? 'Liked ad';
+    final title = card?.title ?? 'Liked post';
     final fact = card == null ? '' : cardFactLine(card);
     final photos = card?.imageUrls ?? const <String>[];
     final side = card == null ? null : cardSideMark(card);
@@ -1281,7 +1283,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
               ],
               const SizedBox(height: 12),
               Text(
-                mutual ? 'Both liked — open chat' : 'Waiting — chat locked',
+                mutual ? 'Both interested — chat' : 'Waiting for them',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: mutual ? CardSideMark.supplyColor : AppColors.muted,
                   fontWeight: FontWeight.w600,
@@ -1353,7 +1355,7 @@ class _ContactActionButton extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    locked ? 'Both must like first' : 'Please wait…',
+                    locked ? 'Both must be interested' : 'Please wait…',
                   ),
                 ),
               );
@@ -1385,9 +1387,10 @@ class MeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final identity = context.watch<IdentityStore>();
-    final initial = identity.identity.displayName.isEmpty
-        ? '?'
-        : identity.identity.displayName.characters.first.toUpperCase();
+    final posted = _postedDomains(context);
+    final photoUrl = identity.identity.photoUrls.isNotEmpty
+        ? identity.identity.photoUrls.first
+        : null;
     return _Page(
       title: 'Me',
       actions: [
@@ -1400,107 +1403,43 @@ class MeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Material(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => showIdentityForm(context),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 32,
-                      backgroundColor: AppColors.darkCream,
-                      child: Text(
-                        initial,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            identity.completed
-                                ? identity.identity.displayName
-                                : 'Add my details',
-                            style: Theme.of(context).textTheme.titleLarge,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (identity.completed) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.location_on_outlined,
-                                  size: 16,
-                                  color: AppColors.muted,
-                                ),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  child: Text(
-                                    identity.identity.cityLabel,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(color: AppColors.muted),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.edit_outlined, color: AppColors.muted),
-                  ],
-                ),
-              ),
-            ),
+          _MeActionCard(
+            accent: identity.completed ? AppColors.rose : AppColors.muted,
+            onTap: () => showIdentityForm(context),
+            leading: _IdentityAvatar(photoUrl: photoUrl),
+            title: identity.completed
+                ? identity.identity.displayName
+                : 'Add my details',
+            subtitle: identity.completed
+                ? identity.identity.cityLabel
+                : 'Name, phone & city',
+            trailing: identity.completed && identity.identity.phoneVerified
+                ? const Icon(Icons.verified, color: AppColors.rose, size: 22)
+                : null,
           ),
           const SizedBox(height: 16),
-          Material(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () {
-                // Empty: skip the quiet "My ads" layer and go straight to post.
-                if (_userHasAnyAd(context)) {
-                  _showMyAdsSheet(context);
-                } else {
-                  _showPostAdPicker(context);
-                }
-              },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-                child: Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 24,
-                      backgroundColor: AppColors.darkCream,
-                      child: Icon(
-                        Icons.campaign_outlined,
-                        color: AppColors.rose,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'My ads',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                  ],
-                ),
+          _MeActionCard(
+            accent: posted.isEmpty ? AppColors.muted : posted.first.color,
+            footerColors: posted.map((domain) => domain.color).toList(growable: false),
+            onTap: () {
+              if (posted.isEmpty) {
+                _showNewPostPicker(context);
+              } else {
+                _showMyPostsSheet(context);
+              }
+            },
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.darkCream,
+              child: Icon(
+                posted.isEmpty ? Icons.campaign_outlined : Icons.check_circle,
+                color: posted.isEmpty ? AppColors.muted : posted.first.color,
               ),
             ),
+            title: 'My posts',
+            subtitle: posted.isEmpty
+                ? 'Add your first post'
+                : '${posted.length} posted',
           ),
         ],
       ),
@@ -1508,14 +1447,146 @@ class MeScreen extends StatelessWidget {
   }
 }
 
-bool _userHasAnyAd(BuildContext context) {
-  final marriage = context.read<ProfileStore>().value != null;
-  final jobs = context.read<JobsProfileStore>().value != null;
-  final rooms = context.read<RoomsOfferStore>().offers.isNotEmpty;
-  final bikes = context.read<BikesOfferStore>().offers.isNotEmpty;
-  final help = context.read<HomeHelpOfferStore>().offers.isNotEmpty;
-  return marriage || jobs || rooms || bikes || help;
+class _IdentityAvatar extends StatelessWidget {
+  const _IdentityAvatar({this.photoUrl});
+
+  final String? photoUrl;
+  static const double _radius = 32;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl?.trim() ?? '';
+    final hasPhoto = url.startsWith('http');
+    if (!hasPhoto) {
+      return CircleAvatar(
+        radius: _radius,
+        backgroundColor: AppColors.darkCream,
+        child: Icon(
+          Icons.person_outline,
+          size: _radius * 0.9,
+          color: AppColors.muted,
+        ),
+      );
+    }
+    return ClipOval(
+      child: SizedBox(
+        width: _radius * 2,
+        height: _radius * 2,
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => CircleAvatar(
+            radius: _radius,
+            backgroundColor: AppColors.darkCream,
+            child: Icon(
+              Icons.person_outline,
+              size: _radius * 0.9,
+              color: AppColors.muted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+class _MeActionCard extends StatelessWidget {
+  const _MeActionCard({
+    required this.accent,
+    required this.onTap,
+    required this.leading,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.footerColors = const <Color>[],
+  });
+
+  final Color accent;
+  final VoidCallback onTap;
+  final Widget leading;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final List<Color> footerColors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: accent, width: 5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 18, 16, 18),
+                child: Row(
+                  children: [
+                    leading,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: Theme.of(context).textTheme.titleLarge,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (subtitle != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle!,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: AppColors.muted),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    ?trailing,
+                  ],
+                ),
+              ),
+              if (footerColors.isNotEmpty)
+                SizedBox(
+                  height: 6,
+                  child: Row(
+                    children: [
+                      for (final color in footerColors)
+                        Expanded(child: ColoredBox(color: color)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+List<DomainPolicy> _postedDomains(BuildContext context) {
+  context.watch<ProfileStore>();
+  context.watch<JobsProfileStore>();
+  context.watch<RoomsOfferStore>();
+  context.watch<BikesOfferStore>();
+  context.watch<HomeHelpOfferStore>();
+  return AppDomains.all
+      .where((domain) => domain.enabled && _domainHasAd(context, domain.id))
+      .toList(growable: false);
+}
+
+bool _userHasAnyAd(BuildContext context) => _postedDomains(context).isNotEmpty;
 
 bool _domainHasAd(BuildContext context, AppDomainId id) {
   switch (id) {
@@ -1532,7 +1603,7 @@ bool _domainHasAd(BuildContext context, AppDomainId id) {
   }
 }
 
-Future<void> _showMyAdsSheet(BuildContext context) {
+Future<void> _showMyPostsSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -1552,7 +1623,7 @@ Future<void> _showMyAdsSheet(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('My ads', style: Theme.of(context).textTheme.titleLarge),
+              Text('My posts', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               ...posted.map(
                 (domain) => _DomainAdRow(
@@ -1570,10 +1641,10 @@ Future<void> _showMyAdsSheet(BuildContext context) {
                     backgroundColor: AppColors.darkCream,
                     child: Icon(Icons.add_circle_outline, color: AppColors.rose),
                   ),
-                  title: const Text('Post an ad'),
+                  title: const Text('New post'),
                   onTap: () {
                     Navigator.pop(context);
-                    _showPostAdPicker(context);
+                    _showNewPostPicker(context);
                   },
                 ),
               if (hasAds) ...[
@@ -1598,7 +1669,7 @@ Future<void> _showMyAdsSheet(BuildContext context) {
   );
 }
 
-Future<void> _showPostAdPicker(BuildContext context) {
+Future<void> _showNewPostPicker(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -1614,7 +1685,7 @@ Future<void> _showPostAdPicker(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Post an ad', style: Theme.of(context).textTheme.titleLarge),
+              Text('New post', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               ...open.map(
                 (domain) => _DomainAdRow(
@@ -2042,7 +2113,7 @@ Future<void> _showMatch(
   context: context,
   builder: (context) => AlertDialog(
     icon: const Icon(Icons.favorite, color: AppColors.rose, size: 42),
-    title: const Text('It is mutual'),
+    title: const Text('Both interested'),
     content: const Text(
       'Verify your phone when you are ready to unlock the private contact card.',
       textAlign: TextAlign.center,
@@ -2077,49 +2148,6 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
               Text(
                 'Settings',
                 style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text('How to use', style: Theme.of(context).textTheme.titleMedium),
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.darkCream,
-                  child: Icon(Icons.swipe, color: AppColors.rose),
-                ),
-                title: Text('Swipe cards'),
-                subtitle: Text('Right = like. Left = skip.'),
-              ),
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.darkCream,
-                  child: Icon(Icons.radio, color: AppColors.rose),
-                ),
-                title: Text('Change world'),
-                subtitle: Text('Hold the radio to change world'),
-              ),
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.darkCream,
-                  child: Icon(Icons.lock_outline, color: AppColors.rose),
-                ),
-                title: Text('Phone stays private'),
-                subtitle: Text('Opens when both like'),
-              ),
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.darkCream,
-                  child: Icon(
-                    Icons.health_and_safety_outlined,
-                    color: AppColors.rose,
-                  ),
-                ),
-                title: Text('Stay safe'),
-                subtitle: Text(
-                  'Badges are self-said. Block or report if worried.',
-                ),
               ),
               const SizedBox(height: 8),
               Text('Language', style: Theme.of(context).textTheme.titleMedium),
@@ -2289,7 +2317,7 @@ Future<void> showIdentityForm(BuildContext context) async {
                     );
                     if (context.mounted) Navigator.pop(context);
                   },
-                  child: const Text('Save identity'),
+                  child: const Text('Save'),
                 ),
               ],
             ),

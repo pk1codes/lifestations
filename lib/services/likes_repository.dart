@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
+import 'action_throttle.dart';
 import 'firebase_bootstrap.dart';
 
 /// Privacy-safe like record with enough public card metadata for the Likes UI.
@@ -28,6 +29,7 @@ enum LikeDirection { outbound, inbound }
 
 class LikesRepository {
   LikesRepository({this.firestore, this.auth});
+  static const ActionThrottleService _throttle = ActionThrottleService();
 
   final FirebaseFirestore? firestore;
   final FirebaseAuth? auth;
@@ -43,6 +45,7 @@ class LikesRepository {
     final card = target ?? snapshot;
     final otherUid = targetUid ?? card?.ownerId;
     if (uid == null || otherUid == null || uid == otherUid) return;
+    await _throttle.claim(ThrottledAction.like);
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final safeSnapshot = _publicSnapshot(card);
     final database = firestore ?? FirebaseFirestore.instance;
@@ -151,7 +154,7 @@ class LikesRepository {
     final title =
         (snapshot['title'] as String?) ??
         (snapshot['headline'] as String?) ??
-        'Liked listing';
+        'Liked post';
     return DiscoveryCardModel(
       id: (snapshot['listingId'] as String?) ?? otherUid,
       domain: domain,
