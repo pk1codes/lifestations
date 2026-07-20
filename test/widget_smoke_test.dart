@@ -58,8 +58,10 @@ void main() {
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();
 
+    // Zero ads: My ads skips the empty layer and opens the post picker.
     await tester.tap(find.text('My ads'));
     await tester.pumpAndSettle();
+    expect(find.text('Post an ad'), findsOneWidget);
     expect(find.text('Jobs'), findsOneWidget);
     expect(find.text('Add ad'), findsNothing);
     expect(find.byIcon(Icons.add_circle_outline), findsWidgets);

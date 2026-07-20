@@ -1470,68 +1470,35 @@ class MeScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => _showMyAdsSheet(context),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-                    child: Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 24,
-                          backgroundColor: AppColors.darkCream,
-                          child: Icon(
-                            Icons.campaign_outlined,
-                            color: AppColors.rose,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'My ads',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                        const Icon(
-                          Icons.chevron_right,
-                          color: AppColors.muted,
-                        ),
-                      ],
+              onTap: () {
+                // Empty: skip the quiet "My ads" layer and go straight to post.
+                if (_userHasAnyAd(context)) {
+                  _showMyAdsSheet(context);
+                } else {
+                  _showPostAdPicker(context);
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 24,
+                      backgroundColor: AppColors.darkCream,
+                      child: Icon(
+                        Icons.campaign_outlined,
+                        color: AppColors.rose,
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    height: 8,
-                    child: Row(
-                      children: [
-                        for (final domain in AppDomains.all)
-                          Expanded(
-                            child: ColoredBox(color: domain.color),
-                          ),
-                      ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'My ads',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-                    child: Row(
-                      children: [
-                        for (final domain in AppDomains.all) ...[
-                          Expanded(
-                            child: CircleAvatar(
-                              radius: 18,
-                              backgroundColor: domain.softColor,
-                              child: Icon(
-                                _domainIcons[domain.id],
-                                color: domain.color,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1542,11 +1509,11 @@ class MeScreen extends StatelessWidget {
 }
 
 bool _userHasAnyAd(BuildContext context) {
-  final marriage = context.watch<ProfileStore>().value != null;
-  final jobs = context.watch<JobsProfileStore>().value != null;
-  final rooms = context.watch<RoomsOfferStore>().offers.isNotEmpty;
-  final bikes = context.watch<BikesOfferStore>().offers.isNotEmpty;
-  final help = context.watch<HomeHelpOfferStore>().offers.isNotEmpty;
+  final marriage = context.read<ProfileStore>().value != null;
+  final jobs = context.read<JobsProfileStore>().value != null;
+  final rooms = context.read<RoomsOfferStore>().offers.isNotEmpty;
+  final bikes = context.read<BikesOfferStore>().offers.isNotEmpty;
+  final help = context.read<HomeHelpOfferStore>().offers.isNotEmpty;
   return marriage || jobs || rooms || bikes || help;
 }
 
@@ -1572,6 +1539,12 @@ Future<void> _showMyAdsSheet(BuildContext context) {
     isScrollControlled: true,
     builder: (context) {
       final hasAds = _userHasAnyAd(context);
+      final posted = AppDomains.all
+          .where((domain) => domain.enabled && _domainHasAd(context, domain.id))
+          .toList(growable: false);
+      final canPostMore = AppDomains.all.any(
+        (domain) => domain.enabled && !_domainHasAd(context, domain.id),
+      );
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -1581,53 +1554,28 @@ Future<void> _showMyAdsSheet(BuildContext context) {
             children: [
               Text('My ads', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              ...AppDomains.all.map((domain) {
-                final hasAd = domain.enabled && _domainHasAd(context, domain.id);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Material(
-                    color: domain.softColor,
-                    borderRadius: BorderRadius.circular(16),
-                    child: ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.white.withValues(alpha: .7),
-                        child: Icon(
-                          _domainIcons[domain.id],
-                          color: domain.color,
-                        ),
-                      ),
-                      title: Text(
-                        domain.label,
-                        style: TextStyle(
-                          color: domain.color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      trailing: !domain.enabled
-                          ? Text(
-                              'Soon',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.muted),
-                            )
-                          : Icon(
-                              hasAd
-                                  ? Icons.check_circle
-                                  : Icons.add_circle_outline,
-                              color: hasAd ? domain.color : AppColors.muted,
-                            ),
-                      onTap: domain.enabled
-                          ? () {
-                              Navigator.pop(context);
-                              showDomainProfileForm(context, domain);
-                            }
-                          : null,
-                    ),
+              ...posted.map(
+                (domain) => _DomainAdRow(
+                  domain: domain,
+                  trailing: Icon(Icons.check_circle, color: domain.color),
+                  onTap: () {
+                    Navigator.pop(context);
+                    showDomainProfileForm(context, domain);
+                  },
+                ),
+              ),
+              if (canPostMore)
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.darkCream,
+                    child: Icon(Icons.add_circle_outline, color: AppColors.rose),
                   ),
-                );
-              }),
+                  title: const Text('Post an ad'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showPostAdPicker(context);
+                  },
+                ),
               if (hasAds) ...[
                 const Divider(height: 24),
                 ListTile(
@@ -1636,7 +1584,6 @@ Future<void> _showMyAdsSheet(BuildContext context) {
                     child: Icon(Icons.trending_up, color: AppColors.rose),
                   ),
                   title: const Text('Get more views'),
-                  trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.pop(context);
                     _showGrowthSheet(context);
@@ -1649,6 +1596,86 @@ Future<void> _showMyAdsSheet(BuildContext context) {
       );
     },
   );
+}
+
+Future<void> _showPostAdPicker(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) {
+      final open = AppDomains.all
+          .where((domain) => domain.enabled && !_domainHasAd(context, domain.id))
+          .toList(growable: false);
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Post an ad', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              ...open.map(
+                (domain) => _DomainAdRow(
+                  domain: domain,
+                  trailing: const Icon(
+                    Icons.add_circle_outline,
+                    color: AppColors.muted,
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    showDomainProfileForm(context, domain);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _DomainAdRow extends StatelessWidget {
+  const _DomainAdRow({
+    required this.domain,
+    required this.trailing,
+    required this.onTap,
+  });
+
+  final DomainPolicy domain;
+  final Widget trailing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: domain.softColor,
+        borderRadius: BorderRadius.circular(16),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          leading: CircleAvatar(
+            backgroundColor: Colors.white.withValues(alpha: .7),
+            child: Icon(_domainIcons[domain.id], color: domain.color),
+          ),
+          title: Text(
+            domain.label,
+            style: TextStyle(
+              color: domain.color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          trailing: trailing,
+          onTap: onTap,
+        ),
+      ),
+    );
+  }
 }
 
 const _domainIcons = <AppDomainId, IconData>{
