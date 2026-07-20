@@ -20,6 +20,7 @@ class MarriageForm extends StatefulWidget {
     this.photoStatus,
     this.photoError,
     this.onAfterSave,
+    this.onSaveSuccess,
     super.key,
   });
   final MarriageProfile? initial;
@@ -32,6 +33,8 @@ class MarriageForm extends StatefulWidget {
   final String? photoStatus;
   final String? photoError;
   final Future<void> Function(MarriageProfile profile)? onAfterSave;
+  /// Called after a successful save instead of popping internally.
+  final VoidCallback? onSaveSuccess;
 
   @override
   State<MarriageForm> createState() => _MarriageFormState();
@@ -321,14 +324,23 @@ class _MarriageFormState extends State<MarriageForm> {
       return;
     }
     final store = context.read<ProfileStore>();
-    final navigator = Navigator.of(context);
     try {
       setState(() => _saveMessage = 'Saving…');
       store.saveLocal(profile);
-      await store.synchronize((value) async {
+      final ok = await store.synchronize((value) async {
         await widget.onAfterSave?.call(value);
       });
-      navigator.pop();
+      if (!ok) {
+        setState(
+          () => _saveMessage = store.syncError ?? 'Could not save. Try again.',
+        );
+        return;
+      }
+      if (widget.onSaveSuccess != null) {
+        widget.onSaveSuccess!();
+      } else if (mounted) {
+        Navigator.of(context).pop();
+      }
     } catch (_) {
       setState(() => _saveMessage = 'Could not save. Try again.');
     }

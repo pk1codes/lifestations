@@ -20,6 +20,7 @@ import '../services/firebase_bootstrap.dart';
 import '../services/form_media_controller.dart';
 import '../services/likes_repository.dart';
 import '../services/listing_publisher.dart';
+import '../services/owned_hydrate.dart';
 import '../services/owned_listing_cache.dart';
 import '../services/owned_posts.dart';
 import '../services/push_service.dart';
@@ -81,6 +82,16 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted) return;
     await likes.hydrateAll();
     await PushService().initialize(uid: uid);
+    if (!mounted) return;
+    await hydrateOwnedListings(
+      ownerId: uid,
+      media: context.read<OwnedListingCache>(),
+      marriage: context.read<ProfileStore>(),
+      jobs: context.read<JobsProfileStore>(),
+      rooms: context.read<RoomsOfferStore>(),
+      bikes: context.read<BikesOfferStore>(),
+      homeHelp: context.read<HomeHelpOfferStore>(),
+    );
   }
 
   @override
@@ -1668,7 +1679,18 @@ String _domainPostSubtitle(BuildContext context, DomainPolicy domain) {
   return '$count of $max · $action';
 }
 
-Future<void> _showMyPostsSheet(BuildContext context) {
+Future<void> _showMyPostsSheet(BuildContext context) async {
+  final uid = _ownerUid(context);
+  await hydrateOwnedListings(
+    ownerId: uid,
+    media: context.read<OwnedListingCache>(),
+    marriage: context.read<ProfileStore>(),
+    jobs: context.read<JobsProfileStore>(),
+    rooms: context.read<RoomsOfferStore>(),
+    bikes: context.read<BikesOfferStore>(),
+    homeHelp: context.read<HomeHelpOfferStore>(),
+  );
+  if (!context.mounted) return;
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -2720,7 +2742,8 @@ Future<void> showDomainProfileForm(
   BuildContext context,
   DomainPolicy domain, {
   OwnedPost? edit,
-}) {
+}) async {
+  final hostMessenger = ScaffoldMessenger.of(context);
   final identity = context.read<IdentityStore>();
   final publisher = context.read<ListingPublisher>();
   final mediaCache = context.read<OwnedListingCache>();
@@ -2729,22 +2752,66 @@ Future<void> showDomainProfileForm(
             ? (FirebaseAuth.instance.currentUser?.uid ?? 'local')
             : 'local')
       : identity.identity.userId;
-  final media = FormMediaController(domain: domain.id, uid: uid);
-  if (edit != null) {
-    media.seedUrls(edit.card.imageUrls);
+
+  OwnedPost? activeEdit = edit;
+  if (activeEdit != null) {
+    final photos = await resolveOwnedPhotoUrls(
+      post: activeEdit,
+      media: mediaCache,
+      ownerId: uid,
+    );
+    if (!context.mounted) return;
+    // Refresh local typed fields from remote public attrs when store is empty.
+    switch (activeEdit.domain) {
+      case AppDomainId.marriage:
+        final store = context.read<ProfileStore>();
+        if (store.value == null) {
+          final profile = marriageFromCard(activeEdit.card);
+          if (profile != null) store.saveLocal(profile);
+        }
+      case AppDomainId.jobs:
+        final store = context.read<JobsProfileStore>();
+        if (store.value == null) {
+          final profile = jobsFromCard(activeEdit.card);
+          if (profile != null) store.saveLocal(profile);
+        }
+      case AppDomainId.rooms:
+      case AppDomainId.bikes:
+      case AppDomainId.homeHelp:
+        break;
+    }
+    activeEdit = OwnedPost(
+      domain: activeEdit.domain,
+      offerIndex: activeEdit.offerIndex,
+      card: DiscoveryCardModel(
+        id: activeEdit.card.id,
+        domain: activeEdit.card.domain,
+        ownerId: activeEdit.card.ownerId,
+        title: activeEdit.card.title,
+        subtitle: activeEdit.card.subtitle,
+        cityId: activeEdit.card.cityId,
+        cityLabel: activeEdit.card.cityLabel,
+        categoryTags: activeEdit.card.categoryTags,
+        imageUrls: photos.isNotEmpty ? photos : activeEdit.card.imageUrls,
+        role: activeEdit.card.role,
+        ageBand: activeEdit.card.ageBand,
+        attributes: activeEdit.card.attributes,
+        verified: activeEdit.card.verified,
+      ),
+    );
   }
-  final editingOffer = edit?.offerIndex != null;
+
+  final media = FormMediaController(domain: domain.id, uid: uid);
+  final editingOffer = activeEdit?.offerIndex != null;
   final offerId = editingOffer
-      ? edit!.card.id
+      ? activeEdit!.card.id
       : '${domain.id.name}_${DateTime.now().millisecondsSinceEpoch}';
-  final requireFace =
-      domain.id == AppDomainId.marriage || domain.id == AppDomainId.jobs;
 
   Future<void> rememberMedia({int? offerIndex}) async {
     final urls = List<String>.from(media.urls);
     if (domain.storageKind == DomainStorageKind.offers) {
       final index = offerIndex ??
-          edit?.offerIndex ??
+          activeEdit?.offerIndex ??
           (switch (domain.id) {
             AppDomainId.rooms =>
               context.read<RoomsOfferStore>().offers.length - 1,
@@ -2761,6 +2828,15 @@ Future<void> showDomainProfileForm(
       await mediaCache.setPhotos(domain.id, urls);
     }
   }
+
+  media.onUrlsChanged = (urls) => rememberMedia(offerIndex: activeEdit?.offerIndex);
+
+  if (activeEdit != null) {
+    media.seedUrls(activeEdit.card.imageUrls);
+  }
+
+  final requireFace =
+      domain.id == AppDomainId.marriage || domain.id == AppDomainId.jobs;
 
   Future<bool> pickPhoto(BuildContext hostContext, int slot) async {
     if (!hostContext.mounted) return false;
@@ -2785,22 +2861,43 @@ Future<void> showDomainProfileForm(
 
   void removePhoto(int slot) => media.removeAt(slot);
 
-  final marriageInitial = edit?.domain == AppDomainId.marriage
+  String publishOwnerId() {
+    if (FirebaseBootstrap.ready) {
+      final authUid = FirebaseAuth.instance.currentUser?.uid;
+      if (authUid != null && authUid.isNotEmpty) return authUid;
+    }
+    final fallback = media.uid;
+    if (fallback.isNotEmpty && fallback != 'local') return fallback;
+    return uid;
+  }
+
+  void finishSaved(BuildContext formContext) {
+    Navigator.of(formContext).pop();
+    hostMessenger.showSnackBar(
+      SnackBar(
+        content: const Text('Saved'),
+        backgroundColor: domain.color,
+      ),
+    );
+  }
+
+  final marriageInitial = activeEdit?.domain == AppDomainId.marriage
       ? context.read<ProfileStore>().value
       : null;
-  final jobsInitial = edit?.domain == AppDomainId.jobs
+  final jobsInitial = activeEdit?.domain == AppDomainId.jobs
       ? context.read<JobsProfileStore>().value
       : null;
-  final roomsInitial = edit != null
-      ? roomsFromOwned(edit, context.read<RoomsOfferStore>())
+  final roomsInitial = activeEdit != null
+      ? roomsFromOwned(activeEdit, context.read<RoomsOfferStore>())
       : null;
-  final bikesInitial = edit != null
-      ? bikesFromOwned(edit, context.read<BikesOfferStore>())
+  final bikesInitial = activeEdit != null
+      ? bikesFromOwned(activeEdit, context.read<BikesOfferStore>())
       : null;
-  final homeHelpInitial = edit != null
-      ? homeHelpFromOwned(edit, context.read<HomeHelpOfferStore>())
+  final homeHelpInitial = activeEdit != null
+      ? homeHelpFromOwned(activeEdit, context.read<HomeHelpOfferStore>())
       : null;
 
+  if (!context.mounted) return;
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -2818,6 +2915,7 @@ Future<void> showDomainProfileForm(
             final busy = media.busySlot;
             final progress = media.uploadProgress;
             Future<bool> onPick(int slot) => pickPhoto(formContext, slot);
+            void onSaved() => finishSaved(formContext);
             final form = switch (domain.id) {
               AppDomainId.marriage => MarriageForm(
                 initial: marriageInitial,
@@ -2829,9 +2927,10 @@ Future<void> showDomainProfileForm(
                 photoError: media.lastError,
                 onPickPhoto: onPick,
                 onRemovePhoto: removePhoto,
+                onSaveSuccess: onSaved,
                 onAfterSave: (profile) async {
                   await publisher.publishMarriage(
-                    ownerId: media.uid,
+                    ownerId: publishOwnerId(),
                     profile: profile,
                     photoUrls: List<String>.from(media.urls),
                   );
@@ -2848,9 +2947,10 @@ Future<void> showDomainProfileForm(
                 photoError: media.lastError,
                 onPickPhoto: onPick,
                 onRemovePhoto: removePhoto,
+                onSaveSuccess: onSaved,
                 onAfterSave: (profile) async {
                   await publisher.publishJobs(
-                    ownerId: media.uid,
+                    ownerId: publishOwnerId(),
                     profile: profile,
                     photoUrls: List<String>.from(media.urls),
                   );
@@ -2859,7 +2959,7 @@ Future<void> showDomainProfileForm(
               ),
               AppDomainId.rooms => RoomsForm(
                 initial: roomsInitial,
-                editIndex: edit?.offerIndex,
+                editIndex: activeEdit?.offerIndex,
                 photoUrls: urls,
                 photoPreviews: previews,
                 busySlot: busy,
@@ -2868,19 +2968,20 @@ Future<void> showDomainProfileForm(
                 photoError: media.lastError,
                 onPickPhoto: onPick,
                 onRemovePhoto: removePhoto,
+                onSaveSuccess: onSaved,
                 onAfterSave: (offer) async {
                   await publisher.publishRooms(
-                    ownerId: media.uid,
+                    ownerId: publishOwnerId(),
                     offer: offer,
                     offerId: offerId,
                     photoUrls: List<String>.from(media.urls),
                   );
-                  await rememberMedia(offerIndex: edit?.offerIndex);
+                  await rememberMedia(offerIndex: activeEdit?.offerIndex);
                 },
               ),
               AppDomainId.bikes => BikesForm(
                 initial: bikesInitial,
-                editIndex: edit?.offerIndex,
+                editIndex: activeEdit?.offerIndex,
                 photoUrls: urls,
                 photoPreviews: previews,
                 busySlot: busy,
@@ -2889,19 +2990,20 @@ Future<void> showDomainProfileForm(
                 photoError: media.lastError,
                 onPickPhoto: onPick,
                 onRemovePhoto: removePhoto,
+                onSaveSuccess: onSaved,
                 onAfterSave: (offer) async {
                   await publisher.publishBikes(
-                    ownerId: media.uid,
+                    ownerId: publishOwnerId(),
                     offer: offer,
                     offerId: offerId,
                     photoUrls: List<String>.from(media.urls),
                   );
-                  await rememberMedia(offerIndex: edit?.offerIndex);
+                  await rememberMedia(offerIndex: activeEdit?.offerIndex);
                 },
               ),
               AppDomainId.homeHelp => HomeHelpForm(
                 initial: homeHelpInitial,
-                editIndex: edit?.offerIndex,
+                editIndex: activeEdit?.offerIndex,
                 photoUrls: urls,
                 photoPreviews: previews,
                 busySlot: busy,
@@ -2910,22 +3012,51 @@ Future<void> showDomainProfileForm(
                 photoError: media.lastError,
                 onPickPhoto: onPick,
                 onRemovePhoto: removePhoto,
+                onSaveSuccess: onSaved,
                 onAfterSave: (offer) async {
                   await publisher.publishHomeHelp(
-                    ownerId: media.uid,
+                    ownerId: publishOwnerId(),
                     offer: offer,
                     offerId: offerId,
                     photoUrls: List<String>.from(media.urls),
                   );
-                  await rememberMedia(offerIndex: edit?.offerIndex);
+                  await rememberMedia(offerIndex: activeEdit?.offerIndex);
                 },
               ),
             };
             return Scaffold(
               backgroundColor: Colors.transparent,
-              body: PrimaryScrollController(
-                controller: scrollController,
-                child: form,
+              body: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+                    child: Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(formContext),
+                          child: const Text('Close'),
+                        ),
+                        const Spacer(),
+                        Text(
+                          domain.label,
+                          style: TextStyle(
+                            color: domain.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        const SizedBox(width: 64),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: PrimaryScrollController(
+                      controller: scrollController,
+                      child: form,
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -2934,3 +3065,4 @@ Future<void> showDomainProfileForm(
     ),
   ).whenComplete(media.dispose);
 }
+

@@ -19,6 +19,7 @@ class JobsForm extends StatefulWidget {
     this.photoStatus,
     this.photoError,
     this.onAfterSave,
+    this.onSaveSuccess,
     super.key,
   });
   final JobsProfile? initial;
@@ -31,6 +32,7 @@ class JobsForm extends StatefulWidget {
   final String? photoStatus;
   final String? photoError;
   final Future<void> Function(JobsProfile profile)? onAfterSave;
+  final VoidCallback? onSaveSuccess;
 
   @override
   State<JobsForm> createState() => _JobsFormState();
@@ -125,10 +127,22 @@ class _JobsFormState extends State<JobsForm> {
           );
           final store = context.read<JobsProfileStore>();
           store.saveLocal(profile);
-          await store.synchronize((value) async {
+          final ok = await store.synchronize((value) async {
             await widget.onAfterSave?.call(value);
           });
-          navigator.pop();
+          if (!ok) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(store.syncError ?? 'Could not save. Try again.'),
+              ),
+            );
+            return;
+          }
+          if (widget.onSaveSuccess != null) {
+            widget.onSaveSuccess!();
+          } else {
+            navigator.pop();
+          }
         },
         child: const Text('Save'),
       ),

@@ -20,6 +20,7 @@ class BikesForm extends StatefulWidget {
     this.photoStatus,
     this.photoError,
     this.onAfterSave,
+    this.onSaveSuccess,
     super.key,
   });
   final BikesOffer? initial;
@@ -33,6 +34,7 @@ class BikesForm extends StatefulWidget {
   final String? photoStatus;
   final String? photoError;
   final Future<void> Function(BikesOffer offer)? onAfterSave;
+  final VoidCallback? onSaveSuccess;
 
   @override
   State<BikesForm> createState() => _BikesFormState();
@@ -276,9 +278,17 @@ class _BikesFormState extends State<BikesForm> {
     try {
       context.read<BikesOfferStore>().upsert(offer, index: widget.editIndex);
       await widget.onAfterSave?.call(offer);
-      navigator.pop();
+      if (widget.onSaveSuccess != null) {
+        widget.onSaveSuccess!();
+      } else {
+        navigator.pop();
+      }
     } on StateError catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not save. Try again.')),
+      );
     }
   }
 }

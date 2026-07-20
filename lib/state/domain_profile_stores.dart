@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,22 +15,35 @@ abstract class LocalFirstStore<T> extends ChangeNotifier {
 
   T? get value => _value;
 
+  @protected
+  void setValue(T? value) {
+    _value = value;
+  }
+
   void saveLocal(T value) {
     _value = value;
     syncError = null;
     notifyListeners();
+    persistLocal(value);
   }
 
-  Future<void> synchronize(Future<void> Function(T value) write) async {
+  /// Override to persist across restarts.
+  @protected
+  void persistLocal(T value) {}
+
+  /// Returns `true` when remote write succeeds.
+  Future<bool> synchronize(Future<void> Function(T value) write) async {
     final current = _value;
-    if (current == null || syncing) return;
+    if (current == null || syncing) return false;
     syncing = true;
     syncError = null;
     notifyListeners();
     try {
       await write(current);
+      return true;
     } catch (_) {
-      syncError = 'Saved locally. Remote sync will retry.';
+      syncError = 'Could not save online. Try again.';
+      return false;
     } finally {
       syncing = false;
       notifyListeners();
@@ -37,17 +51,102 @@ abstract class LocalFirstStore<T> extends ChangeNotifier {
   }
 }
 
-class ProfileStore extends LocalFirstStore<MarriageProfile> {}
+class ProfileStore extends LocalFirstStore<MarriageProfile> {
+  ProfileStore([SharedPreferences? preferences]) : _prefs = preferences {
+    _load();
+  }
 
-class JobsProfileStore extends LocalFirstStore<JobsProfile> {}
+  static const _key = 'owned_marriage_profile_json';
+  final SharedPreferences? _prefs;
+
+  void _load() {
+    final raw = _prefs?.getString(_key);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      setValue(_marriageFromJson(map));
+    } catch (_) {}
+  }
+
+  @override
+  void persistLocal(MarriageProfile value) {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    unawaited(prefs.setString(_key, jsonEncode(_marriageToJson(value))));
+  }
+}
+
+class JobsProfileStore extends LocalFirstStore<JobsProfile> {
+  JobsProfileStore([SharedPreferences? preferences]) : _prefs = preferences {
+    _load();
+  }
+
+  static const _key = 'owned_jobs_profile_json';
+  final SharedPreferences? _prefs;
+
+  void _load() {
+    final raw = _prefs?.getString(_key);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      setValue(
+        JobsProfile(
+          role: map['role'] as String? ?? 'seek',
+          tradeId: map['tradeId'] as String? ?? JobsProfile.trades.first,
+          cityId: map['cityId'] as String? ?? 'mumbai',
+          salaryBand:
+              map['salaryBand'] as String? ?? JobsProfile.salaryBands.first,
+        ),
+      );
+    } catch (_) {}
+  }
+
+  @override
+  void persistLocal(JobsProfile value) {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    unawaited(
+      prefs.setString(
+        _key,
+        jsonEncode({
+          'role': value.role,
+          'tradeId': value.tradeId,
+          'cityId': value.cityId,
+          'salaryBand': value.salaryBand,
+        }),
+      ),
+    );
+  }
+}
 
 abstract class MultiOfferStore<T> extends ChangeNotifier {
-  MultiOfferStore(this.domain);
+  MultiOfferStore(this.domain, {SharedPreferences? preferences})
+    : _prefs = preferences {
+    loadPersisted();
+  }
   final AppDomainId domain;
+  final SharedPreferences? _prefs;
   final List<T> _offers = <T>[];
 
   List<T> get offers => List.unmodifiable(_offers);
   int get limit => AppDomains.byId(domain).maxProfiles;
+
+  @protected
+  SharedPreferences? get prefs => _prefs;
+
+  @protected
+  void loadPersisted() {}
+
+  @protected
+  void persistOffers() {}
+
+  void replaceAll(List<T> offers) {
+    _offers
+      ..clear()
+      ..addAll(offers);
+    notifyListeners();
+    persistOffers();
+  }
 
   void upsert(T offer, {int? index}) {
     if (index != null) {
@@ -57,24 +156,210 @@ abstract class MultiOfferStore<T> extends ChangeNotifier {
       _offers.add(offer);
     }
     notifyListeners();
+    persistOffers();
   }
 
   void removeAt(int index) {
     _offers.removeAt(index);
     notifyListeners();
+    persistOffers();
+  }
+
+  @protected
+  void setOffersForLoad(List<T> values) {
+    _offers
+      ..clear()
+      ..addAll(values);
   }
 }
 
 class RoomsOfferStore extends MultiOfferStore<RoomsOffer> {
-  RoomsOfferStore() : super(AppDomainId.rooms);
+  RoomsOfferStore({SharedPreferences? preferences})
+    : super(AppDomainId.rooms, preferences: preferences);
+
+  static const _key = 'owned_rooms_offers_json';
+
+  @override
+  void loadPersisted() {
+    final raw = prefs?.getStringList(_key);
+    if (raw == null || raw.isEmpty) return;
+    final loaded = <RoomsOffer>[];
+    for (final item in raw) {
+      try {
+        final map = jsonDecode(item) as Map<String, dynamic>;
+        loaded.add(
+          RoomsOffer(
+            type: map['type'] as String? ?? RoomsOffer.types.first,
+            furnishing:
+                map['furnishing'] as String? ??
+                RoomsOffer.furnishingOptions.first,
+            monthlyRent: map['monthlyRent'] as int? ?? RoomsOffer.rentPresets.first,
+            depositMonths: map['depositMonths'] as int? ?? 0,
+            cityId: map['cityId'] as String? ?? 'mumbai',
+            photoCount: map['photoCount'] as int? ?? 2,
+            amenities: List<String>.from(
+              map['amenities'] as List? ?? const <String>[],
+            ),
+            hasAddressProof: map['hasAddressProof'] == true,
+          ),
+        );
+      } catch (_) {}
+    }
+    setOffersForLoad(loaded);
+  }
+
+  @override
+  void persistOffers() {
+    final p = prefs;
+    if (p == null) return;
+    unawaited(
+      p.setStringList(
+        _key,
+        offers
+            .map(
+              (o) => jsonEncode({
+                'type': o.type,
+                'furnishing': o.furnishing,
+                'monthlyRent': o.monthlyRent,
+                'depositMonths': o.depositMonths,
+                'cityId': o.cityId,
+                'photoCount': o.photoCount,
+                'amenities': o.amenities,
+                'hasAddressProof': o.hasAddressProof,
+              }),
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
 }
 
 class BikesOfferStore extends MultiOfferStore<BikesOffer> {
-  BikesOfferStore() : super(AppDomainId.bikes);
+  BikesOfferStore({SharedPreferences? preferences})
+    : super(AppDomainId.bikes, preferences: preferences);
+
+  static const _key = 'owned_bikes_offers_json';
+
+  @override
+  void loadPersisted() {
+    final raw = prefs?.getStringList(_key);
+    if (raw == null || raw.isEmpty) return;
+    final loaded = <BikesOffer>[];
+    for (final item in raw) {
+      try {
+        final map = jsonDecode(item) as Map<String, dynamic>;
+        loaded.add(
+          BikesOffer(
+            type: map['type'] as String? ?? BikesOffer.types.first,
+            transmission:
+                map['transmission'] as String? ??
+                BikesOffer.transmissions.first,
+            make: map['make'] as String? ?? BikesOffer.makes.first,
+            hourlyRent:
+                map['hourlyRent'] as int? ?? BikesOffer.hourlyRentPresets.first,
+            photoCount: map['photoCount'] as int? ?? 4,
+            cityId: map['cityId'] as String? ?? 'mumbai',
+            model: map['model'] as String?,
+            availableWeekdays: List<String>.from(
+              map['availableWeekdays'] as List? ?? BikesOffer.weekdays,
+            ),
+            fromTime: map['fromTime'] as String? ?? '09:00',
+            toTime: map['toTime'] as String? ?? '20:00',
+            hasRc: map['hasRc'] == true,
+            hasInsurance: map['hasInsurance'] == true,
+          ),
+        );
+      } catch (_) {}
+    }
+    setOffersForLoad(loaded);
+  }
+
+  @override
+  void persistOffers() {
+    final p = prefs;
+    if (p == null) return;
+    unawaited(
+      p.setStringList(
+        _key,
+        offers
+            .map(
+              (o) => jsonEncode({
+                'type': o.type,
+                'transmission': o.transmission,
+                'make': o.make,
+                'hourlyRent': o.hourlyRent,
+                'photoCount': o.photoCount,
+                'cityId': o.cityId,
+                'model': o.model,
+                'availableWeekdays': o.availableWeekdays,
+                'fromTime': o.fromTime,
+                'toTime': o.toTime,
+                'hasRc': o.hasRc,
+                'hasInsurance': o.hasInsurance,
+              }),
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
 }
 
 class HomeHelpOfferStore extends MultiOfferStore<HomeHelpOffer> {
-  HomeHelpOfferStore() : super(AppDomainId.homeHelp);
+  HomeHelpOfferStore({SharedPreferences? preferences})
+    : super(AppDomainId.homeHelp, preferences: preferences);
+
+  static const _key = 'owned_home_help_offers_json';
+
+  @override
+  void loadPersisted() {
+    final raw = prefs?.getStringList(_key);
+    if (raw == null || raw.isEmpty) return;
+    final loaded = <HomeHelpOffer>[];
+    for (final item in raw) {
+      try {
+        final map = jsonDecode(item) as Map<String, dynamic>;
+        loaded.add(
+          HomeHelpOffer(
+            role: map['role'] as String? ?? HomeHelpOffer.roles.first,
+            service: map['service'] as String? ?? HomeHelpOffer.services.first,
+            shift: map['shift'] as String? ?? HomeHelpOffer.shifts.first,
+            salaryBand:
+                map['salaryBand'] as String? ?? HomeHelpOffer.salaryBands.first,
+            languages: List<String>.from(
+              map['languages'] as List? ?? const <String>['Hindi'],
+            ),
+            photoCount: map['photoCount'] as int? ?? 0,
+            cityId: map['cityId'] as String? ?? 'mumbai',
+          ),
+        );
+      } catch (_) {}
+    }
+    setOffersForLoad(loaded);
+  }
+
+  @override
+  void persistOffers() {
+    final p = prefs;
+    if (p == null) return;
+    unawaited(
+      p.setStringList(
+        _key,
+        offers
+            .map(
+              (o) => jsonEncode({
+                'role': o.role,
+                'service': o.service,
+                'shift': o.shift,
+                'salaryBand': o.salaryBand,
+                'languages': o.languages,
+                'photoCount': o.photoCount,
+                'cityId': o.cityId,
+              }),
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
 }
 
 class MatchPreferencesStore extends ChangeNotifier {
@@ -148,3 +433,39 @@ class BlockStore extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+Map<String, Object?> _marriageToJson(MarriageProfile value) => {
+  'age': value.age,
+  'gender': value.gender,
+  'seeking': value.seeking,
+  'bio': value.bio,
+  'cityId': value.cityId,
+  'photoCount': value.photoCount,
+  'salaryBand': value.salaryBand,
+  'religion': value.religion,
+  'nativeLanguage': value.nativeLanguage,
+  'maritalStatus': value.maritalStatus,
+  'heightCm': value.heightCm,
+  'education': value.education,
+  'occupation': value.occupation,
+  'diet': value.diet,
+  'community': value.community,
+};
+
+MarriageProfile _marriageFromJson(Map<String, dynamic> map) => MarriageProfile(
+  age: map['age'] as int? ?? 25,
+  gender: map['gender'] as String? ?? 'woman',
+  seeking: map['seeking'] as String? ?? 'man',
+  bio: map['bio'] as String? ?? '',
+  cityId: map['cityId'] as String? ?? 'mumbai',
+  photoCount: map['photoCount'] as int? ?? 1,
+  salaryBand: map['salaryBand'] as String?,
+  religion: map['religion'] as String?,
+  nativeLanguage: map['nativeLanguage'] as String?,
+  maritalStatus: map['maritalStatus'] as String?,
+  heightCm: map['heightCm'] as int?,
+  education: map['education'] as String?,
+  occupation: map['occupation'] as String?,
+  diet: map['diet'] as String?,
+  community: map['community'] as String?,
+);

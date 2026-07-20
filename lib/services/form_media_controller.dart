@@ -42,6 +42,9 @@ class FormMediaController extends ChangeNotifier {
   /// 0.0–1.0 while a slot upload is in flight.
   double? uploadProgress;
 
+  /// Called whenever remote URLs change (upload success or remove).
+  Future<void> Function(List<String> urls)? onUrlsChanged;
+
   /// Prefill remote URLs when editing an existing post (no local previews).
   void seedUrls(List<String> existing) {
     urls
@@ -145,6 +148,7 @@ class FormMediaController extends ChangeNotifier {
         urls.removeLast();
       }
       lastStatus = 'Photo added.';
+      await onUrlsChanged?.call(List<String>.from(urls));
       return true;
     } catch (error) {
       if (previewSet) _clearPreview(slot);
@@ -226,6 +230,11 @@ class FormMediaController extends ChangeNotifier {
     lastError = null;
     lastStatus = 'Photo removed.';
     notifyListeners();
+    unawaited(
+      Future(() async {
+        await onUrlsChanged?.call(List<String>.from(urls));
+      }),
+    );
   }
 
   @override

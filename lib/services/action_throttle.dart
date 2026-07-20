@@ -8,6 +8,10 @@ enum ThrottledAction { like, report, imageFlag, post }
 class ActionThrottleService {
   const ActionThrottleService();
 
+  /// Claims a server rate-limit slot.
+  ///
+  /// Hard-fails only on true quota (`resource-exhausted`). App Check / network
+  /// / config failures fail open so Save still publishes during closed testing.
   Future<void> claim(ThrottledAction action) async {
     if (!FirebaseBootstrap.ready) return;
     try {
@@ -15,13 +19,14 @@ class ActionThrottleService {
           .httpsCallable('claimActionThrottle')
           .call<Map<String, dynamic>>({'action': _name(action)});
     } on FirebaseFunctionsException catch (error) {
-      final message = error.code == 'resource-exhausted'
-          ? 'Too many attempts. Try again later.'
-          : 'Please try again later.';
-      throw StateError(message);
+      if (error.code == 'resource-exhausted') {
+        throw StateError('Too many attempts. Try again later.');
+      }
+      debugPrint(
+        'Action throttle skipped (${error.code}): ${error.message}',
+      );
     } catch (error) {
-      if (kDebugMode) debugPrint('Action throttle skipped: $error');
-      rethrow;
+      debugPrint('Action throttle skipped: $error');
     }
   }
 

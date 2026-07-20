@@ -107,11 +107,17 @@ class FlutMarriageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => IdentityStore(preferences)),
         ChangeNotifierProvider(create: (_) => LikesStore()),
         ChangeNotifierProvider(create: (_) => LocaleController(preferences)),
-        ChangeNotifierProvider(create: (_) => ProfileStore()),
-        ChangeNotifierProvider(create: (_) => JobsProfileStore()),
-        ChangeNotifierProvider(create: (_) => RoomsOfferStore()),
-        ChangeNotifierProvider(create: (_) => BikesOfferStore()),
-        ChangeNotifierProvider(create: (_) => HomeHelpOfferStore()),
+        ChangeNotifierProvider(create: (_) => ProfileStore(preferences)),
+        ChangeNotifierProvider(create: (_) => JobsProfileStore(preferences)),
+        ChangeNotifierProvider(
+          create: (_) => RoomsOfferStore(preferences: preferences),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => BikesOfferStore(preferences: preferences),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => HomeHelpOfferStore(preferences: preferences),
+        ),
         ChangeNotifierProvider(
           create: (_) => OwnedListingCache(preferences),
         ),

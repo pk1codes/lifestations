@@ -24,6 +24,18 @@ abstract interface class DomainRepository {
   });
   Future<void> saveProfile(DiscoveryCardModel profile);
   Future<void> saveOffer(DiscoveryCardModel offer);
+  Future<DiscoveryCardModel?> fetchOwnedProfile({
+    required AppDomainId domain,
+    required String ownerId,
+  });
+  Future<DiscoveryCardModel?> fetchOwnedOffer({
+    required AppDomainId domain,
+    required String offerId,
+  });
+  Future<List<DiscoveryCardModel>> listOwnedOffers({
+    required AppDomainId domain,
+    required String ownerId,
+  });
 }
 
 class FirestoreDomainRepository implements DomainRepository {
@@ -118,6 +130,66 @@ class FirestoreDomainRepository implements DomainRepository {
       'updatedAt': FieldValue.serverTimestamp(),
       'refreshedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<DiscoveryCardModel?> fetchOwnedProfile({
+    required AppDomainId domain,
+    required String ownerId,
+  }) async {
+    if (!FirebaseBootstrap.ready || ownerId.isEmpty) return null;
+    final policy = AppDomains.byId(domain);
+    if (policy.storageKind != DomainStorageKind.profiles) return null;
+    try {
+      final doc = await db.doc('${policy.collection}/$ownerId').get();
+      if (!doc.exists || doc.data() == null) return null;
+      return _fromJson(domain, doc.id, doc.data()!);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<DiscoveryCardModel?> fetchOwnedOffer({
+    required AppDomainId domain,
+    required String offerId,
+  }) async {
+    if (!FirebaseBootstrap.ready || offerId.isEmpty) return null;
+    final policy = AppDomains.byId(domain);
+    if (policy.storageKind != DomainStorageKind.offers) return null;
+    try {
+      final doc = await db.doc('${policy.collection}/$offerId').get();
+      if (!doc.exists || doc.data() == null) return null;
+      return _fromJson(domain, doc.id, doc.data()!);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<List<DiscoveryCardModel>> listOwnedOffers({
+    required AppDomainId domain,
+    required String ownerId,
+  }) async {
+    if (!FirebaseBootstrap.ready || ownerId.isEmpty) {
+      return const <DiscoveryCardModel>[];
+    }
+    final policy = AppDomains.byId(domain);
+    if (policy.storageKind != DomainStorageKind.offers) {
+      return const <DiscoveryCardModel>[];
+    }
+    try {
+      final snap = await db
+          .collection(policy.collection)
+          .where('ownerId', isEqualTo: ownerId)
+          .limit(policy.maxProfiles)
+          .get();
+      return snap.docs
+          .map((doc) => _fromJson(domain, doc.id, doc.data()))
+          .toList(growable: false);
+    } catch (_) {
+      return const <DiscoveryCardModel>[];
+    }
   }
 
   void _assertSafe(DiscoveryCardModel card) {

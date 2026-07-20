@@ -20,6 +20,7 @@ class RoomsForm extends StatefulWidget {
     this.photoStatus,
     this.photoError,
     this.onAfterSave,
+    this.onSaveSuccess,
     super.key,
   });
   final RoomsOffer? initial;
@@ -33,6 +34,7 @@ class RoomsForm extends StatefulWidget {
   final String? photoStatus;
   final String? photoError;
   final Future<void> Function(RoomsOffer offer)? onAfterSave;
+  final VoidCallback? onSaveSuccess;
 
   @override
   State<RoomsForm> createState() => _RoomsFormState();
@@ -149,9 +151,17 @@ class _RoomsFormState extends State<RoomsForm> {
               index: widget.editIndex,
             );
             await widget.onAfterSave?.call(offer);
-            navigator.pop();
+            if (widget.onSaveSuccess != null) {
+              widget.onSaveSuccess!();
+            } else {
+              navigator.pop();
+            }
           } on StateError catch (error) {
             messenger.showSnackBar(SnackBar(content: Text(error.message)));
+          } catch (_) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Could not save. Try again.')),
+            );
           }
         },
         child: const Text('Save'),

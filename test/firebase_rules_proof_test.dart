@@ -134,8 +134,12 @@ void main() {
       expect(storageRules.contains('request.app != null'), isFalse);
     });
 
-    test('callable throttles and unlock enforce App Check', () {
+    test('callable unlock/delete enforce App Check; throttle is auth-only', () {
+      expect(functionsSrc.contains('exports.unlockContact'), isTrue);
+      expect(functionsSrc.contains('exports.deleteAccount'), isTrue);
       expect(functionsSrc.contains('enforceAppCheck: true'), isTrue);
+      expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
+      expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
     });
 
     test('exports and throttle constants present', () {
