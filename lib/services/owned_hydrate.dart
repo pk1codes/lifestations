@@ -24,60 +24,70 @@ Future<void> hydrateOwnedListings({
   }
   final repo = repository ?? FirestoreDomainRepository();
 
-  final marriageCard = await repo.fetchOwnedProfile(
-    domain: AppDomainId.marriage,
-    ownerId: ownerId,
-  );
-  if (marriageCard != null) {
-    if (media.photos(AppDomainId.marriage).isEmpty &&
-        marriageCard.imageUrls.isNotEmpty) {
-      await media.setPhotos(AppDomainId.marriage, marriageCard.imageUrls);
-    }
-    if (marriage.value == null) {
-      final profile = marriageFromCard(marriageCard);
-      if (profile != null) marriage.saveLocal(profile);
-    }
-  }
+  await Future.wait<void>([
+    _hydrateProfile(
+      domain: AppDomainId.marriage,
+      ownerId: ownerId,
+      media: media,
+      store: marriage,
+      repo: repo,
+      fromCard: marriageFromCard,
+    ),
+    _hydrateProfile(
+      domain: AppDomainId.jobs,
+      ownerId: ownerId,
+      media: media,
+      store: jobs,
+      repo: repo,
+      fromCard: jobsFromCard,
+    ),
+    _hydrateOffers(
+      domain: AppDomainId.rooms,
+      ownerId: ownerId,
+      media: media,
+      store: rooms,
+      repo: repo,
+      fromCard: roomsFromCard,
+    ),
+    _hydrateOffers(
+      domain: AppDomainId.bikes,
+      ownerId: ownerId,
+      media: media,
+      store: bikes,
+      repo: repo,
+      fromCard: bikesFromCard,
+    ),
+    _hydrateOffers(
+      domain: AppDomainId.homeHelp,
+      ownerId: ownerId,
+      media: media,
+      store: homeHelp,
+      repo: repo,
+      fromCard: homeHelpFromCard,
+    ),
+  ]);
+}
 
-  final jobsCard = await repo.fetchOwnedProfile(
-    domain: AppDomainId.jobs,
-    ownerId: ownerId,
-  );
-  if (jobsCard != null) {
-    if (media.photos(AppDomainId.jobs).isEmpty &&
-        jobsCard.imageUrls.isNotEmpty) {
-      await media.setPhotos(AppDomainId.jobs, jobsCard.imageUrls);
-    }
-    if (jobs.value == null) {
-      final profile = jobsFromCard(jobsCard);
-      if (profile != null) jobs.saveLocal(profile);
-    }
-  }
+Future<void> _hydrateProfile<T>({
+  required AppDomainId domain,
+  required String ownerId,
+  required OwnedListingCache media,
+  required LocalFirstStore<T> store,
+  required DomainRepository repo,
+  required T? Function(DiscoveryCardModel card) fromCard,
+}) async {
+  // Local photos + profile already present — skip network.
+  if (media.photos(domain).isNotEmpty && store.value != null) return;
 
-  await _hydrateOffers(
-    domain: AppDomainId.rooms,
-    ownerId: ownerId,
-    media: media,
-    store: rooms,
-    repo: repo,
-    fromCard: roomsFromCard,
-  );
-  await _hydrateOffers(
-    domain: AppDomainId.bikes,
-    ownerId: ownerId,
-    media: media,
-    store: bikes,
-    repo: repo,
-    fromCard: bikesFromCard,
-  );
-  await _hydrateOffers(
-    domain: AppDomainId.homeHelp,
-    ownerId: ownerId,
-    media: media,
-    store: homeHelp,
-    repo: repo,
-    fromCard: homeHelpFromCard,
-  );
+  final card = await repo.fetchOwnedProfile(domain: domain, ownerId: ownerId);
+  if (card == null) return;
+  if (media.photos(domain).isEmpty && card.imageUrls.isNotEmpty) {
+    await media.setPhotos(domain, card.imageUrls);
+  }
+  if (store.value == null) {
+    final profile = fromCard(card);
+    if (profile != null) store.saveLocal(profile);
+  }
 }
 
 Future<void> _hydrateOffers<T>({
@@ -89,15 +99,21 @@ Future<void> _hydrateOffers<T>({
   required T? Function(DiscoveryCardModel card) fromCard,
 }) async {
   if (store.offers.isNotEmpty) {
-    // Still backfill missing photo caches for existing local offers.
-    for (var i = 0; i < store.offers.length; i++) {
-      if (media.photos(domain, i).isNotEmpty) continue;
-      final id = media.offerId(domain, i);
-      final card = await repo.fetchOwnedOffer(domain: domain, offerId: id);
-      if (card != null && card.imageUrls.isNotEmpty) {
-        await media.setPhotos(domain, card.imageUrls, index: i);
-      }
-    }
+    // Backfill missing photo caches only (parallel per slot).
+    await Future.wait([
+      for (var i = 0; i < store.offers.length; i++)
+        if (media.photos(domain, i).isEmpty)
+          () async {
+            final id = media.offerId(domain, i);
+            final card = await repo.fetchOwnedOffer(
+              domain: domain,
+              offerId: id,
+            );
+            if (card != null && card.imageUrls.isNotEmpty) {
+              await media.setPhotos(domain, card.imageUrls, index: i);
+            }
+          }(),
+    ]);
     return;
   }
   final cards = await repo.listOwnedOffers(domain: domain, ownerId: ownerId);
@@ -146,8 +162,7 @@ MarriageProfile? marriageFromCard(DiscoveryCardModel card) {
   if (card.domain != AppDomainId.marriage) return null;
   final attrs = card.attributes;
   final gender = attrs['gender'] as String? ?? 'woman';
-  final seeking =
-      attrs['seeking'] as String? ?? card.role ?? 'man';
+  final seeking = attrs['seeking'] as String? ?? card.role ?? 'man';
   final age = _ageFromBand(card.ageBand);
   return MarriageProfile(
     age: age,
@@ -178,7 +193,9 @@ JobsProfile? jobsFromCard(DiscoveryCardModel card) {
       attrs['salaryBand'] as String? ?? JobsProfile.salaryBands.first;
   return JobsProfile(
     role: const {'seek', 'offer'}.contains(role) ? role : 'seek',
-    tradeId: JobsProfile.trades.contains(trade) ? trade : JobsProfile.trades.first,
+    tradeId: JobsProfile.trades.contains(trade)
+        ? trade
+        : JobsProfile.trades.first,
     cityId: card.cityId.isNotEmpty ? card.cityId : 'mumbai',
     salaryBand: JobsProfile.salaryBands.contains(salary)
         ? salary

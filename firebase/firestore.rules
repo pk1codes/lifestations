@@ -146,29 +146,81 @@ service cloud.firestore {
     }
 
     function validMarriageDomainProfile() {
-      return validDomainEnvelope()
-        && validProfile()
-        && request.resource.data.domain == 'marriage';
+      return validDiscoveryListing('marriage')
+        && (
+          !('attributes' in request.resource.data)
+          || (
+            request.resource.data.attributes is map
+            && (
+              !('gender' in request.resource.data.attributes)
+              || request.resource.data.attributes.gender in ['woman', 'man', 'other']
+            )
+            && (
+              !('seeking' in request.resource.data.attributes)
+              || request.resource.data.attributes.seeking in ['woman', 'man', 'everyone']
+            )
+          )
+        );
     }
 
     function validJobsDomainProfile() {
+      return validDiscoveryListing('jobs')
+        && (
+          !('role' in request.resource.data)
+          || request.resource.data.role in ['seek', 'offer']
+        );
+    }
+
+    /// Shape written by ListingPublisher.toPublicJson (+ active/refreshedAt).
+    function validDiscoveryListing(domainId) {
       let d = request.resource.data;
-      return validDomainEnvelope()
-        && d.domain == 'jobs'
-        && d.keys().hasAll(['name', 'bio', 'userId', 'jobsRole'])
-        && d.name is string
-        && d.name.size() >= 2
-        && d.name.size() <= 60
-        && d.bio is string
-        && d.bio.size() >= 4
-        && d.bio.size() <= 120
+      return allowedDomain(domainId)
+        && d.keys().hasAll([
+          'ownerId', 'title', 'cityId', 'cityLabel', 'photoUrls', 'active'
+        ])
+        && d.ownerId == request.auth.uid
+        && (
+          ('domainId' in d && d.domainId == domainId)
+          || ('domain' in d && d.domain == domainId)
+        )
+        && d.title is string
+        && d.title.size() >= 2
+        && d.title.size() <= 120
+        && d.cityId is string
+        && d.cityId.size() >= 2
+        && d.cityId.size() <= 40
+        && d.cityLabel is string
+        && d.cityLabel.size() <= 80
+        && d.photoUrls is list
+        && d.photoUrls.size() <= 8
+        && d.active is bool
         && noPublicContact(d)
-        && d.jobsRole in ['seek', 'offer']
-        && (!('tradeId' in d) || d.tradeId is string)
-        && (!('jobTitle' in d) || (d.jobTitle is string && d.jobTitle.size() <= 60))
-        && (!('salaryBand' in d) || (d.salaryBand is string && d.salaryBand.size() <= 40))
-        && (!('nativeLanguage' in d) || d.nativeLanguage is string)
-        && (!('photos' in d) || (d.photos is list && d.photos.size() <= 3));
+        && (!('subtitle' in d) || (d.subtitle is string && d.subtitle.size() <= 160))
+        && (!('categoryTags' in d) || (d.categoryTags is list && d.categoryTags.size() <= 20))
+        && (!('role' in d) || d.role == null || (d.role is string && d.role.size() <= 40))
+        && (!('ageBand' in d) || d.ageBand == null || (d.ageBand is string && d.ageBand.size() <= 12))
+        && (!('id' in d) || d.id is string)
+        && (!('verified' in d) || d.verified is bool)
+        && (!('refreshedAt' in d) || d.refreshedAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        && (!('body' in d) || (d.body is string && d.body.size() <= 400))
+        && (!('attributes' in d) || (
+            d.attributes is map
+            && !('whatsappNumber' in d.attributes)
+            && !('telegramHandle' in d.attributes)
+            && !('phone' in d.attributes)
+            && !('bio' in d.attributes)
+            && !('name' in d.attributes)
+            && !('displayName' in d.attributes)
+            && !('rcUrl' in d.attributes)
+            && !('insuranceUrl' in d.attributes)
+          ))
+        && !('whatsappNumber' in d)
+        && !('telegramHandle' in d)
+        && !('phone' in d)
+        && !('bio' in d)
+        && !('name' in d)
+        && !('displayName' in d);
     }
 
     function validDomainProfile(domainId) {
@@ -180,40 +232,9 @@ service cloud.firestore {
       let d = request.resource.data;
       return allowedDomain(domainId)
         && domainId in ['rooms', 'bikes', 'home_help']
-        && d.keys().hasAll([
-            'ownerId', 'domain', 'title', 'cityId', 'cityLabel', 'active'
-          ])
-        && d.ownerId == request.auth.uid
-        && d.domain == domainId
-        && d.title is string
-        && d.title.size() >= 2
-        && d.title.size() <= 80
-        && d.cityId is string
-        && d.cityId.size() >= 2
-        && d.cityId.size() <= 40
-        && d.cityLabel is string
-        && d.cityLabel.size() <= 80
-        && d.active is bool
-        && (!('body' in d) || (d.body is string && d.body.size() <= 400))
-        && (!('role' in d) || (d.role is string && d.role.size() <= 20))
-        && (!('categoryTags' in d) || (d.categoryTags is list && d.categoryTags.size() <= 20))
-        && (!('categories' in d) || (d.categories is list && d.categories.size() <= 20))
-        && (!('photos' in d) || (d.photos is list && d.photos.size() <= 8))
-        && (!('photoUrl' in d) || d.photoUrl is string)
-        && (!('photoThumbUrl' in d) || d.photoThumbUrl is string)
-        && (!('photoLargeUrl' in d) || d.photoLargeUrl is string)
-        && (!('attributes' in d) || (
-            d.attributes is map
-            && !('whatsappNumber' in d.attributes)
-            && !('telegramHandle' in d.attributes)
-            && !('phone' in d.attributes)
-            && !('rcUrl' in d.attributes)
-            && !('insuranceUrl' in d.attributes)
-          ))
-        && (!('userId' in d) || d.userId == request.auth.uid)
-        && !('whatsappNumber' in d)
-        && !('telegramHandle' in d)
-        && !('phone' in d);
+        && validDiscoveryListing(domainId)
+        && d.photoUrls.size() <= 8
+        && (!('body' in d) || (d.body is string && d.body.size() <= 400));
     }
 
     function validPublicCard() {

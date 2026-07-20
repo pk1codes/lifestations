@@ -55,14 +55,17 @@ void main() {
 
   group('RULES: offers and likes', () {
     test('offers reject contact and document URL smuggling', () {
-      final offerFn = firestoreRules
-          .split('function validOffer')[1]
-          .split('function validPublicCard')[0];
-      expect(offerFn.contains("!('whatsappNumber' in d)"), isTrue);
-      expect(offerFn.contains("!('telegramHandle' in d)"), isTrue);
-      expect(offerFn.contains("!('rcUrl' in d.attributes)"), isTrue);
-      expect(offerFn.contains("!('insuranceUrl' in d.attributes)"), isTrue);
-      expect(offerFn.contains("!('phone' in d.attributes)"), isTrue);
+      expect(firestoreRules.contains('function validDiscoveryListing'), isTrue);
+      final listing = firestoreRules
+          .split('function validDiscoveryListing')[1]
+          .split('function validDomainProfile')[0];
+      expect(listing.contains("!('whatsappNumber' in d)"), isTrue);
+      expect(listing.contains("!('telegramHandle' in d)"), isTrue);
+      expect(listing.contains("!('rcUrl' in d.attributes)"), isTrue);
+      expect(listing.contains("!('insuranceUrl' in d.attributes)"), isTrue);
+      expect(listing.contains("!('phone' in d.attributes)"), isTrue);
+      expect(listing.contains("'domainId'"), isTrue);
+      expect(listing.contains("'photoUrls'"), isTrue);
     });
 
     test('like snapshots forbid contact fields', () {

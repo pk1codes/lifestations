@@ -35,21 +35,25 @@ class DiscoveryCardModel {
   final bool refreshed;
   final bool promoted;
 
-  Map<String, Object?> toPublicJson() => <String, Object?>{
-    'id': id,
-    'domainId': AppDomains.byId(domain).slug,
-    'ownerId': ownerId,
-    'title': title,
-    'subtitle': subtitle,
-    'cityId': cityId,
-    'cityLabel': cityLabel,
-    'categoryTags': categoryTags,
-    'photoUrls': imageUrls,
-    'role': role,
-    'ageBand': ageBand,
-    'attributes': attributes,
-    'verified': verified,
-  };
+  Map<String, Object?> toPublicJson() {
+    final json = <String, Object?>{
+      'id': id,
+      'domainId': AppDomains.byId(domain).slug,
+      'ownerId': ownerId,
+      'title': title,
+      'subtitle': subtitle,
+      'cityId': cityId,
+      'cityLabel': cityLabel,
+      'categoryTags': categoryTags,
+      'photoUrls': imageUrls,
+      'attributes': attributes,
+      'verified': verified,
+    };
+    // Omit nulls — Firestore keeps null keys, and rules reject non-string role/ageBand.
+    if (role != null) json['role'] = role;
+    if (ageBand != null) json['ageBand'] = ageBand;
+    return json;
+  }
 
   static const forbiddenPublicKeys = <String>{
     'name',

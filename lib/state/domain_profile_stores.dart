@@ -41,14 +41,32 @@ abstract class LocalFirstStore<T> extends ChangeNotifier {
     try {
       await write(current);
       return true;
-    } catch (_) {
-      syncError = 'Could not save online. Try again.';
+    } catch (error) {
+      syncError = _friendlySyncError(error);
+      debugPrint('Remote sync failed: $error');
       return false;
     } finally {
       syncing = false;
       notifyListeners();
     }
   }
+}
+
+String _friendlySyncError(Object error) {
+  final text = '$error'.toLowerCase();
+  if (text.contains('permission-denied') || text.contains('permission_denied')) {
+    return 'Could not save. Check sign-in and try again.';
+  }
+  if (text.contains('resource-exhausted') || text.contains('too many')) {
+    return 'Too many saves. Wait a minute and try again.';
+  }
+  if (text.contains('unavailable') || text.contains('network')) {
+    return 'Network problem. Try again.';
+  }
+  if (text.contains('disallowed') || text.contains('safesearch')) {
+    return 'That content cannot be saved. Change the text and try again.';
+  }
+  return 'Could not save online. Try again.';
 }
 
 class ProfileStore extends LocalFirstStore<MarriageProfile> {

@@ -1680,15 +1680,18 @@ String _domainPostSubtitle(BuildContext context, DomainPolicy domain) {
 }
 
 Future<void> _showMyPostsSheet(BuildContext context) async {
+  // Open immediately from local cache; refresh remote in the background.
   final uid = _ownerUid(context);
-  await hydrateOwnedListings(
-    ownerId: uid,
-    media: context.read<OwnedListingCache>(),
-    marriage: context.read<ProfileStore>(),
-    jobs: context.read<JobsProfileStore>(),
-    rooms: context.read<RoomsOfferStore>(),
-    bikes: context.read<BikesOfferStore>(),
-    homeHelp: context.read<HomeHelpOfferStore>(),
+  unawaited(
+    hydrateOwnedListings(
+      ownerId: uid,
+      media: context.read<OwnedListingCache>(),
+      marriage: context.read<ProfileStore>(),
+      jobs: context.read<JobsProfileStore>(),
+      rooms: context.read<RoomsOfferStore>(),
+      bikes: context.read<BikesOfferStore>(),
+      homeHelp: context.read<HomeHelpOfferStore>(),
+    ),
   );
   if (!context.mounted) return;
   return showModalBottomSheet<void>(

@@ -100,21 +100,14 @@ class FirestoreDomainRepository implements DomainRepository {
       throw ArgumentError('${policy.label} uses offers');
     }
     _assertSafe(profile);
-    final batch = db.batch();
-    final canonical = db.doc('${policy.collection}/${profile.ownerId}');
-    batch.set(canonical, {
+    // Canonical path only — legacy top-level /profiles expects a different
+    // schema and would fail the whole batch if dual-written.
+    // Full replace (no merge) so leftover legacy keys cannot fail rules.
+    await db.doc('${policy.collection}/${profile.ownerId}').set({
       ...profile.toPublicJson(),
       'active': true,
       'refreshedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-    if (profile.domain == AppDomainId.marriage) {
-      batch.set(db.doc('profiles/${profile.ownerId}'), {
-        ...profile.toPublicJson(),
-        'active': true,
-        'refreshedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    }
-    await batch.commit();
+    });
   }
 
   @override
@@ -124,12 +117,13 @@ class FirestoreDomainRepository implements DomainRepository {
       throw ArgumentError('${policy.label} uses profiles');
     }
     _assertSafe(offer);
+    // Full replace so legacy/forbidden keys cannot linger and fail rules.
     await db.doc('${policy.collection}/${offer.id}').set({
       ...offer.toPublicJson(),
       'active': true,
       'updatedAt': FieldValue.serverTimestamp(),
       'refreshedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
   }
 
   @override
