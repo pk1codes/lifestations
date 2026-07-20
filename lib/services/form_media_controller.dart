@@ -59,11 +59,12 @@ class FormMediaController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Always prefer live Auth uid when Firebase is up (rules check path uid).
+  /// Live Auth uid only. Never fall back to a stale identity id for Storage paths.
   String get uid {
     if (FirebaseBootstrap.ready) {
       final authUid = FirebaseAuth.instance.currentUser?.uid;
       if (authUid != null && authUid.isNotEmpty) return authUid;
+      return '';
     }
     final fallback = _uidOverride;
     if (fallback != null && fallback.isNotEmpty) return fallback;
@@ -81,6 +82,7 @@ class FormMediaController extends ChangeNotifier {
     busySlot = slot;
     uploadProgress = 0;
     notifyListeners();
+    var previewSet = false;
     try {
       final file = await _pipeline.pick(source);
       if (file == null) {
@@ -102,24 +104,14 @@ class FormMediaController extends ChangeNotifier {
       final processed = await _pipeline.process(file, policy);
 
       _setPreview(slot, processed.medium);
+      previewSet = true;
       lastStatus = 'Uploading…';
       notifyListeners();
 
-      if (FirebaseBootstrap.ready) {
-        try {
-          await FirebaseAppCheck.instance.getToken();
-        } catch (error) {
-          if (kDebugMode) {
-            debugPrint('App Check token warning: $error');
-          }
-        }
-      }
+      final ownerId = await _ensureUploadUid();
+      if (ownerId == null) return false;
 
-      final ownerId = uid;
-      if (ownerId == 'local' && FirebaseBootstrap.ready) {
-        lastError = 'Sign-in needed before uploading. Close and try again.';
-        return false;
-      }
+      await _warmAppCheck();
 
       void onProgress(double value) {
         uploadProgress = value;
@@ -155,9 +147,11 @@ class FormMediaController extends ChangeNotifier {
       lastStatus = 'Photo added.';
       return true;
     } catch (error) {
+      if (previewSet) _clearPreview(slot);
       lastError =
           '${ImagePipeline.friendlyError(error)} Tap the box to try again.';
-      if (kDebugMode) debugPrint('Photo upload failed: $error');
+      // Always log — release Play builds need this in logcat / Crashlytics.
+      debugPrint('Photo upload failed: $error');
       return false;
     } finally {
       busySlot = null;
@@ -166,11 +160,63 @@ class FormMediaController extends ChangeNotifier {
     }
   }
 
+  /// Ensures a live Firebase Auth session before Storage paths are written.
+  Future<String?> _ensureUploadUid() async {
+    if (!FirebaseBootstrap.ready) {
+      final local = uid;
+      if (local.isEmpty || local == 'local') {
+        lastError = 'Sign-in needed before uploading. Close and try again.';
+        return null;
+      }
+      return local;
+    }
+
+    var user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      try {
+        final cred = await FirebaseAuth.instance.signInAnonymously();
+        user = cred.user;
+      } on FirebaseAuthException catch (error) {
+        debugPrint('Upload sign-in failed: ${error.code}');
+        lastError = error.code == 'admin-restricted-operation'
+            ? 'Sign-in is turned off for this app. Enable Anonymous Auth in Firebase.'
+            : 'Sign-in needed before uploading. Close and try again.';
+        return null;
+      }
+    }
+    final id = user?.uid;
+    if (id == null || id.isEmpty) {
+      lastError = 'Sign-in needed before uploading. Close and try again.';
+      return null;
+    }
+    return id;
+  }
+
+  /// Best-effort App Check warm-up. Token failures are logged; Storage rules
+  /// currently require Auth (App Check is optional during closed testing).
+  Future<void> _warmAppCheck() async {
+    if (!FirebaseBootstrap.ready) return;
+    try {
+      final token = await FirebaseAppCheck.instance.getToken(true);
+      if (token == null || token.isEmpty) {
+        debugPrint('App Check token empty before upload');
+      }
+    } catch (error) {
+      debugPrint('App Check token warning: $error');
+    }
+  }
+
   void _setPreview(int slot, Uint8List bytes) {
     while (previews.length <= slot) {
       previews.add(null);
     }
     previews[slot] = bytes;
+  }
+
+  void _clearPreview(int slot) {
+    if (slot >= 0 && slot < previews.length) {
+      previews[slot] = null;
+    }
   }
 
   void removeAt(int slot) {

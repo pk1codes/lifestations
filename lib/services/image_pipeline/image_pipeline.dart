@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
@@ -157,6 +158,9 @@ class ImagePipeline {
   /// Maps raw plugin/Firebase errors into short user-facing lines.
   static String friendlyError(Object error) {
     final text = '$error'.toLowerCase();
+    final code = error is FirebaseException
+        ? error.code.toLowerCase()
+        : '';
     if (text.contains('one face') || text.contains('portrait must')) {
       return 'Use a clear photo of one face.';
     }
@@ -166,11 +170,17 @@ class ImagePipeline {
     if (text.contains('safesearch')) {
       return 'This photo cannot be used. Try another.';
     }
-    if (text.contains('permission-denied') ||
+    if (code == 'unauthorized' ||
+        code == 'permission-denied' ||
+        text.contains('permission-denied') ||
         text.contains('unauthorized') ||
         text.contains('app check') ||
-        text.contains('firebase_storage')) {
-      return 'Could not upload. Check your connection and try again.';
+        text.contains('app-check')) {
+      return 'Upload blocked. Close the form and try again.';
+    }
+    if (text.contains('firebase_storage') &&
+        (text.contains('retry') || text.contains('canceled'))) {
+      return 'Upload interrupted. Try again.';
     }
     if (text.contains('camera') &&
         (text.contains('permission') || text.contains('access'))) {
@@ -185,7 +195,10 @@ class ImagePipeline {
         text.contains("type 'function'")) {
       return 'Could not prepare photo. Try another image.';
     }
-    if (text.contains('network') || text.contains('socket')) {
+    if (text.contains('network') ||
+        text.contains('socket') ||
+        text.contains('unavailable') ||
+        code == 'unavailable') {
       return 'Network problem. Try again.';
     }
     return 'Could not add photo. Try again.';

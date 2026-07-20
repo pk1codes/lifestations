@@ -4,7 +4,9 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {
-      return request.auth != null && request.app != null;
+      // Auth required. App Check stays on the client for closed testing;
+      // re-add App Check attestation once Play Integrity / reCAPTCHA are verified.
+      return request.auth != null;
     }
 
     function isOwner(uid) {

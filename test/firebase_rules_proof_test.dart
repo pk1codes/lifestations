@@ -126,9 +126,12 @@ void main() {
   });
 
   group('FUNCTIONS: required exports', () {
-    test('signed-in client writes require App Check token', () {
-      expect(firestoreRules.contains('request.app != null'), isTrue);
-      expect(storageRules.contains('request.app != null'), isTrue);
+    test('signed-in client writes require Auth (App Check optional in testing)', () {
+      expect(firestoreRules.contains('request.auth != null'), isTrue);
+      expect(storageRules.contains('request.auth != null'), isTrue);
+      // App Check re-enforcement is deferred until providers are verified.
+      expect(firestoreRules.contains('request.app != null'), isFalse);
+      expect(storageRules.contains('request.app != null'), isFalse);
     });
 
     test('callable throttles and unlock enforce App Check', () {

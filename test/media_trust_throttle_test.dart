@@ -39,7 +39,7 @@ void main() {
     );
     expect(
       ImagePipeline.friendlyError(Exception('firebase_storage/unauthorized')),
-      'Could not upload. Check your connection and try again.',
+      'Upload blocked. Close the form and try again.',
     );
   });
 

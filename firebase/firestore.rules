@@ -5,7 +5,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
-      return request.auth != null && request.app != null;
+      // Auth required. App Check stays on the client for closed testing;
+      // re-add App Check attestation once Play Integrity / reCAPTCHA are verified.
+      return request.auth != null;
     }
 
     function isOwner(uid) {
