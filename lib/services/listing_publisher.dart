@@ -4,6 +4,7 @@ import '../models/domain_profiles.dart';
 import 'action_throttle.dart';
 import 'domain_repository.dart';
 import 'firebase_bootstrap.dart';
+import 'moderation/moderation_service.dart';
 import 'share_card_repository.dart';
 
 const cityLabels = <String, String>{
@@ -161,6 +162,7 @@ class ListingPublisher {
   }
 
   Future<DiscoveryCardModel> _persist(DiscoveryCardModel card) async {
+    _assertTextSafe(card);
     await _throttle.claim(ThrottledAction.post);
     if (FirebaseBootstrap.ready) {
       final policy = AppDomains.byId(card.domain);
@@ -178,5 +180,23 @@ class ListingPublisher {
       await _share.createOrUpdate(card);
     }
     return card;
+  }
+
+  void _assertTextSafe(DiscoveryCardModel card) {
+    const scanner = TextSafetyScanner();
+    final fields = <String>[
+      card.title,
+      card.subtitle,
+      if (card.role != null) card.role!,
+      if (card.ageBand != null) card.ageBand!,
+      ...card.categoryTags,
+      ...card.attributes.values.whereType<String>(),
+    ];
+    for (final value in fields) {
+      final result = scanner.scan(value);
+      if (!result.safe) {
+        throw StateError(result.reason ?? 'Disallowed content');
+      }
+    }
   }
 }

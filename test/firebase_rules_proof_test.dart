@@ -126,6 +126,15 @@ void main() {
   });
 
   group('FUNCTIONS: required exports', () {
+    test('signed-in client writes require App Check token', () {
+      expect(firestoreRules.contains('request.app != null'), isTrue);
+      expect(storageRules.contains('request.app != null'), isTrue);
+    });
+
+    test('callable throttles and unlock enforce App Check', () {
+      expect(functionsSrc.contains('enforceAppCheck: true'), isTrue);
+    });
+
     test('exports and throttle constants present', () {
       expect(functionsSrc.contains('exports.onReportCreated'), isTrue);
       expect(functionsSrc.contains('exports.onImageFlagCreated'), isTrue);

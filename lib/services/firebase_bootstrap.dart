@@ -34,8 +34,12 @@ class FirebaseBootstrap {
         }
       } else {
         await FirebaseAppCheck.instance.activate(
-          providerAndroid: const AndroidPlayIntegrityProvider(),
-          providerApple: const AppleAppAttestProvider(),
+          providerAndroid: kDebugMode
+              ? const AndroidDebugProvider()
+              : const AndroidPlayIntegrityProvider(),
+          providerApple: kDebugMode
+              ? const AppleDebugProvider()
+              : const AppleAppAttestProvider(),
         );
       }
       if (FirebaseAuth.instance.currentUser == null) {

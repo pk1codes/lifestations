@@ -108,7 +108,7 @@ async function claimRateLimit(ref, {now, windowMs, maxHits}) {
 }
 
 /** Server-side feed throttle — pairs with client FeedFetchThrottle. */
-exports.checkFeedThrottle = onCall(async (request) => {
+exports.checkFeedThrottle = onCall({enforceAppCheck: true}, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
@@ -119,7 +119,7 @@ exports.checkFeedThrottle = onCall(async (request) => {
   );
 });
 
-exports.claimActionThrottle = onCall(async (request) => {
+exports.claimActionThrottle = onCall({enforceAppCheck: true}, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
@@ -153,7 +153,7 @@ exports.claimActionThrottle = onCall(async (request) => {
  * Requires non-anonymous auth with phone, plus same-domain mutual likes.
  * Returns only whatsapp/telegram — never logs them.
  */
-exports.unlockContact = onCall(async (request) => {
+exports.unlockContact = onCall({enforceAppCheck: true}, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
@@ -280,7 +280,7 @@ const DOMAIN_SLUGS = ["marriage", "jobs", "rooms", "bikes", "home_help"];
  * blocks, share cards, push tokens, rate limits), then deletes the Auth
  * user. Reports are retained (anonymized reporter) for moderation duty.
  */
-exports.deleteAccount = onCall(async (request) => {
+exports.deleteAccount = onCall({enforceAppCheck: true}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
