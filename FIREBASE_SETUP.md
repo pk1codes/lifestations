@@ -1,4 +1,5 @@
 # Connecting to Firebase & Git
+# Hey from nick
 
 The app runs fully local-first with bundled seeds. Everything below is what makes it
 talk to a real Firebase backend once you have credentials. Nothing here contains
