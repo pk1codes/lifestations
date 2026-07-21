@@ -312,15 +312,8 @@ Future<void> showDomainDial(BuildContext context) async {
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Choose a world',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 4),
-                const Text('Same account. Five worlds.'),
-                const SizedBox(height: 8),
                 Center(
                   child: DomainSphereSelector(
                     selected: controller.selected,

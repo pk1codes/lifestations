@@ -53,21 +53,48 @@ Future<void> main() async {
     }
   }
 
+  Future<void> loadRemoteFeeds() async {
+    if (!FirebaseBootstrap.ready) return;
+    try {
+      await FirebaseBootstrap.ensureSignedIn();
+    } catch (_) {
+      // Stay on local/seed cards until the user can sign in.
+      return;
+    }
+    final engine = ScopedSyncEngine(FirestoreDomainRepository());
+    for (final entry in stores.entries) {
+      final local = entry.value.cards;
+      final merged = await engine.merge(domain: entry.key, local: local);
+      final hasLive = merged.any(
+        (card) =>
+            !card.id.startsWith('demo_') &&
+            !card.ownerId.startsWith('demo_owner_'),
+      );
+      if (hasLive) {
+        // Real profiles won — never keep dummy cards in the same feed.
+        entry.value.load(ScopedSyncEngine.withoutDemos(merged));
+      } else if (FeatureFlags.allowBundledSeeds(remoteFeedEmpty: true)) {
+        entry.value.load(
+          merged.isEmpty ? seeds.forDomain(entry.key) : merged,
+        );
+      } else {
+        entry.value.load(merged);
+      }
+    }
+  }
+
   unawaited(
     FirebaseBootstrap.initialize().then((_) async {
-      if (!FirebaseBootstrap.ready) return;
-      final engine = ScopedSyncEngine(FirestoreDomainRepository());
-      for (final entry in stores.entries) {
-        final local = entry.value.cards;
-        final merged = await engine.merge(domain: entry.key, local: local);
-        if (FeatureFlags.allowBundledSeeds(remoteFeedEmpty: merged.isEmpty)) {
-          entry.value.load(
-            merged.isEmpty ? seeds.forDomain(entry.key) : merged,
-          );
-        } else {
-          entry.value.load(merged);
-        }
-      }
+      await loadRemoteFeeds();
+      // First auth event can be null before IndexedDB restore; reload once
+      // a real session appears so Browse is not stuck on demos.
+      var lastUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      FirebaseAuth.instance.authStateChanges().listen((user) {
+        final uid = user?.uid ?? '';
+        if (uid.isEmpty || uid == lastUid) return;
+        lastUid = uid;
+        unawaited(loadRemoteFeeds());
+      });
       final uid = FirebaseAuth.instance.currentUser?.uid;
       unawaited(PushService().initialize(uid: uid));
       // Likes/identity hydrate from HomeShell once auth + bootstrap are ready.

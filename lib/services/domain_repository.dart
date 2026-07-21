@@ -261,22 +261,37 @@ class ScopedSyncEngine {
   const ScopedSyncEngine(this.repository);
   final DomainRepository repository;
 
+  static bool _isDemo(DiscoveryCardModel card) =>
+      card.id.startsWith('demo_') || card.ownerId.startsWith('demo_owner_');
+
+  /// Pulls the live feed. When remote has cards, demos are dropped entirely.
   Future<List<DiscoveryCardModel>> merge({
     required AppDomainId domain,
     required List<DiscoveryCardModel> local,
   }) async {
     try {
-      final remote = await repository.discover(domain);
-      if (remote.isEmpty) return local;
-      final merged = <String, DiscoveryCardModel>{
-        for (final card in local) card.id: card,
-      };
-      for (final card in remote) {
-        merged[card.id] = card;
+      // Browse rules require auth — wait/restore/anonymous before querying.
+      if (FirebaseBootstrap.ready) {
+        try {
+          await FirebaseBootstrap.ensureSignedIn();
+        } catch (_) {
+          // Fall through; discover will fail closed to local.
+        }
       }
-      return merged.values.toList(growable: false);
+      final remote = await repository.discover(domain);
+      if (remote.isNotEmpty) {
+        return remote;
+      }
+      // Empty remote: keep local only if it isn't just demos we already showed.
+      return local;
     } catch (_) {
       return local;
     }
   }
+
+  /// Drops bundled demo cards (used when a live feed is available).
+  static List<DiscoveryCardModel> withoutDemos(
+    Iterable<DiscoveryCardModel> cards,
+  ) =>
+      cards.where((card) => !_isDemo(card)).toList(growable: false);
 }
