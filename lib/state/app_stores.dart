@@ -223,6 +223,9 @@ class LikesStore extends ChangeNotifier {
       <AppDomainId, List<LikeEntry>>{};
   final Map<AppDomainId, List<LikeEntry>> _inboundEntries =
       <AppDomainId, List<LikeEntry>>{};
+  final Map<AppDomainId, Set<String>> _chatReady = <AppDomainId, Set<String>>{};
+  final List<StreamSubscription<List<LikeEntry>>> _inboundSubs =
+      <StreamSubscription<List<LikeEntry>>>[];
 
   Set<String> outbound(AppDomainId domain) =>
       Set.unmodifiable(_outbound[domain] ?? <String>{});
@@ -235,9 +238,20 @@ class LikesStore extends ChangeNotifier {
       List.unmodifiable(_inboundEntries[domain] ?? const <LikeEntry>[]);
 
   int get outboundCount =>
-      _outbound.values.fold<int>(0, (sum, ids) => sum + ids.length);
+      _outbound.values.fold<int>(0, (total, ids) => total + ids.length);
   int get inboundCount =>
-      _inbound.values.fold<int>(0, (sum, ids) => sum + ids.length);
+      _inbound.values.fold<int>(0, (total, ids) => total + ids.length);
+
+  /// WhatsApp / Telegram icons unlock for mutual pairs (or peer already opened chat).
+  bool chatIconsActive(AppDomainId domain, String otherId) =>
+      isMutual(domain, otherId) ||
+      (_chatReady[domain]?.contains(otherId) ?? false);
+
+  void markChatReady(AppDomainId domain, String otherId) {
+    if (otherId.isEmpty) return;
+    if (!(_chatReady[domain] ??= <String>{}).add(otherId)) return;
+    notifyListeners();
+  }
 
   /// Persists the like online first, then updates local state.
   /// Returns whether the pair is mutual after a successful write.
@@ -268,24 +282,84 @@ class LikesStore extends ChangeNotifier {
         createdAt: DateTime.now(),
       ),
     );
+    if (isMutual(domain, targetId)) {
+      markChatReady(domain, targetId);
+    }
     notifyListeners();
     return isMutual(domain, targetId);
   }
 
-  void receiveLike(AppDomainId domain, String ownerId) {
-    if (!(_inbound[domain] ??= <String>{}).add(ownerId)) return;
+  /// After WhatsApp/Telegram open — unlock chat icons on the other device too.
+  Future<void> signalChatOpened(
+    AppDomainId domain,
+    String otherUid,
+  ) async {
+    markChatReady(domain, otherUid);
+    await _repository.signalChatOpened(domain: domain, otherUid: otherUid);
+  }
+
+  void receiveLike(
+    AppDomainId domain,
+    String fromUid, {
+    DiscoveryCardModel? card,
+    bool peerOpenedChat = false,
+  }) {
+    (_inbound[domain] ??= <String>{}).add(fromUid);
     final entries = _inboundEntries[domain] ??= <LikeEntry>[];
-    entries.removeWhere((entry) => entry.otherUid == ownerId);
+    entries.removeWhere((entry) => entry.otherUid == fromUid);
     entries.insert(
       0,
       LikeEntry(
         domain: domain,
-        otherUid: ownerId,
+        otherUid: fromUid,
         direction: LikeDirection.inbound,
+        card: card,
         createdAt: DateTime.now(),
+        peerOpenedChat: peerOpenedChat,
       ),
     );
+    if (peerOpenedChat || isMutual(domain, fromUid)) {
+      markChatReady(domain, fromUid);
+    }
     notifyListeners();
+  }
+
+  /// Apply an inbound-like FCM payload (public card fields only).
+  void applyInboundPush({
+    required String domainSlug,
+    required String fromUid,
+    String? title,
+    String? subtitle,
+    String? cityLabel,
+    String? photoUrl,
+    String? listingId,
+    bool chatReady = false,
+  }) {
+    if (fromUid.isEmpty) return;
+    final domain = _domainFromSlug(domainSlug);
+    if (domain == null) return;
+    final photos = <String>[
+      if (photoUrl != null && photoUrl.isNotEmpty) photoUrl,
+    ];
+    final card = DiscoveryCardModel(
+      id: (listingId != null && listingId.isNotEmpty) ? listingId : fromUid,
+      domain: domain,
+      ownerId: fromUid,
+      title: (title != null && title.isNotEmpty) ? title : 'Someone',
+      subtitle: subtitle ?? '',
+      cityId: '',
+      cityLabel: cityLabel ?? '',
+      categoryTags: const <String>[],
+      imageUrls: photos,
+    );
+    receiveLike(domain, fromUid, card: card, peerOpenedChat: chatReady);
+  }
+
+  static AppDomainId? _domainFromSlug(String slug) {
+    for (final policy in AppDomains.all) {
+      if (policy.slug == slug) return policy.id;
+    }
+    return null;
   }
 
   bool isMutual(AppDomainId domain, String otherId) =>
@@ -309,6 +383,38 @@ class LikesStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Live inbound for all domains — like-back / peer chat-open unlock icons.
+  void startRealtimeSync() {
+    stopRealtimeSync();
+    for (final domain in AppDomainId.values) {
+      _inboundSubs.add(
+        _repository.watchInbound(domain).listen((entries) {
+          _inboundEntries[domain] = List<LikeEntry>.from(entries);
+          _inbound[domain] = {for (final entry in entries) entry.otherUid};
+          for (final entry in entries) {
+            if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
+              (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
+            }
+          }
+          notifyListeners();
+        }),
+      );
+    }
+  }
+
+  void stopRealtimeSync() {
+    for (final sub in _inboundSubs) {
+      unawaited(sub.cancel());
+    }
+    _inboundSubs.clear();
+  }
+
+  @override
+  void dispose() {
+    stopRealtimeSync();
+    super.dispose();
+  }
+
   Future<void> _loadDomain(AppDomainId domain) async {
     try {
       final outbound = await _repository.loadOutbound(domain);
@@ -317,6 +423,16 @@ class LikesStore extends ChangeNotifier {
       _inboundEntries[domain] = List<LikeEntry>.from(inbound);
       _outbound[domain] = {for (final entry in outbound) entry.otherUid};
       _inbound[domain] = {for (final entry in inbound) entry.otherUid};
+      for (final entry in inbound) {
+        if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
+          (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
+        }
+      }
+      for (final other in _outbound[domain] ?? const <String>{}) {
+        if (isMutual(domain, other)) {
+          (_chatReady[domain] ??= <String>{}).add(other);
+        }
+      }
     } catch (error) {
       // Keep any in-memory likes if a domain load fails.
       debugPrint('Likes hydrate failed for $domain: $error');

@@ -75,10 +75,7 @@ class MediaUploadService {
     if (requireFace) {
       await _faceGate.requireSingleFace(image.large);
     }
-    final search = await _safeSearch.inspect(image.medium);
-    if (!search.safe) {
-      throw StateError('Image failed SafeSearch');
-    }
+    await _requireSafeSearch(image.medium);
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final prefix = 'profile_photos/$uid/$slug/$slot';
     return _putVariants(prefix, image, onProgress: onProgress);
@@ -92,13 +89,45 @@ class MediaUploadService {
     required ProcessedImage image,
     void Function(double progress)? onProgress,
   }) async {
-    final search = await _safeSearch.inspect(image.medium);
-    if (!search.safe) {
-      throw StateError('Image failed SafeSearch');
-    }
+    await _requireSafeSearch(image.medium);
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final prefix = 'media/$uid/$slug/$offerId/$slot';
     return _putVariants(prefix, image, onProgress: onProgress);
+  }
+
+  /// Universal Me-tab identity photo (`profile_photos/{uid}/identity/{slot}`).
+  /// Same Storage write path as domain profiles — no face gate (optional photo).
+  Future<UploadedVariants> uploadIdentitySlot({
+    required String uid,
+    required int slot,
+    required ProcessedImage image,
+    void Function(double progress)? onProgress,
+  }) async {
+    await _requireSafeSearch(image.medium, softFailOutage: true);
+    final prefix = 'profile_photos/$uid/identity/$slot';
+    return _putVariants(prefix, image, onProgress: onProgress);
+  }
+
+  /// Rejects unsafe images. When [softFailOutage] is true, Vision outages
+  /// are skipped so optional uploads (My details) still succeed.
+  Future<void> _requireSafeSearch(
+    Uint8List bytes, {
+    bool softFailOutage = true,
+  }) async {
+    try {
+      final search = await _safeSearch.inspect(bytes);
+      if (!search.safe) {
+        throw StateError('Image failed SafeSearch');
+      }
+    } catch (error) {
+      final text = '$error'.toLowerCase();
+      if (text.contains('failed safesearch')) rethrow;
+      if (softFailOutage) {
+        if (kDebugMode) debugPrint('SafeSearch skipped: $error');
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> uploadVerifyStaging({
@@ -153,13 +182,7 @@ class MediaUploadService {
   }) async {
     final ext = image.extension;
     if (!FirebaseBootstrap.ready) {
-      onProgress?.call(1);
-      return UploadedVariants(
-        thumbUrl: 'local://$prefix/thumb.$ext',
-        mediumUrl: 'local://$prefix/medium.$ext',
-        largeUrl: 'local://$prefix/large.$ext',
-        pathPrefix: prefix,
-      );
+      throw StateError('Not connected. Try again.');
     }
     await clearSlot(prefix);
     final thumb = _db.ref('$prefix/thumb.$ext');

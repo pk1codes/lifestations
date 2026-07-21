@@ -144,8 +144,8 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
               SnackBar(
                 content: Text(
                   _role == 'have'
-                      ? 'Choose a language and add one photo.'
-                      : 'Choose at least one language.',
+                      ? 'Add a photo.'
+                      : 'Choose a language.',
                 ),
               ),
             );

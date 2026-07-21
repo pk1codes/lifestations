@@ -192,12 +192,57 @@ exports.unlockContact = onCall({enforceAppCheck: true}, async (request) => {
   if (whatsappNumber.length < 8) {
     return { found: false };
   }
+  // Best-effort: unlock chat icons on the other device too.
+  try {
+    await notifyPeerChatReady({
+      domainId,
+      fromUid: uid,
+      toUid: targetUid,
+    });
+  } catch (e) {
+    logger.warn("notifyPeerChatReady skipped", e);
+  }
   return {
     found: true,
     whatsappNumber,
     telegramHandle: data.telegramHandle || null,
   };
 });
+
+/** Notify peer that chat was unlocked / opened so their icons activate. */
+async function notifyPeerChatReady({domainId, fromUid, toUid}) {
+  const db = getFirestore();
+  const pushSnap = await db
+    .doc(`users/${toUid}/private/push`)
+    .get();
+  const token = pushSnap.exists ? pushSnap.data()?.fcmToken : null;
+  if (!token) return;
+  try {
+    await getMessaging().send({
+      token,
+      notification: {
+        title: "Chat unlocked",
+        body: "WhatsApp & Telegram are ready on this match",
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "flut_likes_high",
+          priority: "high",
+        },
+      },
+      data: {
+        type: "chat_ready",
+        domain: String(domainId),
+        peerUid: String(fromUid),
+        fromUid: String(fromUid),
+        chatReady: "true",
+      },
+    });
+  } catch (e) {
+    logger.error("chat_ready FCM failed", e);
+  }
+}
 
 /** High-priority FCM when someone likes you (inbound like doc created). */
 
@@ -364,14 +409,46 @@ exports.onInboundLikeCreated = onDocumentCreated(
       return;
     }
 
-    const name =
-      event.data?.data()?.snapshot?.name || "Someone";
+    const likeData = event.data?.data() || {};
+    const fromSnap = likeData.snapshot || {};
+    const targetSnap = likeData.targetSnapshot || {};
+    const title = String(
+      fromSnap.title || fromSnap.headline || "Someone",
+    ).slice(0, 60);
+    const subtitle = String(fromSnap.subtitle || "").slice(0, 120);
+    const cityLabel = String(fromSnap.cityLabel || "").slice(0, 60);
+    const photoUrl = String(
+      fromSnap.photoUrl ||
+        (Array.isArray(fromSnap.photoUrls) ? fromSnap.photoUrls[0] : "") ||
+        "",
+    ).slice(0, 500);
+    const listingId = String(fromSnap.listingId || fromUid).slice(0, 128);
+    const targetTitle = String(
+      targetSnap.title || targetSnap.headline || domainId,
+    ).slice(0, 60);
+    const domainLabels = {
+      marriage: "Marriage",
+      jobs: "Jobs",
+      rooms: "Rooms",
+      bikes: "Bikes",
+      home_help: "Home Help",
+    };
+    const domainLabel = domainLabels[domainId] || domainId;
+
+    // Like-back: owner already liked them → unlock chat icons both sides.
+    const alreadyLiked = await db
+      .doc(`domains/${domainId}/likes/${ownerUid}/outbound/${fromUid}`)
+      .get();
+    const chatReady = alreadyLiked.exists;
+
     try {
       await getMessaging().send({
         token,
         notification: {
-          title: "Liked you",
-          body: `${name} liked your ${domainId} profile`,
+          title: chatReady ? "You can chat now" : "Liked you",
+          body: chatReady
+            ? `${title} liked you back — WhatsApp & Telegram are ready`
+            : `${title} liked your ${domainLabel} post`,
         },
         android: {
           priority: "high",
@@ -384,6 +461,13 @@ exports.onInboundLikeCreated = onDocumentCreated(
           type: "inbound_like",
           domain: String(domainId),
           fromUid: String(fromUid),
+          listingId,
+          title,
+          subtitle,
+          cityLabel,
+          photoUrl,
+          targetTitle,
+          chatReady: chatReady ? "true" : "false",
         },
       });
     } catch (e) {

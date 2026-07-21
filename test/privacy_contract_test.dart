@@ -1,5 +1,6 @@
 import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flut_marriage/models/discovery_card.dart';
+import 'package:flut_marriage/services/likes_repository.dart';
 import 'package:flut_marriage/state/app_stores.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -43,10 +44,10 @@ void main() {
   group('contact unlock', () {
     test(
       'requires same-domain mutual like and verified non-anonymous user',
-      () {
-        final likes = LikesStore()
-          ..like(AppDomainId.jobs, 'other')
-          ..receiveLike(AppDomainId.jobs, 'other');
+      () async {
+        final likes = LikesStore(repository: _OfflineLikesRepository());
+        await likes.like(AppDomainId.jobs, 'other');
+        likes.receiveLike(AppDomainId.jobs, 'other');
         expect(
           likes.canUnlock(
             domain: AppDomainId.jobs,
@@ -98,4 +99,16 @@ void main() {
       isFalse,
     );
   });
+}
+
+/// Skips Firestore so mutual-gate unit tests can seed outbound locally.
+class _OfflineLikesRepository extends LikesRepository {
+  @override
+  Future<void> like({
+    required AppDomainId domain,
+    String? targetUid,
+    DiscoveryCardModel? target,
+    DiscoveryCardModel? snapshot,
+    DiscoveryCardModel? fromCard,
+  }) async {}
 }

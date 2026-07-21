@@ -321,7 +321,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      // Signed-in peers may read public projection (contact stays in private/).
+      allow read: if isSignedIn();
       allow create, update: if isOwner(userId) && validIdentity();
       allow delete: if isOwner(userId);
 

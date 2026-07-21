@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/cities.dart';
+import '../../services/media_urls.dart';
 import '../../theme/app_theme.dart';
+import '../fast_network_image.dart';
 
 export '../../models/cities.dart' show cityLabels, citiesAz;
 
@@ -102,8 +104,9 @@ class PhotoSlotStrip extends StatelessWidget {
     this.uploadProgress,
     this.statusText,
     this.errorText,
-    this.motivation =
-        'No photo → many people pass.',
+    this.motivation = '',
+    this.hint,
+    this.showTitle = true,
     super.key,
   });
 
@@ -120,7 +123,11 @@ class PhotoSlotStrip extends StatelessWidget {
   final double? uploadProgress;
   final String? statusText;
   final String? errorText;
+  /// Optional short line above the slots. Empty = hidden.
   final String motivation;
+  /// Necessity line under motivation. Null = default from min/max; empty = hide.
+  final String? hint;
+  final bool showTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -128,31 +135,40 @@ class PhotoSlotStrip extends StatelessWidget {
     final progressLabel = progress == null
         ? null
         : 'Uploading… ${(progress.clamp(0.0, 1.0) * 100).round()}%';
-    final hint = minimum <= 0
-        ? 'Optional — camera or gallery'
-        : minimum == maximum
-        ? 'Add $minimum — camera or gallery'
-        : 'At least $minimum — camera or gallery';
+    final resolvedHint = hint ??
+        (minimum <= 0
+            ? ''
+            : minimum == maximum
+            ? 'Add $minimum'
+            : 'Add $minimum or more');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Photos', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          motivation,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: accent,
-            fontWeight: FontWeight.w600,
+        if (showTitle) ...[
+          Text('Photos', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+        ],
+        if (motivation.trim().isNotEmpty)
+          Text(
+            motivation,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          hint,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-        ),
-        const SizedBox(height: 10),
+        if (resolvedHint.trim().isNotEmpty) ...[
+          if (motivation.trim().isNotEmpty) const SizedBox(height: 2),
+          Text(
+            resolvedHint,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+          ),
+        ],
+        if (motivation.trim().isNotEmpty || resolvedHint.trim().isNotEmpty)
+          const SizedBox(height: 10)
+        else
+          const SizedBox(height: 4),
         SizedBox(
           height: 92,
           child: ListView.separated(
@@ -370,12 +386,12 @@ class _SlotImage extends StatelessWidget {
     }
     final remote = url ?? '';
     if (remote.startsWith('http://') || remote.startsWith('https://')) {
-      return Image.network(
-        remote,
+      return FastNetworkImage(
+        url: remote,
+        role: FastImageRole.thumb,
         fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        errorBuilder: (_, _, _) => fallback,
+        placeholderColor: AppColors.darkCream,
+        fallback: fallback,
       );
     }
     if (remote.startsWith('local://')) {

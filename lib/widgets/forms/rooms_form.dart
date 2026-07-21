@@ -141,7 +141,7 @@ class _RoomsFormState extends State<RoomsForm> {
           );
           if (!offer.isValid) {
             messenger.showSnackBar(
-              const SnackBar(content: Text('Add at least two room photos.')),
+              const SnackBar(content: Text('Add 2 photos.')),
             );
             return;
           }

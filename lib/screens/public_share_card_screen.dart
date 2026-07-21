@@ -3,8 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../models/app_domain.dart';
 import '../models/public_share_card.dart';
+import '../services/firebase_bootstrap.dart';
+import '../services/media_urls.dart';
 import '../services/share_card_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/fast_network_image.dart';
 
 enum _ShareLoadState { loading, ready, inactive, notFound, error }
 
@@ -36,6 +39,8 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
         setState(() => _state = _ShareLoadState.notFound);
         return;
       }
+      await FirebaseBootstrap.waitUntilReady();
+      if (!mounted) return;
       final repo = context.read<ShareCardRepository>();
       final card = await repo.fetchBySlug(widget.slug);
       if (!mounted) return;
@@ -137,16 +142,16 @@ class _ReadyCard extends StatelessWidget {
           if (card.photoUrl != null)
             AspectRatio(
               aspectRatio: 4 / 3,
-              child: card.photoUrl!.startsWith('http')
-                  ? Image.network(card.photoUrl!, fit: BoxFit.cover)
-                  : Image.asset(
-                      card.photoUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
-                        color: AppColors.darkCream,
-                        child: const Icon(Icons.image_outlined, size: 64),
-                      ),
-                    ),
+              child: FastNetworkImage(
+                url: card.photoUrl!,
+                role: FastImageRole.card,
+                fit: BoxFit.cover,
+                placeholderColor: AppColors.darkCream,
+                fallback: Container(
+                  color: AppColors.darkCream,
+                  child: const Icon(Icons.image_outlined, size: 64),
+                ),
+              ),
             ),
           Padding(
             padding: const EdgeInsets.all(24),

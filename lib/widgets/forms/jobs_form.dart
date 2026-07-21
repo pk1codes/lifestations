@@ -115,7 +115,7 @@ class _JobsFormState extends State<JobsForm> {
           final navigator = Navigator.of(context);
           if (widget.photoUrls.length < _domain.minPhotos) {
             messenger.showSnackBar(
-              const SnackBar(content: Text('Add at least one clear portrait.')),
+              const SnackBar(content: Text('Add a photo.')),
             );
             return;
           }

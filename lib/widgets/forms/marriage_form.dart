@@ -313,7 +313,7 @@ class _MarriageFormState extends State<MarriageForm> {
       diet: _diet,
     );
     if (!profile.isValid) {
-      setState(() => _saveMessage = 'Add at least one photo first.');
+      setState(() => _saveMessage = 'Add a photo.');
       return;
     }
     if (widget.photoUrls.isEmpty) {

@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/discovery_card.dart';
 import '../models/public_share_card.dart';
+import 'media_upload_service.dart';
 import 'share_card_repository.dart';
 
 class ShareService {
@@ -23,7 +24,8 @@ class ShareService {
     if (kIsWeb) {
       return Uri.base.origin;
     }
-    return 'https://flut.local';
+    // Same hosting origin as media CDN so native shares resolve.
+    return mediaCdnOrigin;
   }
 
   String canonicalUrl(String slug) => '$origin/c/$slug';

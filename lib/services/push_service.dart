@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -14,6 +16,10 @@ class PushService {
   }) : _local = local ?? FlutterLocalNotificationsPlugin();
 
   static const channelId = 'flut_likes_high';
+
+  /// App sets this so inbound-like pushes can update LikesStore immediately.
+  static void Function(Map<String, String> data)? onInboundLikeData;
+
   final FirebaseMessaging? messaging;
   final FlutterLocalNotificationsPlugin _local;
   final FirebaseFirestore? firestore;
@@ -71,20 +77,46 @@ class PushService {
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
-      FirebaseMessaging.onMessage.listen(_showForeground);
+      FirebaseMessaging.onMessage.listen(_onForeground);
+      final initial = await _messaging.getInitialMessage();
+      if (initial != null) _handleInboundData(initial.data);
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        _handleInboundData(message.data);
+      });
     } catch (error) {
       if (kDebugMode) debugPrint('PushService skipped: $error');
     }
   }
 
+  void _onForeground(RemoteMessage message) {
+    _handleInboundData(message.data);
+    unawaited(_showForeground(message));
+  }
+
+  void _handleInboundData(Map<String, dynamic> raw) {
+    final type = raw['type']?.toString();
+    if (type != 'inbound_like' && type != 'chat_ready') return;
+    final data = <String, String>{
+      for (final entry in raw.entries)
+        if (entry.value != null) entry.key: '${entry.value}',
+    };
+    onInboundLikeData?.call(data);
+  }
+
   Future<void> _showForeground(RemoteMessage message) async {
     final notification = message.notification;
-    if (notification == null) return;
+    final data = message.data;
+    final title = notification?.title ??
+        (data['type'] == 'inbound_like' ? 'Liked you' : 'Update');
+    final body = notification?.body ??
+        (data['title']?.isNotEmpty == true
+            ? '${data['title']} liked your ${data['domain'] ?? ''} post'
+            : 'Someone is interested in your post');
     // Never include contact details in notification body.
     await _local.show(
-      notification.hashCode,
-      notification.title ?? 'Update',
-      notification.body ?? 'Someone is interested in your post',
+      message.hashCode,
+      title,
+      body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,

@@ -56,7 +56,7 @@ class FormMediaController extends ChangeNotifier {
       ..clear()
       ..addAll(List<Uint8List?>.filled(urls.length, null));
     lastError = null;
-    lastStatus = urls.isEmpty ? null : 'Photos loaded.';
+    lastStatus = null;
     busySlot = null;
     uploadProgress = null;
     notifyListeners();
@@ -79,6 +79,31 @@ class FormMediaController extends ChangeNotifier {
     required bool requireFace,
     required ImageSource source,
     String? offerId,
+  }) => _pickAndUpload(
+    slot: slot,
+    requireFace: requireFace,
+    source: source,
+    offerId: offerId,
+    identity: false,
+  );
+
+  /// My details photo — same pipeline/auth/Storage write as domain posts.
+  Future<bool> pickAndUploadIdentity({
+    required int slot,
+    required ImageSource source,
+  }) => _pickAndUpload(
+    slot: slot,
+    requireFace: false,
+    source: source,
+    identity: true,
+  );
+
+  Future<bool> _pickAndUpload({
+    required int slot,
+    required bool requireFace,
+    required ImageSource source,
+    String? offerId,
+    required bool identity,
   }) async {
     lastError = null;
     lastStatus = null;
@@ -89,7 +114,7 @@ class FormMediaController extends ChangeNotifier {
     try {
       final file = await _pipeline.pick(source);
       if (file == null) {
-        lastStatus = 'No photo selected.';
+        lastStatus = null;
         return false;
       }
 
@@ -101,14 +126,12 @@ class FormMediaController extends ChangeNotifier {
         }
       }
 
-      lastStatus = 'Preparing…';
       notifyListeners();
       final policy = AppDomains.byId(domain);
       final processed = await _pipeline.process(file, policy);
 
       _setPreview(slot, processed.medium);
       previewSet = true;
-      lastStatus = 'Uploading…';
       notifyListeners();
 
       final ownerId = await _ensureUploadUid();
@@ -118,27 +141,36 @@ class FormMediaController extends ChangeNotifier {
 
       void onProgress(double value) {
         uploadProgress = value;
-        lastStatus = 'Uploading… ${(value * 100).round()}%';
         notifyListeners();
       }
 
-      final variants = offerId == null
-          ? await _uploader.uploadProfileSlot(
-              uid: ownerId,
-              domain: domain,
-              slot: slot,
-              image: processed,
-              requireFace: requireFace,
-              onProgress: onProgress,
-            )
-          : await _uploader.uploadOfferSlot(
-              uid: ownerId,
-              domain: domain,
-              offerId: offerId,
-              slot: slot,
-              image: processed,
-              onProgress: onProgress,
-            );
+      final UploadedVariants variants;
+      if (identity) {
+        variants = await _uploader.uploadIdentitySlot(
+          uid: ownerId,
+          slot: slot,
+          image: processed,
+          onProgress: onProgress,
+        );
+      } else if (offerId == null) {
+        variants = await _uploader.uploadProfileSlot(
+          uid: ownerId,
+          domain: domain,
+          slot: slot,
+          image: processed,
+          requireFace: requireFace,
+          onProgress: onProgress,
+        );
+      } else {
+        variants = await _uploader.uploadOfferSlot(
+          uid: ownerId,
+          domain: domain,
+          offerId: offerId,
+          slot: slot,
+          image: processed,
+          onProgress: onProgress,
+        );
+      }
 
       while (urls.length <= slot) {
         urls.add('');
@@ -147,14 +179,12 @@ class FormMediaController extends ChangeNotifier {
       while (urls.isNotEmpty && urls.last.isEmpty) {
         urls.removeLast();
       }
-      lastStatus = 'Photo added.';
+      lastStatus = null;
       await onUrlsChanged?.call(List<String>.from(urls));
       return true;
     } catch (error) {
       if (previewSet) _clearPreview(slot);
-      lastError =
-          '${ImagePipeline.friendlyError(error)} Tap the box to try again.';
-      // Always log — release Play builds need this in logcat / Crashlytics.
+      lastError = ImagePipeline.friendlyError(error);
       debugPrint('Photo upload failed: $error');
       return false;
     } finally {
@@ -167,33 +197,32 @@ class FormMediaController extends ChangeNotifier {
   /// Ensures a live Firebase Auth session before Storage paths are written.
   Future<String?> _ensureUploadUid() async {
     if (!FirebaseBootstrap.ready) {
+      await FirebaseBootstrap.waitUntilReady();
+    }
+    if (!FirebaseBootstrap.ready) {
       final local = uid;
       if (local.isEmpty || local == 'local') {
-        lastError = 'Sign-in needed before uploading. Close and try again.';
+        lastError = 'Sign in needed.';
         return null;
       }
       return local;
     }
 
-    var user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      try {
-        final cred = await FirebaseAuth.instance.signInAnonymously();
-        user = cred.user;
-      } on FirebaseAuthException catch (error) {
-        debugPrint('Upload sign-in failed: ${error.code}');
-        lastError = error.code == 'admin-restricted-operation'
-            ? 'Sign-in is turned off for this app. Enable Anonymous Auth in Firebase.'
-            : 'Sign-in needed before uploading. Close and try again.';
-        return null;
-      }
-    }
-    final id = user?.uid;
-    if (id == null || id.isEmpty) {
-      lastError = 'Sign-in needed before uploading. Close and try again.';
+    final restored = await FirebaseBootstrap.waitForRestoredUser();
+    if (restored != null) return restored.uid;
+
+    try {
+      final user = await FirebaseBootstrap.ensureSignedIn();
+      return user.uid;
+    } on StateError catch (error) {
+      debugPrint('Upload sign-in failed: $error');
+      lastError = 'Sign in needed.';
+      return null;
+    } on FirebaseAuthException catch (error) {
+      debugPrint('Upload sign-in failed: ${error.code}');
+      lastError = 'Sign in needed.';
       return null;
     }
-    return id;
   }
 
   /// Best-effort App Check warm-up. Token failures are logged; Storage rules
@@ -228,7 +257,7 @@ class FormMediaController extends ChangeNotifier {
     if (slot < urls.length) urls.removeAt(slot);
     if (slot < previews.length) previews.removeAt(slot);
     lastError = null;
-    lastStatus = 'Photo removed.';
+    lastStatus = null;
     notifyListeners();
     unawaited(
       Future(() async {

@@ -16,11 +16,18 @@ class FirebaseBootstrap {
   static bool ready = false;
   static Object? initializationError;
   static final Completer<void> _readyCompleter = Completer<void>();
+  static bool _initializeStarted = false;
 
   /// Completes when [initialize] finishes (success or failure).
-  static Future<void> waitUntilReady() => _readyCompleter.future;
+  /// If [initialize] was never called, returns immediately (`ready` stays false).
+  static Future<void> waitUntilReady() {
+    if (_readyCompleter.isCompleted) return _readyCompleter.future;
+    if (!_initializeStarted) return Future<void>.value();
+    return _readyCompleter.future;
+  }
 
   static Future<void> initialize() async {
+    _initializeStarted = true;
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -50,21 +57,10 @@ class FirebaseBootstrap {
         );
         await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
       }
-      // Wait for persisted auth to restore before creating a new anonymous user.
-      // On web refresh, currentUser is briefly null while IndexedDB loads; signing
-      // in too early creates a second uid and orphan likes.
+      // Sync with web auth init (initializeApp already waits for persisted auth).
+      // Do not sign in anonymously here — that can clobber a restored session on
+      // refresh and orphan likes under a previous uid.
       await FirebaseAuth.instance.authStateChanges().first;
-      if (FirebaseAuth.instance.currentUser == null) {
-        try {
-          await FirebaseAuth.instance.signInAnonymously();
-        } on FirebaseAuthException catch (error) {
-          // Anonymous sign-in may be disabled in the console; the app can
-          // still reach Firebase and sign in via phone OTP later.
-          if (kDebugMode) {
-            debugPrint('Anonymous sign-in unavailable: ${error.code}');
-          }
-        }
-      }
       try {
         await FirebaseAnalytics.instance.logAppOpen();
       } catch (_) {}
@@ -87,5 +83,44 @@ class FirebaseBootstrap {
         _readyCompleter.complete();
       }
     }
+  }
+
+  /// Waits for a persisted auth session to restore. Never creates a new user.
+  static Future<User?> waitForRestoredUser({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    final auth = FirebaseAuth.instance;
+    final immediate = auth.currentUser;
+    if (immediate != null) return immediate;
+    try {
+      final restored = await auth
+          .authStateChanges()
+          .where((user) => user != null)
+          .cast<User>()
+          .first
+          .timeout(timeout);
+      return restored;
+    } on TimeoutException {
+      return auth.currentUser;
+    } catch (_) {
+      return auth.currentUser;
+    }
+  }
+
+  /// Prefer a restored session; create anonymous only when the user acts.
+  static Future<User> ensureSignedIn() async {
+    final auth = FirebaseAuth.instance;
+    final restored = await waitForRestoredUser();
+    if (restored != null) return restored;
+    try {
+      final cred = await auth.signInAnonymously();
+      final user = cred.user;
+      if (user != null) return user;
+    } on FirebaseAuthException catch (error) {
+      if (kDebugMode) {
+        debugPrint('Anonymous sign-in unavailable: ${error.code}');
+      }
+    }
+    throw StateError('Sign-in needed before continuing.');
   }
 }

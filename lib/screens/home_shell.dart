@@ -37,7 +37,12 @@ import '../widgets/forms/marriage_form.dart';
 import '../widgets/domain_sphere_selector.dart';
 import '../widgets/forms/rooms_form.dart';
 import '../widgets/forms/photo_source_sheet.dart';
+import '../services/image_prefetch.dart';
+import '../services/media_urls.dart';
+import '../widgets/fast_network_image.dart';
+import '../widgets/onboarding/identity_form_sheet.dart';
 import '../widgets/onboarding/otp_sheet.dart';
+import '../widgets/onboarding/whatsapp_gate_sheet.dart';
 import '../widgets/photo_pager.dart';
 import '../widgets/safety/safety_sheet.dart';
 
@@ -57,6 +62,24 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      PushService.onInboundLikeData = (data) {
+        if (!mounted) return;
+        final likes = context.read<LikesStore>();
+        final chatReady = data['chatReady'] == 'true' ||
+            data['type'] == 'chat_ready';
+        final peer = data['fromUid'] ?? data['peerUid'] ?? '';
+        likes.applyInboundPush(
+          domainSlug: data['domain'] ?? '',
+          fromUid: peer,
+          title: data['title'],
+          subtitle: data['subtitle'],
+          cityLabel: data['cityLabel'],
+          photoUrl: data['photoUrl'],
+          listingId: data['listingId'],
+          chatReady: chatReady,
+        );
+        unawaited(likes.hydrateAll());
+      };
       unawaited(_hydrateSession());
       _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
         if (!mounted) return;
@@ -78,6 +101,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    PushService.onInboundLikeData = null;
     _authSub?.cancel();
     super.dispose();
   }
@@ -85,7 +109,9 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _hydrateSession() async {
     await FirebaseBootstrap.waitUntilReady();
     if (!FirebaseBootstrap.ready || !mounted) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final user = await FirebaseBootstrap.waitForRestoredUser();
+    if (!mounted) return;
+    final uid = user?.uid;
     if (uid == null) return;
     _hydratedUid = uid;
     final identity = context.read<IdentityStore>();
@@ -98,6 +124,7 @@ class _HomeShellState extends State<HomeShell> {
     await blocks.hydrateRemote();
     if (!mounted) return;
     await likes.hydrateAll();
+    likes.startRealtimeSync();
     await PushService().initialize(uid: uid);
     if (!mounted) return;
     await hydrateOwnedListings(
@@ -392,7 +419,10 @@ class DiscoverScreen extends StatelessWidget {
             sliver: SliverList.separated(
               itemCount: cards.length,
               separatorBuilder: (_, _) => const SizedBox(height: 18),
-              itemBuilder: (context, index) => DiscoveryCard(
+              itemBuilder: (context, index) {
+                // User is about to see this card — warm it + the next few.
+                ImagePrefetch.aroundCards(context, cards, focusIndex: index);
+                return DiscoveryCard(
                 card: cards[index],
                 onPass: () => store.action(cards[index].id),
                 onLike: () async {
@@ -400,6 +430,8 @@ class DiscoverScreen extends StatelessWidget {
                   final messenger = ScaffoldMessenger.of(context);
                   final likes = context.read<LikesStore>();
                   try {
+                    final ready = await ensureWhatsAppForAction(context);
+                    if (!ready || !context.mounted) return false;
                     final mutual = await likes.like(
                       domain.id,
                       card.ownerId,
@@ -407,14 +439,17 @@ class DiscoverScreen extends StatelessWidget {
                     );
                     store.action(card.id);
                     if (mutual && context.mounted) _showMatch(context, card);
+                    return true;
                   } catch (error) {
                     final message = error is StateError
                         ? error.message
                         : 'Could not save like. Try again.';
                     messenger.showSnackBar(SnackBar(content: Text(message)));
+                    return false;
                   }
                 },
-              ),
+              );
+              },
             ),
           ),
       ],
@@ -432,7 +467,8 @@ class DiscoveryCard extends StatelessWidget {
 
   final DiscoveryCardModel card;
   final VoidCallback onPass;
-  final VoidCallback onLike;
+  /// Returns true when the like (or gate) succeeded and the card may dismiss.
+  final Future<bool> Function() onLike;
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +489,10 @@ class DiscoveryCard extends StatelessWidget {
         AppColors.muted,
       ),
       confirmDismiss: (direction) async {
-        direction == DismissDirection.startToEnd ? onLike() : onPass();
+        if (direction == DismissDirection.startToEnd) {
+          return onLike();
+        }
+        onPass();
         return true;
       },
       child: Card(
@@ -624,7 +663,7 @@ class DiscoveryCard extends StatelessWidget {
                         color: domainColor,
                         filled: true,
                         compact: true,
-                        onPressed: onLike,
+                        onPressed: () => unawaited(onLike()),
                       ),
                     ],
                   ),
@@ -644,7 +683,9 @@ class DiscoveryCard extends StatelessWidget {
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not create a safe share link.')),
+        const SnackBar(
+          content: Text('Share link is not ready for this post yet.'),
+        ),
       );
     }
   }
@@ -724,14 +765,13 @@ class _BrowsePhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fallback = _SyntheticArtwork(label: label, seed: seed);
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => fallback,
-      );
-    }
-    return Image.asset(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback);
+    return FastNetworkImage(
+      url: url,
+      role: FastImageRole.card,
+      fit: BoxFit.cover,
+      fallback: fallback,
+      placeholderColor: AppColors.darkCream,
+    );
   }
 }
 
@@ -803,35 +843,28 @@ class LikesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final likes = context.watch<LikesStore>();
-    final empty = likes.outboundCount == 0 && likes.inboundCount == 0;
     return _Page(
       title: 'Likes',
-      child: empty
-          ? const _InfoCard(
-              icon: Icons.favorite_outline,
-              title: 'No likes yet',
-              body: 'Tap ♥ on Browse. Your likes show here.',
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _LikesSection(
-                  title: 'I liked',
-                  count: likes.outboundCount,
-                  icon: Icons.favorite,
-                  entriesFor: likes.outboundEntries,
-                  likes: likes,
-                ),
-                const SizedBox(height: 16),
-                _LikesSection(
-                  title: 'Liked me',
-                  count: likes.inboundCount,
-                  icon: Icons.favorite_border,
-                  entriesFor: likes.inboundEntries,
-                  likes: likes,
-                ),
-              ],
-            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _LikesSection(
+            title: 'I liked',
+            count: likes.outboundCount,
+            icon: Icons.favorite,
+            entriesFor: likes.outboundEntries,
+            likes: likes,
+          ),
+          const SizedBox(height: 16),
+          _LikesSection(
+            title: 'Liked me',
+            count: likes.inboundCount,
+            icon: Icons.favorite_border,
+            entriesFor: likes.inboundEntries,
+            likes: likes,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -892,6 +925,16 @@ class _LikesSection extends StatelessWidget {
         else
           ...domainsWithLikes.map((policy) {
             final entries = entriesFor(policy.id);
+            // Warm list thumbs as soon as a domain section is on screen.
+            ImagePrefetch.warmAll(
+              context,
+              entries.map((e) {
+                final urls = e.card?.imageUrls;
+                if (urls == null || urls.isEmpty) return null;
+                return urls.first;
+              }).whereType<String>(),
+              role: FastImageRole.thumb,
+            );
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               clipBehavior: Clip.antiAlias,
@@ -947,7 +990,7 @@ class _LikesSection extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: _LikeRow(
                             entry: entry,
-                            mutual: likes.isMutual(
+                            mutual: likes.chatIconsActive(
                               entry.domain,
                               entry.otherUid,
                             ),
@@ -979,7 +1022,13 @@ class _LikeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final card = entry.card;
-    final title = card?.title ?? 'Liked post';
+    final blank = _isPlaceholderLikeCard(card);
+    final title = blank
+        ? ((card?.title.trim().isNotEmpty ?? false) &&
+                  card!.title != 'Liked post'
+              ? card.title
+              : 'Someone')
+        : (card?.title ?? 'Liked post');
     final city = card?.cityLabel ?? '';
     final photo = card?.imageUrls.isNotEmpty == true
         ? card!.imageUrls.first
@@ -1001,10 +1050,7 @@ class _LikeRow extends StatelessWidget {
                   width: 72,
                   height: 72,
                   child: photo == null
-                      ? _SyntheticArtwork(
-                          label: title,
-                          seed: entry.otherUid.hashCode,
-                        )
+                      ? const _BlankLikeThumb()
                       : Stack(
                           fit: StackFit.expand,
                           children: [
@@ -1036,7 +1082,15 @@ class _LikeRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    if (city.isNotEmpty) ...[
+                    if (blank) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'No listing yet',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ] else if (city.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Row(
                         children: [
@@ -1093,36 +1147,88 @@ class _LikeRow extends StatelessWidget {
   }
 }
 
+bool _isPlaceholderLikeCard(DiscoveryCardModel? card) {
+  if (card == null) return true;
+  final title = card.title.trim();
+  return title.isEmpty ||
+      title == 'Someone' ||
+      title == 'Liked post' ||
+      (card.attributes['identityOnly'] == true);
+}
+
+class _BlankLikeThumb extends StatelessWidget {
+  const _BlankLikeThumb();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.darkCream,
+        border: Border.all(color: AppColors.muted.withValues(alpha: .35)),
+      ),
+      child: const Center(
+        child: Icon(Icons.person_outline, color: AppColors.muted, size: 28),
+      ),
+    );
+  }
+}
+
+class _BlankLikeHero extends StatelessWidget {
+  const _BlankLikeHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: AppColors.darkCream,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_outline, color: AppColors.muted, size: 40),
+            SizedBox(height: 8),
+            Text(
+              'No photos yet',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _LikePhoto extends StatelessWidget {
   const _LikePhoto({
     required this.url,
     required this.label,
     required this.seed,
+    this.role = FastImageRole.thumb,
   });
 
   final String url;
   final String label;
   final int seed;
+  final FastImageRole role;
 
   @override
   Widget build(BuildContext context) {
     final fallback = _SyntheticArtwork(label: label, seed: seed);
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => fallback,
-      );
-    }
-    return Image.asset(
-      url,
+    return FastNetworkImage(
+      url: url,
+      role: role,
       fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => fallback,
+      fallback: fallback,
+      placeholderColor: AppColors.darkCream,
     );
   }
 }
 
 Future<void> _showLikeDetail(BuildContext context, LikeEntry entry) {
+  final photos = entry.card?.imageUrls ?? const <String>[];
+  ImagePrefetch.warmAll(context, photos, role: FastImageRole.detail);
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -1143,8 +1249,51 @@ class _LikeDetailSheet extends StatefulWidget {
 class _LikeDetailSheetState extends State<_LikeDetailSheet> {
   PrivateContact? _contact;
   bool _unlocking = false;
+  bool _likingBack = false;
 
   LikeEntry get entry => widget.entry;
+
+  Future<void> _likeBack() async {
+    if (_likingBack) return;
+    final likes = context.read<LikesStore>();
+    if (likes.isMutual(entry.domain, entry.otherUid)) return;
+    setState(() => _likingBack = true);
+    try {
+      final ready = await ensureWhatsAppForAction(context);
+      if (!ready || !mounted) return;
+      final card = entry.card ??
+          DiscoveryCardModel(
+            id: entry.otherUid,
+            domain: entry.domain,
+            ownerId: entry.otherUid,
+            title: 'Someone',
+            subtitle: '',
+            cityId: '',
+            cityLabel: '',
+            categoryTags: const <String>[],
+            imageUrls: const <String>[],
+          );
+      final mutual = await likes.like(
+        entry.domain,
+        entry.otherUid,
+        snapshot: card,
+      );
+      if (!mounted) return;
+      if (mutual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Both interested — you can chat')),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is StateError
+          ? error.message
+          : 'Could not like back. Try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _likingBack = false);
+    }
+  }
 
   Future<PrivateContact?> _ensureContact() async {
     if (_contact != null) return _contact;
@@ -1152,7 +1301,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final likes = context.read<LikesStore>();
     if (!likes.isMutual(entry.domain, entry.otherUid)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Both must be interested')),
+        const SnackBar(content: Text('Like back first to unlock chat')),
       );
       return null;
     }
@@ -1188,21 +1337,24 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
 
   Future<void> _openWhatsApp() async {
     final contact = await _ensureContact();
-    if (contact == null) return;
+    if (contact == null || !mounted) return;
+    final likes = context.read<LikesStore>();
+    await likes.signalChatOpened(entry.domain, entry.otherUid);
     await ContactService().openWhatsApp(contact.whatsappNumber);
   }
 
   Future<void> _openTelegram() async {
     final contact = await _ensureContact();
-    if (contact == null) return;
+    if (contact == null || !mounted) return;
     final handle = contact.telegramHandle?.trim() ?? '';
     if (handle.isEmpty) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No Telegram yet')),
       );
       return;
     }
+    final likes = context.read<LikesStore>();
+    await likes.signalChatOpened(entry.domain, entry.otherUid);
     await ContactService().openTelegram(handle);
   }
 
@@ -1211,11 +1363,25 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final likes = context.watch<LikesStore>();
     final policy = AppDomains.byId(entry.domain);
     final mutual = likes.isMutual(entry.domain, entry.otherUid);
+    final chatActive = likes.chatIconsActive(entry.domain, entry.otherUid);
+    final alreadyLiked = likes.outbound(entry.domain).contains(entry.otherUid);
+    final inbound = entry.direction == LikeDirection.inbound;
     final card = entry.card;
-    final title = card?.title ?? 'Liked post';
-    final fact = card == null ? '' : cardFactLine(card);
+    final placeholder = _isPlaceholderLikeCard(card);
+    final title = placeholder
+        ? ((card?.title.trim().isNotEmpty ?? false) &&
+                  card!.title != 'Liked post'
+              ? card.title
+              : 'Someone')
+        : (card?.title ?? 'Liked post');
+    final fact = placeholder || card == null ? '' : cardFactLine(card);
     final photos = card?.imageUrls ?? const <String>[];
-    final side = card == null ? null : cardSideMark(card);
+    final side = placeholder || card == null ? null : cardSideMark(card);
+    final statusText = mutual || chatActive
+        ? 'Both interested — chat'
+        : inbound
+        ? 'They liked you — like back to unlock chat'
+        : 'Waiting for them';
 
     return SafeArea(
       child: Padding(
@@ -1274,10 +1440,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: photos.isEmpty
-                      ? _SyntheticArtwork(
-                          label: title,
-                          seed: entry.otherUid.hashCode,
-                        )
+                      ? const _BlankLikeHero()
                       : PhotoGalleryPager(
                           children: photos
                               .map(
@@ -1285,6 +1448,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                                   url: url,
                                   label: title,
                                   seed: entry.otherUid.hashCode,
+                                  role: FastImageRole.detail,
                                 ),
                               )
                               .toList(growable: false),
@@ -1318,6 +1482,15 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
               ],
               const SizedBox(height: 12),
               Text(title, style: Theme.of(context).textTheme.titleLarge),
+              if (placeholder) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'No listing in ${policy.label} yet',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
               if (fact.trim().isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(fact),
@@ -1343,12 +1516,28 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
               ],
               const SizedBox(height: 12),
               Text(
-                mutual ? 'Both interested — chat' : 'Waiting for them',
+                statusText,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: mutual ? CardSideMark.supplyColor : AppColors.muted,
+                  color: chatActive
+                      ? CardSideMark.supplyColor
+                      : AppColors.muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (inbound && !alreadyLiked) ...[
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: _likingBack ? null : _likeBack,
+                  icon: _likingBack
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.favorite),
+                  label: Text(_likingBack ? 'Liking…' : 'Like back'),
+                ),
+              ],
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -1357,8 +1546,8 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                       label: 'WhatsApp',
                       icon: Icons.chat,
                       color: const Color(0xFF25D366),
-                      enabled: mutual && !_unlocking,
-                      locked: !mutual,
+                      enabled: chatActive && !_unlocking,
+                      locked: !chatActive,
                       busy: _unlocking,
                       onPressed: _openWhatsApp,
                     ),
@@ -1369,8 +1558,8 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                       label: 'Telegram',
                       icon: Icons.send,
                       color: const Color(0xFF229ED9),
-                      enabled: mutual && !_unlocking,
-                      locked: !mutual,
+                      enabled: chatActive && !_unlocking,
+                      locked: !chatActive,
                       busy: _unlocking,
                       onPressed: _openTelegram,
                     ),
@@ -1532,10 +1721,12 @@ class _IdentityAvatar extends StatelessWidget {
       child: SizedBox(
         width: _radius * 2,
         height: _radius * 2,
-        child: Image.network(
-          url,
+        child: FastNetworkImage(
+          url: url,
+          role: FastImageRole.thumb,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => CircleAvatar(
+          placeholderColor: AppColors.darkCream,
+          fallback: CircleAvatar(
             radius: _radius,
             backgroundColor: AppColors.darkCream,
             child: Icon(
@@ -1773,7 +1964,7 @@ Future<void> _showMyPostsSheet(BuildContext context) async {
                             child: _OwnedPostRow(
                               post: post,
                               onOpen: () =>
-                                  _showOwnedPostDetail(sheetContext, post),
+                                  _showOwnedPostDetail(context, post),
                             ),
                           ),
                         )
@@ -1793,6 +1984,7 @@ Future<void> _showMyPostsSheet(BuildContext context) async {
                   title: Text(posts.isEmpty ? 'New post' : 'Add another'),
                   onTap: () {
                     Navigator.pop(sheetContext);
+                    // Host Me context stays mounted after My posts closes.
                     _showNewPostPicker(context);
                   },
                 ),
@@ -1819,14 +2011,14 @@ Future<void> _showMyPostsSheet(BuildContext context) async {
   );
 }
 
-Future<void> _showOwnedPostDetail(BuildContext context, OwnedPost post) {
+Future<void> _showOwnedPostDetail(BuildContext hostContext, OwnedPost post) {
   return showModalBottomSheet<void>(
-    context: context,
+    context: hostContext,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (sheetContext) => _OwnedPostDetailSheet(
       post: post,
-      hostContext: context,
+      hostContext: hostContext,
     ),
   );
 }
@@ -2049,6 +2241,7 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
                                       url: url,
                                       label: title,
                                       seed: card.id.hashCode,
+                                      role: FastImageRole.detail,
                                     ),
                                   )
                                   .toList(growable: false),
@@ -2225,17 +2418,17 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
   }
 }
 
-Future<void> _showNewPostPicker(BuildContext context) {
+Future<void> _showNewPostPicker(BuildContext hostContext) {
   return showModalBottomSheet<void>(
-    context: context,
+    context: hostContext,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (context) {
-      _watchPostStores(context);
+    builder: (sheetContext) {
+      _watchPostStores(sheetContext);
       final open = AppDomains.all
           .where(
             (domain) =>
-                domain.enabled && _domainCanAddPost(context, domain.id),
+                domain.enabled && _domainCanAddPost(sheetContext, domain.id),
           )
           .toList(growable: false);
       return SafeArea(
@@ -2245,12 +2438,15 @@ Future<void> _showNewPostPicker(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('New post', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                'New post',
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
               const SizedBox(height: 8),
               if (open.isEmpty)
                 Text(
                   'All post slots are full.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
                     color: AppColors.muted,
                   ),
                 )
@@ -2258,14 +2454,15 @@ Future<void> _showNewPostPicker(BuildContext context) {
                 ...open.map(
                   (domain) => _DomainAdRow(
                     domain: domain,
-                    subtitle: _domainPostSubtitle(context, domain),
+                    subtitle: _domainPostSubtitle(sheetContext, domain),
                     trailing: const Icon(
                       Icons.add_circle_outline,
                       color: AppColors.muted,
                     ),
                     onTap: () {
-                      Navigator.pop(context);
-                      showDomainProfileForm(context, domain);
+                      Navigator.pop(sheetContext);
+                      // Must use host (Me) context — sheet context is disposed after pop.
+                      showDomainProfileForm(hostContext, domain);
                     },
                   ),
                 ),
@@ -2500,41 +2697,6 @@ class _Page extends StatelessWidget {
         sliver: SliverToBoxAdapter(child: child),
       ),
     ],
-  );
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppColors.rose),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(body),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
   );
 }
 
@@ -2781,138 +2943,13 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
   },
 );
 
-Future<void> showIdentityForm(BuildContext context) async {
-  final store = context.read<IdentityStore>();
-  final current = store.identity;
-  final name = TextEditingController(text: current.displayName);
-  final phone = TextEditingController(text: current.whatsappNumber);
-  String city = current.cityId.isEmpty ? 'mumbai' : current.cityId;
-  String language = current.nativeLanguage.isEmpty
-      ? 'Hindi'
-      : current.nativeLanguage;
-  final key = GlobalKey<FormState>();
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          0,
-          20,
-          MediaQuery.viewInsetsOf(context).bottom + 24,
-        ),
-        child: Form(
-          key: key,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'My details',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  validator: (value) => (value?.trim().length ?? 0) < 2
-                      ? 'Enter at least 2 characters'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: phone,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'WhatsApp number',
-                  ),
-                  validator: (value) =>
-                      (value ?? '').replaceAll(RegExp(r'\D'), '').length < 8
-                      ? 'Enter at least 8 digits'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: city,
-                  decoration: const InputDecoration(labelText: 'City'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'mumbai',
-                      child: Text('Mumbai & MMR'),
-                    ),
-                    DropdownMenuItem(value: 'delhi', child: Text('Delhi NCR')),
-                    DropdownMenuItem(
-                      value: 'bengaluru',
-                      child: Text('Bengaluru'),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => city = value!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: language,
-                  decoration: const InputDecoration(
-                    labelText: 'Native language',
-                  ),
-                  items:
-                      const [
-                            'Hindi',
-                            'English',
-                            'Marathi',
-                            'Tamil',
-                            'Telugu',
-                            'Kannada',
-                          ]
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(value),
-                            ),
-                          )
-                          .toList(),
-                  onChanged: (value) => setState(() => language = value!),
-                ),
-                const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: () async {
-                    if (!key.currentState!.validate()) return;
-                    const labels = {
-                      'mumbai': 'Mumbai & MMR',
-                      'delhi': 'Delhi NCR',
-                      'bengaluru': 'Bengaluru',
-                    };
-                    await store.save(
-                      current.copyWith(
-                        displayName: name.text,
-                        whatsappNumber: phone.text,
-                        cityId: city,
-                        cityLabel: labels[city],
-                        nativeLanguage: language,
-                      ),
-                    );
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-  name.dispose();
-  phone.dispose();
-}
-
 Future<void> showDomainProfileForm(
   BuildContext context,
   DomainPolicy domain, {
   OwnedPost? edit,
 }) async {
+  final ready = await ensureWhatsAppForAction(context);
+  if (!ready || !context.mounted) return;
   final hostMessenger = ScaffoldMessenger.of(context);
   final identity = context.read<IdentityStore>();
   final publisher = context.read<ListingPublisher>();

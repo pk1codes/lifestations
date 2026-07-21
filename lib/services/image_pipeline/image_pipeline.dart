@@ -165,10 +165,10 @@ class ImagePipeline {
       return 'Use a clear photo of one face.';
     }
     if (text.contains('too large') || text.contains('5 mib')) {
-      return 'Photo is too large. Choose a smaller one.';
+      return 'Photo is too large.';
     }
     if (text.contains('safesearch')) {
-      return 'This photo cannot be used. Try another.';
+      return 'Try another photo.';
     }
     if (code == 'unauthorized' ||
         code == 'permission-denied' ||
@@ -176,24 +176,29 @@ class ImagePipeline {
         text.contains('unauthorized') ||
         text.contains('app check') ||
         text.contains('app-check')) {
-      return 'Upload blocked. Close the form and try again.';
+      return 'Upload blocked. Try again.';
+    }
+    if (text.contains('not connected') ||
+        text.contains('sign-in needed') ||
+        text.contains('sign in needed')) {
+      return 'Not ready. Try again.';
     }
     if (text.contains('firebase_storage') &&
         (text.contains('retry') || text.contains('canceled'))) {
-      return 'Upload interrupted. Try again.';
+      return 'Upload stopped. Try again.';
     }
     if (text.contains('camera') &&
         (text.contains('permission') || text.contains('access'))) {
-      return 'Allow camera access to take a photo.';
+      return 'Allow camera access.';
     }
     if (text.contains('photo') && text.contains('permission')) {
-      return 'Allow photo access to choose a picture.';
+      return 'Allow photo access.';
     }
     if (text.contains('pica') ||
         text.contains('compress') ||
         text.contains('prepare photo') ||
         text.contains("type 'function'")) {
-      return 'Could not prepare photo. Try another image.';
+      return 'Try another photo.';
     }
     if (text.contains('network') ||
         text.contains('socket') ||
@@ -201,6 +206,6 @@ class ImagePipeline {
         code == 'unavailable') {
       return 'Network problem. Try again.';
     }
-    return 'Could not add photo. Try again.';
+    return 'Could not add photo.';
   }
 }

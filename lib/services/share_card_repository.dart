@@ -35,9 +35,23 @@ class ShareCardRepository {
   Future<PublicShareCard> createOrUpdate(DiscoveryCardModel card) async {
     final sourceKey = '${card.ownerId}/${card.id}';
     var existingSlug = _sourceToSlug[sourceKey];
-    final uid = FirebaseBootstrap.ready
-        ? FirebaseAuth.instance.currentUser?.uid
-        : null;
+    // Cold start: currentUser may still be null even for the listing owner.
+    // Restore / ensure auth before deciding owner vs ephemeral share.
+    // Only touch Auth when bootstrap succeeded (avoids hanging unit tests).
+    String? uid;
+    if (FirebaseBootstrap.ready) {
+      uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) {
+        uid = (await FirebaseBootstrap.waitForRestoredUser())?.uid;
+      }
+      if (uid == null || uid.isEmpty) {
+        try {
+          uid = (await FirebaseBootstrap.ensureSignedIn()).uid;
+        } catch (_) {
+          uid = null;
+        }
+      }
+    }
     final isOwner = uid != null && uid == card.ownerId;
 
     if (FirebaseBootstrap.ready && isOwner && existingSlug == null) {
@@ -74,14 +88,8 @@ class ShareCardRepository {
           return parsed;
         }
       }
-      // Fallback: ephemeral redacted projection for share sheet text only.
-      final ephemeral = PublicShareCard.fromDiscovery(
-        card,
-        slug: existingSlug ?? _newSlug(card.domain),
-      );
-      _memory[ephemeral.slug] = ephemeral;
-      _sourceToSlug[sourceKey] = ephemeral.slug;
-      return ephemeral;
+      // Never invent a slug that is not in Firestore — recipients would 404.
+      throw StateError('This post has no public share link yet.');
     }
 
     final slug = existingSlug ?? _newSlug(card.domain);
@@ -98,6 +106,7 @@ class ShareCardRepository {
     if (!PublicShareCard.isValidSlug(slug)) return null;
     final cached = _memory[slug];
     if (cached != null) return cached;
+    await FirebaseBootstrap.waitUntilReady();
     final domain = PublicShareCard.domainFromSlug(slug);
     if (domain == null || !FirebaseBootstrap.ready) return null;
     final domainSlug = domain == AppDomainId.homeHelp

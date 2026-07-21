@@ -267,9 +267,7 @@ class _BikesFormState extends State<BikesForm> {
     );
     if (!offer.isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Select days and add exactly four vehicle photos.'),
-        ),
+        const SnackBar(content: Text('Add 4 photos.')),
       );
       return;
     }

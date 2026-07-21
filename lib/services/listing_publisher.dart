@@ -215,14 +215,9 @@ class ListingPublisher {
       } else {
         await _repository.saveOffer(card);
       }
-      try {
-        await _share.createOrUpdate(card);
-      } catch (_) {
-        // Share publish is best-effort after listing save.
-      }
-    } else {
-      await _share.createOrUpdate(card);
     }
+    // Owner share card must exist so peer Share links resolve (no ephemeral URLs).
+    await _share.createOrUpdate(card);
     return card;
   }
 

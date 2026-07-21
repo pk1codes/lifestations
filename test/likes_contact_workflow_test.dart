@@ -24,11 +24,46 @@ void main() {
   });
 
   test('likes store keeps inbound snapshot entries across domains', () {
-    final likes = LikesStore()..receiveLike(AppDomainId.jobs, 'owner-c');
+    final likes = LikesStore()
+      ..receiveLike(
+        AppDomainId.jobs,
+        'owner-c',
+        card: const DiscoveryCardModel(
+          id: 'jobs-c',
+          domain: AppDomainId.jobs,
+          ownerId: 'owner-c',
+          title: 'Cook',
+          subtitle: 'Nights',
+          cityId: 'mumbai',
+          cityLabel: 'Mumbai',
+          categoryTags: [],
+          imageUrls: [],
+        ),
+      );
 
     expect(likes.inboundCount, 1);
     expect(likes.inboundEntries(AppDomainId.jobs).single.otherUid, 'owner-c');
+    expect(likes.inboundEntries(AppDomainId.jobs).single.card?.title, 'Cook');
     expect(likes.isMutual(AppDomainId.jobs, 'owner-c'), isFalse);
+  });
+
+  test('inbound push applies liker card for Liked me', () {
+    final likes = LikesStore()
+      ..applyInboundPush(
+        domainSlug: 'marriage',
+        fromUid: 'liker-1',
+        title: 'Priya',
+        cityLabel: 'Pune',
+        photoUrl: 'https://example.com/a.webp',
+        listingId: 'marriage-liker-1',
+      );
+
+    expect(likes.inboundCount, 1);
+    final entry = likes.inboundEntries(AppDomainId.marriage).single;
+    expect(entry.otherUid, 'liker-1');
+    expect(entry.card?.title, 'Priya');
+    expect(entry.card?.cityLabel, 'Pune');
+    expect(entry.card?.imageUrls.single, 'https://example.com/a.webp');
   });
 
   test('OTP throttle blocks rapid resend', () {
