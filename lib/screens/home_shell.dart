@@ -83,6 +83,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _hydrateSession() async {
+    await FirebaseBootstrap.waitUntilReady();
     if (!FirebaseBootstrap.ready || !mounted) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;

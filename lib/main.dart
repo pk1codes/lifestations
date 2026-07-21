@@ -70,6 +70,7 @@ Future<void> main() async {
       }
       final uid = FirebaseAuth.instance.currentUser?.uid;
       unawaited(PushService().initialize(uid: uid));
+      // Likes/identity hydrate from HomeShell once auth + bootstrap are ready.
     }),
   );
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -13,6 +15,10 @@ class FirebaseBootstrap {
 
   static bool ready = false;
   static Object? initializationError;
+  static final Completer<void> _readyCompleter = Completer<void>();
+
+  /// Completes when [initialize] finishes (success or failure).
+  static Future<void> waitUntilReady() => _readyCompleter.future;
 
   static Future<void> initialize() async {
     try {
@@ -44,6 +50,10 @@ class FirebaseBootstrap {
         );
         await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
       }
+      // Wait for persisted auth to restore before creating a new anonymous user.
+      // On web refresh, currentUser is briefly null while IndexedDB loads; signing
+      // in too early creates a second uid and orphan likes.
+      await FirebaseAuth.instance.authStateChanges().first;
       if (FirebaseAuth.instance.currentUser == null) {
         try {
           await FirebaseAuth.instance.signInAnonymously();
@@ -72,6 +82,10 @@ class FirebaseBootstrap {
       initializationError = error;
       ready = false;
       if (kDebugMode) debugPrint('Firebase unavailable; using local data.');
+    } finally {
+      if (!_readyCompleter.isCompleted) {
+        _readyCompleter.complete();
+      }
     }
   }
 }
