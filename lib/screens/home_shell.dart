@@ -19,6 +19,7 @@ import '../services/contact_service.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/form_media_controller.dart';
 import '../services/likes_repository.dart';
+import '../services/listing_lifecycle.dart';
 import '../services/listing_publisher.dart';
 import '../services/owned_hydrate.dart';
 import '../services/owned_listing_cache.dart';
@@ -48,12 +49,20 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  StreamSubscription<User?>? _authSub;
+  var _hydratedUid = '';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_hydrateSession());
+      _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (!mounted) return;
+        if (user == null || user.uid == _hydratedUid) return;
+        unawaited(_hydrateSession());
+      });
       final controller = context.read<DomainController>();
       if (!controller.shouldShowCoachMark) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -67,10 +76,17 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> _hydrateSession() async {
     if (!FirebaseBootstrap.ready || !mounted) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    _hydratedUid = uid;
     final identity = context.read<IdentityStore>();
     final blocks = context.read<BlockStore>();
     final likes = context.read<LikesStore>();
@@ -125,7 +141,12 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: controller.selectedTab,
-        onDestinationSelected: controller.selectTab,
+        onDestinationSelected: (index) {
+          controller.selectTab(index);
+          if (index == 1) {
+            unawaited(context.read<LikesStore>().hydrateAll());
+          }
+        },
         destinations: <NavigationDestination>[
           NavigationDestination(
             icon: GestureDetector(
@@ -303,10 +324,13 @@ class DiscoverScreen extends StatelessWidget {
     final domain = context.watch<DomainController>().policy;
     final store = context.watch<DiscoveryStore>();
     if (!domain.enabled) return ComingSoonView(domain: domain);
+    final viewerUid = FirebaseAuth.instance.currentUser?.uid;
+    final visible = store.cardsForViewer(viewerUid);
     final cards = domain.id == AppDomainId.jobs
         ? () {
             final prefs = context.watch<JobsDiscoverPrefsStore>();
             return store.filtered(
+              source: visible,
               cityId: prefs.cityId,
               role: prefs.role,
               tradeId: prefs.tradeId,
@@ -315,6 +339,7 @@ class DiscoverScreen extends StatelessWidget {
         : () {
             final prefs = context.watch<MatchPreferencesStore>();
             return store.filtered(
+              source: visible,
               cityId: prefs.cityId,
               gender: domain.id == AppDomainId.marriage ? prefs.gender : null,
               ageBand: domain.id == AppDomainId.marriage ? prefs.ageBand : null,
@@ -371,13 +396,22 @@ class DiscoverScreen extends StatelessWidget {
                 onPass: () => store.action(cards[index].id),
                 onLike: () async {
                   final card = cards[index];
-                  final mutual = context.read<LikesStore>().like(
-                    domain.id,
-                    card.ownerId,
-                    snapshot: card,
-                  );
-                  store.action(card.id);
-                  if (mutual) _showMatch(context, card);
+                  final messenger = ScaffoldMessenger.of(context);
+                  final likes = context.read<LikesStore>();
+                  try {
+                    final mutual = await likes.like(
+                      domain.id,
+                      card.ownerId,
+                      snapshot: card,
+                    );
+                    store.action(card.id);
+                    if (mutual && context.mounted) _showMatch(context, card);
+                  } catch (error) {
+                    final message = error is StateError
+                        ? error.message
+                        : 'Could not save like. Try again.';
+                    messenger.showSnackBar(SnackBar(content: Text(message)));
+                  }
                 },
               ),
             ),
@@ -1882,6 +1916,16 @@ class _OwnedPostRow extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (post.paused) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Paused',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     Text(
                       policy.label,
@@ -1903,7 +1947,7 @@ class _OwnedPostRow extends StatelessWidget {
   }
 }
 
-class _OwnedPostDetailSheet extends StatelessWidget {
+class _OwnedPostDetailSheet extends StatefulWidget {
   const _OwnedPostDetailSheet({
     required this.post,
     required this.hostContext,
@@ -1913,13 +1957,28 @@ class _OwnedPostDetailSheet extends StatelessWidget {
   final BuildContext hostContext;
 
   @override
+  State<_OwnedPostDetailSheet> createState() => _OwnedPostDetailSheetState();
+}
+
+class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
+  late OwnedPost _post;
+  var _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _post = widget.post;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final policy = AppDomains.byId(post.domain);
-    final card = post.card;
+    final policy = AppDomains.byId(_post.domain);
+    final card = _post.card;
     final title = card.title;
     final fact = cardFactLine(card);
     final photos = card.imageUrls;
     final side = cardSideMark(card);
+    final paused = _post.paused;
 
     return SafeArea(
       child: Padding(
@@ -1959,6 +2018,17 @@ class _OwnedPostDetailSheet extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      if (paused) ...[
+                        const Spacer(),
+                        Text(
+                          'Paused',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -2038,15 +2108,30 @@ class _OwnedPostDetailSheet extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       backgroundColor: policy.color,
                     ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      showDomainProfileForm(
-                        hostContext,
-                        policy,
-                        edit: post,
-                      );
-                    },
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            showDomainProfileForm(
+                              widget.hostContext,
+                              policy,
+                              edit: _post,
+                            );
+                          },
                     child: const Text('Edit'),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: _busy ? null : () => unawaited(_togglePause()),
+                    child: Text(paused ? 'Resume' : 'Pause'),
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: _busy ? null : () => unawaited(_confirmDelete()),
+                    child: Text(
+                      'Delete',
+                      style: TextStyle(color: AppColors.muted),
+                    ),
                   ),
                 ],
               ),
@@ -2055,6 +2140,87 @@ class _OwnedPostDetailSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _togglePause() async {
+    final messenger = ScaffoldMessenger.of(widget.hostContext);
+    final media = widget.hostContext.read<OwnedListingCache>();
+    final nextPaused = !_post.paused;
+    setState(() => _busy = true);
+    try {
+      await ListingLifecycleService().setPaused(
+        post: _post,
+        paused: nextPaused,
+        media: media,
+      );
+      if (!mounted) return;
+      setState(() {
+        _post = _post.copyWith(
+          card: _post.card.copyWith(active: !nextPaused),
+        );
+        _busy = false;
+      });
+      messenger.showSnackBar(
+        SnackBar(content: Text(nextPaused ? 'Paused' : 'Live again')),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not update. Try again.')),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final host = widget.hostContext;
+    final messenger = ScaffoldMessenger.of(host);
+    final media = host.read<OwnedListingCache>();
+    final marriage = host.read<ProfileStore>();
+    final jobs = host.read<JobsProfileStore>();
+    final rooms = host.read<RoomsOfferStore>();
+    final bikes = host.read<BikesOfferStore>();
+    final homeHelp = host.read<HomeHelpOfferStore>();
+    final navigator = Navigator.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this post?'),
+        content: const Text("You can't undo."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await ListingLifecycleService().deletePost(
+        post: _post,
+        media: media,
+        marriage: marriage,
+        jobs: jobs,
+        rooms: rooms,
+        bikes: bikes,
+        homeHelp: homeHelp,
+      );
+      if (!mounted) return;
+      navigator.pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Deleted')));
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not delete. Try again.')),
+      );
+    }
   }
 }
 

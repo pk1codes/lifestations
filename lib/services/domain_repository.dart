@@ -24,6 +24,15 @@ abstract interface class DomainRepository {
   });
   Future<void> saveProfile(DiscoveryCardModel profile);
   Future<void> saveOffer(DiscoveryCardModel offer);
+  Future<void> setListingActive({
+    required AppDomainId domain,
+    required String listingId,
+    required bool active,
+  });
+  Future<void> deleteListing({
+    required AppDomainId domain,
+    required String listingId,
+  });
   Future<DiscoveryCardModel?> fetchOwnedProfile({
     required AppDomainId domain,
     required String ownerId,
@@ -127,6 +136,38 @@ class FirestoreDomainRepository implements DomainRepository {
   }
 
   @override
+  Future<void> setListingActive({
+    required AppDomainId domain,
+    required String listingId,
+    required bool active,
+  }) async {
+    if (!FirebaseBootstrap.ready || listingId.isEmpty) {
+      throw StateError('Not connected. Try again.');
+    }
+    final policy = AppDomains.byId(domain);
+    final data = <String, Object?>{
+      'active': active,
+      'refreshedAt': FieldValue.serverTimestamp(),
+    };
+    if (policy.storageKind == DomainStorageKind.offers) {
+      data['updatedAt'] = FieldValue.serverTimestamp();
+    }
+    await db.doc('${policy.collection}/$listingId').update(data);
+  }
+
+  @override
+  Future<void> deleteListing({
+    required AppDomainId domain,
+    required String listingId,
+  }) async {
+    if (!FirebaseBootstrap.ready || listingId.isEmpty) {
+      throw StateError('Not connected. Try again.');
+    }
+    final policy = AppDomains.byId(domain);
+    await db.doc('${policy.collection}/$listingId').delete();
+  }
+
+  @override
   Future<DiscoveryCardModel?> fetchOwnedProfile({
     required AppDomainId domain,
     required String ownerId,
@@ -212,6 +253,7 @@ class FirestoreDomainRepository implements DomainRepository {
       json['attributes'] as Map? ?? const {},
     ),
     verified: json['verified'] as bool? ?? false,
+    active: json['active'] as bool? ?? true,
   );
 }
 

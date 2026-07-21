@@ -17,6 +17,7 @@ class DiscoveryCardModel {
     this.verified = false,
     this.refreshed = false,
     this.promoted = false,
+    this.active = true,
   });
 
   final String id;
@@ -34,6 +35,44 @@ class DiscoveryCardModel {
   final bool verified;
   final bool refreshed;
   final bool promoted;
+  /// False when the owner paused the listing (hidden from Browse).
+  final bool active;
+
+  DiscoveryCardModel copyWith({
+    String? id,
+    AppDomainId? domain,
+    String? ownerId,
+    String? title,
+    String? subtitle,
+    String? cityId,
+    String? cityLabel,
+    List<String>? categoryTags,
+    List<String>? imageUrls,
+    String? role,
+    String? ageBand,
+    Map<String, Object?>? attributes,
+    bool? verified,
+    bool? refreshed,
+    bool? promoted,
+    bool? active,
+  }) => DiscoveryCardModel(
+    id: id ?? this.id,
+    domain: domain ?? this.domain,
+    ownerId: ownerId ?? this.ownerId,
+    title: title ?? this.title,
+    subtitle: subtitle ?? this.subtitle,
+    cityId: cityId ?? this.cityId,
+    cityLabel: cityLabel ?? this.cityLabel,
+    categoryTags: categoryTags ?? this.categoryTags,
+    imageUrls: imageUrls ?? this.imageUrls,
+    role: role ?? this.role,
+    ageBand: ageBand ?? this.ageBand,
+    attributes: attributes ?? this.attributes,
+    verified: verified ?? this.verified,
+    refreshed: refreshed ?? this.refreshed,
+    promoted: promoted ?? this.promoted,
+    active: active ?? this.active,
+  );
 
   Map<String, Object?> toPublicJson() {
     final json = <String, Object?>{

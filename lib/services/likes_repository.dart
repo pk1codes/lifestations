@@ -40,11 +40,22 @@ class LikesRepository {
     DiscoveryCardModel? target,
     DiscoveryCardModel? snapshot,
   }) async {
-    if (!FirebaseBootstrap.ready) return;
-    final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
+    if (!FirebaseBootstrap.ready) {
+      throw StateError('Not connected. Try again.');
+    }
     final card = target ?? snapshot;
     final otherUid = targetUid ?? card?.ownerId;
-    if (uid == null || otherUid == null || uid == otherUid) return;
+    final uid = await _ensureUid();
+    if (otherUid == null || otherUid.isEmpty) {
+      throw StateError('Could not like this post.');
+    }
+    if (uid == otherUid) {
+      throw StateError('You cannot like your own post.');
+    }
+    // Demo seed cards are local-only — never write orphan like docs for them.
+    if (otherUid.startsWith('demo_owner_') || otherUid.startsWith('demo_')) {
+      throw StateError('That demo card cannot be liked online.');
+    }
     await _throttle.claim(ThrottledAction.like);
     final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
     final safeSnapshot = _publicSnapshot(card);
@@ -75,7 +86,10 @@ class LikesRepository {
   Future<List<LikeEntry>> loadInbound(AppDomainId domain) =>
       _load(domain, LikeDirection.inbound);
 
-  Future<List<LikeEntry>> _load(AppDomainId domain, LikeDirection direction) async {
+  Future<List<LikeEntry>> _load(
+    AppDomainId domain,
+    LikeDirection direction,
+  ) async {
     if (!FirebaseBootstrap.ready) return const <LikeEntry>[];
     final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
     if (uid == null) return const <LikeEntry>[];
@@ -83,31 +97,73 @@ class LikesRepository {
     final collection = direction == LikeDirection.outbound
         ? 'domains/$slug/likes/$uid/outbound'
         : 'domains/$slug/likes/$uid/inbound';
-    final snap = await (firestore ?? FirebaseFirestore.instance)
-        .collection(collection)
-        .orderBy('createdAt', descending: true)
-        .limit(100)
-        .get();
-    return snap.docs
-        .map((doc) {
-          final data = doc.data();
-          final snapshot = Map<String, Object?>.from(
-            data['snapshot'] as Map? ?? const {},
-          );
-          final created = data['createdAt'];
-          return LikeEntry(
-            domain: domain,
-            otherUid: doc.id,
-            direction: direction,
-            card: _cardFromSnapshot(
+    try {
+      final snap = await (firestore ?? FirebaseFirestore.instance)
+          .collection(collection)
+          .orderBy('createdAt', descending: true)
+          .limit(100)
+          .get();
+      return snap.docs
+          .map((doc) {
+            final data = doc.data();
+            final snapshot = Map<String, Object?>.from(
+              data['snapshot'] as Map? ?? const {},
+            );
+            final created = data['createdAt'];
+            return LikeEntry(
               domain: domain,
               otherUid: doc.id,
-              snapshot: snapshot,
-            ),
-            createdAt: created is Timestamp ? created.toDate() : null,
-          );
-        })
-        .toList(growable: false);
+              direction: direction,
+              card: _cardFromSnapshot(
+                domain: domain,
+                otherUid: doc.id,
+                snapshot: snapshot,
+              ),
+              createdAt: created is Timestamp ? created.toDate() : null,
+            );
+          })
+          .toList(growable: false);
+    } catch (_) {
+      // Missing index / offline — try unordered read so likes do not vanish.
+      final snap = await (firestore ?? FirebaseFirestore.instance)
+          .collection(collection)
+          .limit(100)
+          .get();
+      return snap.docs
+          .map((doc) {
+            final data = doc.data();
+            final snapshot = Map<String, Object?>.from(
+              data['snapshot'] as Map? ?? const {},
+            );
+            final created = data['createdAt'];
+            return LikeEntry(
+              domain: domain,
+              otherUid: doc.id,
+              direction: direction,
+              card: _cardFromSnapshot(
+                domain: domain,
+                otherUid: doc.id,
+                snapshot: snapshot,
+              ),
+              createdAt: created is Timestamp ? created.toDate() : null,
+            );
+          })
+          .toList(growable: false);
+    }
+  }
+
+  Future<String> _ensureUid() async {
+    final authInstance = auth ?? FirebaseAuth.instance;
+    var user = authInstance.currentUser;
+    if (user == null) {
+      final cred = await authInstance.signInAnonymously();
+      user = cred.user;
+    }
+    final id = user?.uid;
+    if (id == null || id.isEmpty) {
+      throw StateError('Sign-in needed before liking.');
+    }
+    return id;
   }
 
   Map<String, Object?> _publicSnapshot(DiscoveryCardModel? card) {

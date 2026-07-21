@@ -149,13 +149,22 @@ class DiscoveryStore extends ChangeNotifier {
     ),
   );
 
+  /// Browse list excluding the signed-in user's own listings.
+  List<DiscoveryCardModel> cardsForViewer(String? viewerUid) {
+    final uid = viewerUid?.trim() ?? '';
+    return cards
+        .where((card) => uid.isEmpty || card.ownerId != uid)
+        .toList(growable: false);
+  }
+
   List<DiscoveryCardModel> filtered({
+    Iterable<DiscoveryCardModel>? source,
     String? cityId,
     String? gender,
     String? ageBand,
     String? role,
     String? tradeId,
-  }) => cards
+  }) => (source ?? cards)
       .where((card) {
         if (cityId != null && cityId.isNotEmpty && card.cityId != cityId) {
           return false;
@@ -230,32 +239,36 @@ class LikesStore extends ChangeNotifier {
   int get inboundCount =>
       _inbound.values.fold<int>(0, (sum, ids) => sum + ids.length);
 
-  bool like(
+  /// Persists the like online first, then updates local state.
+  /// Returns whether the pair is mutual after a successful write.
+  /// Throws if the remote write fails (caller should show an error).
+  Future<bool> like(
     AppDomainId domain,
     String targetId, {
     DiscoveryCardModel? snapshot,
-  }) {
-    final added = (_outbound[domain] ??= <String>{}).add(targetId);
-    if (added) {
-      final entries = _outboundEntries[domain] ??= <LikeEntry>[];
-      entries.removeWhere((entry) => entry.otherUid == targetId);
-      entries.insert(
-        0,
-        LikeEntry(
-          domain: domain,
-          otherUid: targetId,
-          direction: LikeDirection.outbound,
-          card: snapshot,
-          createdAt: DateTime.now(),
-        ),
-      );
-      notifyListeners();
-      unawaited(
-        _repository
-            .like(domain: domain, targetUid: targetId, snapshot: snapshot)
-            .catchError((_) {}),
-      );
+  }) async {
+    if (_outbound[domain]?.contains(targetId) ?? false) {
+      return isMutual(domain, targetId);
     }
+    await _repository.like(
+      domain: domain,
+      targetUid: targetId,
+      snapshot: snapshot,
+    );
+    (_outbound[domain] ??= <String>{}).add(targetId);
+    final entries = _outboundEntries[domain] ??= <LikeEntry>[];
+    entries.removeWhere((entry) => entry.otherUid == targetId);
+    entries.insert(
+      0,
+      LikeEntry(
+        domain: domain,
+        otherUid: targetId,
+        direction: LikeDirection.outbound,
+        card: snapshot,
+        createdAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
     return isMutual(domain, targetId);
   }
 
@@ -297,12 +310,17 @@ class LikesStore extends ChangeNotifier {
   }
 
   Future<void> _loadDomain(AppDomainId domain) async {
-    final outbound = await _repository.loadOutbound(domain);
-    final inbound = await _repository.loadInbound(domain);
-    _outboundEntries[domain] = List<LikeEntry>.from(outbound);
-    _inboundEntries[domain] = List<LikeEntry>.from(inbound);
-    _outbound[domain] = {for (final entry in outbound) entry.otherUid};
-    _inbound[domain] = {for (final entry in inbound) entry.otherUid};
+    try {
+      final outbound = await _repository.loadOutbound(domain);
+      final inbound = await _repository.loadInbound(domain);
+      _outboundEntries[domain] = List<LikeEntry>.from(outbound);
+      _inboundEntries[domain] = List<LikeEntry>.from(inbound);
+      _outbound[domain] = {for (final entry in outbound) entry.otherUid};
+      _inbound[domain] = {for (final entry in inbound) entry.otherUid};
+    } catch (error) {
+      // Keep any in-memory likes if a domain load fails.
+      debugPrint('Likes hydrate failed for $domain: $error');
+    }
   }
 }
 

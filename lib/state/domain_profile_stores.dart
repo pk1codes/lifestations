@@ -27,9 +27,21 @@ abstract class LocalFirstStore<T> extends ChangeNotifier {
     persistLocal(value);
   }
 
+  /// Clears the local profile (used when the owner deletes the post).
+  void clearLocal() {
+    _value = null;
+    syncError = null;
+    notifyListeners();
+    clearPersisted();
+  }
+
   /// Override to persist across restarts.
   @protected
   void persistLocal(T value) {}
+
+  /// Override to remove persisted profile data.
+  @protected
+  void clearPersisted() {}
 
   /// Returns `true` when remote write succeeds.
   Future<bool> synchronize(Future<void> Function(T value) write) async {
@@ -92,6 +104,11 @@ class ProfileStore extends LocalFirstStore<MarriageProfile> {
     if (prefs == null) return;
     unawaited(prefs.setString(_key, jsonEncode(_marriageToJson(value))));
   }
+
+  @override
+  void clearPersisted() {
+    unawaited(_prefs?.remove(_key) ?? Future<void>.value());
+  }
 }
 
 class JobsProfileStore extends LocalFirstStore<JobsProfile> {
@@ -134,6 +151,11 @@ class JobsProfileStore extends LocalFirstStore<JobsProfile> {
         }),
       ),
     );
+  }
+
+  @override
+  void clearPersisted() {
+    unawaited(_prefs?.remove(_key) ?? Future<void>.value());
   }
 }
 

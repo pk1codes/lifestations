@@ -140,6 +140,36 @@ class ShareCardRepository {
     });
   }
 
+  /// Deactivates the owner's share card for a listing (best-effort).
+  Future<void> deactivateForSource({
+    required AppDomainId domain,
+    required String ownerId,
+    required String sourceId,
+  }) async {
+    final sourceKey = '$ownerId/$sourceId';
+    final cachedSlug = _sourceToSlug[sourceKey];
+    if (cachedSlug != null) {
+      try {
+        await deactivate(cachedSlug);
+      } catch (_) {}
+      return;
+    }
+    if (!FirebaseBootstrap.ready) return;
+    final domainSlug = AppDomains.byId(domain).slug;
+    try {
+      final result = await _db
+          .collection('domains/$domainSlug/public_cards')
+          .where('ownerId', isEqualTo: ownerId)
+          .where('sourceId', isEqualTo: sourceId)
+          .limit(1)
+          .get();
+      if (result.docs.isEmpty) return;
+      final slug = result.docs.first.id;
+      _sourceToSlug[sourceKey] = slug;
+      await deactivate(slug);
+    } catch (_) {}
+  }
+
   /// Test/demo helper — seed a card into memory without Firebase.
   void putMemory(PublicShareCard card) {
     _memory[card.slug] = card;

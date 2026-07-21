@@ -16,4 +16,17 @@ class OwnedPost {
   final int? offerIndex;
 
   bool get isOffer => offerIndex != null;
+
+  /// Hidden from Browse; still shown in My posts.
+  bool get paused => !card.active;
+
+  OwnedPost copyWith({
+    AppDomainId? domain,
+    DiscoveryCardModel? card,
+    int? offerIndex,
+  }) => OwnedPost(
+    domain: domain ?? this.domain,
+    card: card ?? this.card,
+    offerIndex: offerIndex ?? this.offerIndex,
+  );
 }

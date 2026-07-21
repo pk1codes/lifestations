@@ -24,11 +24,13 @@ List<OwnedPost> collectOwnedPosts({
     out.add(
       OwnedPost(
         domain: AppDomainId.marriage,
-        card: cards.buildMarriageCard(
-          ownerId: ownerId,
-          profile: marriageProfile,
-          photoUrls: media.photos(AppDomainId.marriage),
-        ),
+        card: cards
+            .buildMarriageCard(
+              ownerId: ownerId,
+              profile: marriageProfile,
+              photoUrls: media.photos(AppDomainId.marriage),
+            )
+            .copyWith(active: media.isActive(AppDomainId.marriage)),
       ),
     );
   }
@@ -38,11 +40,13 @@ List<OwnedPost> collectOwnedPosts({
     out.add(
       OwnedPost(
         domain: AppDomainId.jobs,
-        card: cards.buildJobsCard(
-          ownerId: ownerId,
-          profile: jobsProfile,
-          photoUrls: media.photos(AppDomainId.jobs),
-        ),
+        card: cards
+            .buildJobsCard(
+              ownerId: ownerId,
+              profile: jobsProfile,
+              photoUrls: media.photos(AppDomainId.jobs),
+            )
+            .copyWith(active: media.isActive(AppDomainId.jobs)),
       ),
     );
   }
@@ -52,12 +56,14 @@ List<OwnedPost> collectOwnedPosts({
       OwnedPost(
         domain: AppDomainId.rooms,
         offerIndex: i,
-        card: cards.buildRoomsCard(
-          ownerId: ownerId,
-          offer: rooms.offers[i],
-          offerId: media.offerId(AppDomainId.rooms, i),
-          photoUrls: media.photos(AppDomainId.rooms, i),
-        ),
+        card: cards
+            .buildRoomsCard(
+              ownerId: ownerId,
+              offer: rooms.offers[i],
+              offerId: media.offerId(AppDomainId.rooms, i),
+              photoUrls: media.photos(AppDomainId.rooms, i),
+            )
+            .copyWith(active: media.isActive(AppDomainId.rooms, i)),
       ),
     );
   }
@@ -67,12 +73,14 @@ List<OwnedPost> collectOwnedPosts({
       OwnedPost(
         domain: AppDomainId.bikes,
         offerIndex: i,
-        card: cards.buildBikesCard(
-          ownerId: ownerId,
-          offer: bikes.offers[i],
-          offerId: media.offerId(AppDomainId.bikes, i),
-          photoUrls: media.photos(AppDomainId.bikes, i),
-        ),
+        card: cards
+            .buildBikesCard(
+              ownerId: ownerId,
+              offer: bikes.offers[i],
+              offerId: media.offerId(AppDomainId.bikes, i),
+              photoUrls: media.photos(AppDomainId.bikes, i),
+            )
+            .copyWith(active: media.isActive(AppDomainId.bikes, i)),
       ),
     );
   }
@@ -82,12 +90,14 @@ List<OwnedPost> collectOwnedPosts({
       OwnedPost(
         domain: AppDomainId.homeHelp,
         offerIndex: i,
-        card: cards.buildHomeHelpCard(
-          ownerId: ownerId,
-          offer: homeHelp.offers[i],
-          offerId: media.offerId(AppDomainId.homeHelp, i),
-          photoUrls: media.photos(AppDomainId.homeHelp, i),
-        ),
+        card: cards
+            .buildHomeHelpCard(
+              ownerId: ownerId,
+              offer: homeHelp.offers[i],
+              offerId: media.offerId(AppDomainId.homeHelp, i),
+              photoUrls: media.photos(AppDomainId.homeHelp, i),
+            )
+            .copyWith(active: media.isActive(AppDomainId.homeHelp, i)),
       ),
     );
   }

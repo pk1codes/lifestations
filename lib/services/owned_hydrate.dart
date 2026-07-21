@@ -81,6 +81,7 @@ Future<void> _hydrateProfile<T>({
 
   final card = await repo.fetchOwnedProfile(domain: domain, ownerId: ownerId);
   if (card == null) return;
+  await media.setActive(domain, card.active);
   if (media.photos(domain).isEmpty && card.imageUrls.isNotEmpty) {
     await media.setPhotos(domain, card.imageUrls);
   }
@@ -112,6 +113,9 @@ Future<void> _hydrateOffers<T>({
             if (card != null && card.imageUrls.isNotEmpty) {
               await media.setPhotos(domain, card.imageUrls, index: i);
             }
+            if (card != null) {
+              await media.setActive(domain, card.active, index: i);
+            }
           }(),
     ]);
     return;
@@ -123,6 +127,7 @@ Future<void> _hydrateOffers<T>({
     if (offer == null) continue;
     store.upsert(offer);
     await media.setOfferId(domain, i, card.id);
+    await media.setActive(domain, card.active, index: i);
     if (card.imageUrls.isNotEmpty) {
       await media.setPhotos(domain, card.imageUrls, index: i);
     }
