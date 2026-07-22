@@ -81,6 +81,8 @@ void main() {
           .split('function validPublicCard')[1]
           .split('function publicCardImmutable')[0];
       expect(fn.contains('keys().hasOnly(['), isTrue);
+      expect(fn.contains("'detailLine'"), isTrue);
+      expect(fn.contains("'sideLabel'"), isTrue);
       expect(fn.contains("!('name' in d)"), isTrue);
       expect(fn.contains("!('bio' in d)"), isTrue);
       expect(fn.contains("!('phone' in d)"), isTrue);
@@ -129,13 +131,16 @@ void main() {
   });
 
   group('FUNCTIONS: required exports', () {
-    test('signed-in client writes require Auth (App Check optional in testing)', () {
-      expect(firestoreRules.contains('request.auth != null'), isTrue);
-      expect(storageRules.contains('request.auth != null'), isTrue);
-      // App Check re-enforcement is deferred until providers are verified.
-      expect(firestoreRules.contains('request.app != null'), isFalse);
-      expect(storageRules.contains('request.app != null'), isFalse);
-    });
+    test(
+      'signed-in client writes require Auth (App Check optional in testing)',
+      () {
+        expect(firestoreRules.contains('request.auth != null'), isTrue);
+        expect(storageRules.contains('request.auth != null'), isTrue);
+        // App Check re-enforcement is deferred until providers are verified.
+        expect(firestoreRules.contains('request.app != null'), isFalse);
+        expect(storageRules.contains('request.app != null'), isFalse);
+      },
+    );
 
     test('callable unlock/delete enforce App Check; throttle is auth-only', () {
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);

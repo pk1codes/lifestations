@@ -22,6 +22,12 @@ abstract interface class DomainRepository {
     int limit = 20,
     DocumentSnapshot<Map<String, dynamic>>? startAfter,
   });
+
+  /// Live Browse feed for the open domain (active listings, newest first).
+  Stream<List<DiscoveryCardModel>> watchDiscover(
+    AppDomainId domain, {
+    int limit = 20,
+  });
   Future<void> saveProfile(DiscoveryCardModel profile);
   Future<void> saveOffer(DiscoveryCardModel offer);
   Future<void> setListingActive({
@@ -37,6 +43,9 @@ abstract interface class DomainRepository {
     required AppDomainId domain,
     required String ownerId,
   });
+
+  /// One-shot migration helper: Jobs used to live under profiles/{uid}.
+  Future<DiscoveryCardModel?> fetchLegacyJobsProfile({required String ownerId});
   Future<DiscoveryCardModel?> fetchOwnedOffer({
     required AppDomainId domain,
     required String offerId,
@@ -69,6 +78,28 @@ class FirestoreDomainRepository implements DomainRepository {
   }) async {
     final page = await discoverPage(domain, limit: limit);
     return page.cards;
+  }
+
+  @override
+  Stream<List<DiscoveryCardModel>> watchDiscover(
+    AppDomainId domain, {
+    int limit = 20,
+  }) {
+    if (!FirebaseBootstrap.ready) {
+      return Stream<List<DiscoveryCardModel>>.value(const []);
+    }
+    final policy = AppDomains.byId(domain);
+    return db
+        .collection(policy.collection)
+        .where('active', isEqualTo: true)
+        .orderBy('refreshedAt', descending: true)
+        .limit(limit.clamp(1, 20))
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => _fromJson(domain, doc.id, doc.data()))
+              .toList(growable: false),
+        );
   }
 
   @override
@@ -185,6 +216,20 @@ class FirestoreDomainRepository implements DomainRepository {
   }
 
   @override
+  Future<DiscoveryCardModel?> fetchLegacyJobsProfile({
+    required String ownerId,
+  }) async {
+    if (!FirebaseBootstrap.ready || ownerId.isEmpty) return null;
+    try {
+      final doc = await db.doc('domains/jobs/profiles/$ownerId').get();
+      if (!doc.exists || doc.data() == null) return null;
+      return _fromJson(AppDomainId.jobs, doc.id, doc.data()!);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Future<DiscoveryCardModel?> fetchOwnedOffer({
     required AppDomainId domain,
     required String offerId,
@@ -254,7 +299,18 @@ class FirestoreDomainRepository implements DomainRepository {
     ),
     verified: json['verified'] as bool? ?? false,
     active: json['active'] as bool? ?? true,
+    refreshedAtMs:
+        _timestampMs(json['refreshedAt']) ?? _timestampMs(json['updatedAt']),
   );
+
+  static int? _timestampMs(Object? value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.millisecondsSinceEpoch;
+    if (value is DateTime) return value.millisecondsSinceEpoch;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return null;
+  }
 }
 
 class ScopedSyncEngine {
@@ -292,6 +348,5 @@ class ScopedSyncEngine {
   /// Drops bundled demo cards (used when a live feed is available).
   static List<DiscoveryCardModel> withoutDemos(
     Iterable<DiscoveryCardModel> cards,
-  ) =>
-      cards.where((card) => !_isDemo(card)).toList(growable: false);
+  ) => cards.where((card) => !_isDemo(card)).toList(growable: false);
 }

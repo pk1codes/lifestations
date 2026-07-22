@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/discovery_card.dart';
+import 'listing_image_cache.dart';
 import 'media_urls.dart';
 
 /// Intent-based image warm-up so the next cards feel instant.
@@ -67,7 +68,10 @@ class ImagePrefetch {
 
   static void _precache(BuildContext context, String url) {
     if (!_inflight.add(url)) return;
-    final provider = CachedNetworkImageProvider(url);
+    final provider = CachedNetworkImageProvider(
+      url,
+      cacheManager: ListingImageCache.instance,
+    );
     unawaited(
       precacheImage(provider, context).then(
         (_) {},

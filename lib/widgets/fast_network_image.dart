@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../services/listing_image_cache.dart';
 import '../services/media_urls.dart';
 import '../theme/app_theme.dart';
+import 'image_skeleton.dart';
 
 /// Fast photo tile: soft placeholder → optional thumb → sharp primary, with
 /// disk/memory cache and decode sized to the screen (not full bitmap).
@@ -26,7 +28,7 @@ class FastNetworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) {
-      return fallback ?? _softFill(placeholderColor);
+      return fallback ?? ImageSkeleton(color: placeholderColor);
     }
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       return Image.asset(
@@ -34,7 +36,8 @@ class FastNetworkImage extends StatelessWidget {
         fit: fit,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (_, _, _) => fallback ?? _softFill(placeholderColor),
+        errorBuilder: (_, _, _) =>
+            fallback ?? ImageSkeleton(color: placeholderColor),
       );
     }
 
@@ -44,16 +47,19 @@ class FastNetworkImage extends StatelessWidget {
     final previewUrl = MediaUrls.preview(trimmed, role);
     final primaryUrl = MediaUrls.primary(trimmed, role);
     final fill = placeholderColor ?? AppColors.darkCream;
-    final error = fallback ?? _softFill(fill);
+    final error = fallback ?? ImageSkeleton(color: fill);
+    final skeleton = ImageSkeleton(color: fill);
 
     return ColoredBox(
       color: fill,
       child: Stack(
         fit: StackFit.expand,
         children: [
+          skeleton,
           if (previewUrl != null)
             CachedNetworkImage(
               imageUrl: previewUrl,
+              cacheManager: ListingImageCache.instance,
               fit: fit,
               width: double.infinity,
               height: double.infinity,
@@ -65,6 +71,7 @@ class FastNetworkImage extends StatelessWidget {
             ),
           CachedNetworkImage(
             imageUrl: primaryUrl,
+            cacheManager: ListingImageCache.instance,
             fit: fit,
             width: double.infinity,
             height: double.infinity,
@@ -89,8 +96,4 @@ class FastNetworkImage extends StatelessWidget {
         return (screenW * dpr).round().clamp(480, 1600);
     }
   }
-
-  static Widget _softFill(Color? color) => ColoredBox(
-    color: color ?? AppColors.darkCream,
-  );
 }

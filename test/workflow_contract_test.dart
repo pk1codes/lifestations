@@ -35,9 +35,10 @@ void main() {
       tradeId: 'Driver',
       cityId: 'delhi',
       salaryBand: '₹15–25k/mo',
+      photoCount: 1,
     );
     expect(seeker.isValid, isTrue);
-    expect(seeker.needLine, 'Looking for Driver work');
+    expect(seeker.needLine, 'Driver');
   });
 
   test('bike requires exactly four photos and exposes booleans only', () {
@@ -63,6 +64,7 @@ void main() {
       salaryBand: '₹8–12k',
       languages: ['Hindi'],
       photoCount: 0,
+      howMany: '2',
     );
     const worker = HomeHelpOffer(
       role: 'have',

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/app_domain.dart';
+import '../models/card_side.dart';
 import '../models/discovery_card.dart';
 import 'action_throttle.dart';
 import 'firebase_bootstrap.dart';
@@ -22,6 +23,7 @@ class LikeEntry {
   final LikeDirection direction;
   final DiscoveryCardModel? card;
   final DateTime? createdAt;
+
   /// Other party opened WhatsApp/Telegram after mutual interest.
   final bool peerOpenedChat;
 
@@ -95,6 +97,24 @@ class LikesRepository {
     await batch.commit();
   }
 
+  /// Remove our like both ways (outbound + their inbound mirror).
+  Future<void> unlike({
+    required AppDomainId domain,
+    required String targetUid,
+  }) async {
+    await FirebaseBootstrap.waitUntilReady();
+    if (!FirebaseBootstrap.ready) {
+      throw StateError('Not connected. Try again.');
+    }
+    final uid = await _ensureUid();
+    if (targetUid.isEmpty || uid == targetUid) return;
+    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final batch = _db.batch();
+    batch.delete(_db.doc('domains/$slug/likes/$uid/outbound/$targetUid'));
+    batch.delete(_db.doc('domains/$slug/likes/$targetUid/inbound/$uid'));
+    await batch.commit();
+  }
+
   Future<List<LikeEntry>> loadOutbound(AppDomainId domain) =>
       _load(domain, LikeDirection.outbound);
 
@@ -119,9 +139,7 @@ class LikesRepository {
         .snapshots()
         .asyncMap((snap) async {
           final entries = snap.docs
-              .map(
-                (doc) => _entryFromDoc(domain, LikeDirection.inbound, doc),
-              )
+              .map((doc) => _entryFromDoc(domain, LikeDirection.inbound, doc))
               .toList(growable: false);
           return _enrichAll(entries);
         });
@@ -196,11 +214,12 @@ class LikesRepository {
     ).where((url) => url.trim().isNotEmpty).toList(growable: false);
     if (photos.isEmpty) return entry;
     final name = (public['displayName'] as String?)?.trim() ?? '';
-    final fallbackTitle = name.length >= 2 ? name : 'Someone';
+    final fallbackTitle = name.length >= 2 ? name : 'Liked';
     final existingTitle = card?.title.trim() ?? '';
     final title =
         (existingTitle.isEmpty ||
             existingTitle == 'Someone' ||
+            existingTitle == 'Liked' ||
             existingTitle == 'Liked post')
         ? fallbackTitle
         : existingTitle;
@@ -259,7 +278,7 @@ class LikesRepository {
   Future<Map<String, Object?>> _identityFallbackSnapshot(String uid) async {
     final public = await _fetchIdentityPublic(uid);
     final name = (public?['displayName'] as String?)?.trim() ?? '';
-    final title = name.length >= 2 ? name : 'Someone';
+    final title = name.length >= 2 ? name : 'Liked';
     final photos = List<String>.from(
       public?['photoUrls'] as List? ?? const <dynamic>[],
     ).where((url) => url.trim().isNotEmpty).toList(growable: false);
@@ -344,17 +363,15 @@ class LikesRepository {
 
   Map<String, Object?> _publicSnapshot(DiscoveryCardModel? card) {
     if (card == null) return const <String, Object?>{};
-    final title = card.title.length > 60
-        ? card.title.substring(0, 60)
-        : card.title;
-    final subtitle = card.subtitle.length > 120
-        ? card.subtitle.substring(0, 120)
-        : card.subtitle;
+    final title = cardTitleLine(card);
+    final clippedTitle = title.length > 60 ? title.substring(0, 60) : title;
+    final fact = cardFactLine(card);
+    final clippedFact = fact.length > 120 ? fact.substring(0, 120) : fact;
     return <String, Object?>{
       'listingId': card.id,
-      'headline': title,
-      'title': title,
-      'subtitle': subtitle,
+      'headline': clippedTitle,
+      'title': clippedTitle,
+      'subtitle': clippedFact,
       'cityId': card.cityId,
       'cityLabel': card.cityLabel,
       'photoUrl': card.imageUrls.isEmpty ? null : card.imageUrls.first,
@@ -386,7 +403,7 @@ class LikesRepository {
     final title =
         (snapshot['title'] as String?) ??
         (snapshot['headline'] as String?) ??
-        'Liked post';
+        'Liked';
     return DiscoveryCardModel(
       id: (snapshot['listingId'] as String?) ?? otherUid,
       domain: domain,

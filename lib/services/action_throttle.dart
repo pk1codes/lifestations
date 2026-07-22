@@ -22,9 +22,7 @@ class ActionThrottleService {
       if (error.code == 'resource-exhausted') {
         throw StateError('Too many attempts. Try again later.');
       }
-      debugPrint(
-        'Action throttle skipped (${error.code}): ${error.message}',
-      );
+      debugPrint('Action throttle skipped (${error.code}): ${error.message}');
     } catch (error) {
       debugPrint('Action throttle skipped: $error');
     }

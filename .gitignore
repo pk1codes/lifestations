@@ -43,6 +43,9 @@ npm-debug.log*
 # Symbolication related
 app.*.symbols
 
+# Local JDK for Firebase emulators (not committed)
+.jdk21/
+
 # Obfuscation related
 app.*.map.json
 
@@ -97,3 +100,5 @@ firebase/reseed_reports/
 android/key.properties
 android/upload-keystore.jks
 **/upload-keystore.jks
+firestore-debug.log
+firebase-debug.log*

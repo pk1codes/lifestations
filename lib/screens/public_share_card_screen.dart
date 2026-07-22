@@ -8,6 +8,7 @@ import '../services/media_urls.dart';
 import '../services/share_card_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/fast_network_image.dart';
+import '../widgets/image_skeleton.dart';
 
 enum _ShareLoadState { loading, ready, inactive, notFound, error }
 
@@ -33,6 +34,7 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
   }
 
   Future<void> _load() async {
+    setState(() => _state = _ShareLoadState.loading);
     try {
       if (!widget.slug.contains('_') ||
           !PublicShareCard.isValidSlug(widget.slug)) {
@@ -64,15 +66,18 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final domainLabel = _card != null
+        ? AppDomains.byId(_card!.domain).label
+        : null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Shared card')),
+      appBar: AppBar(title: Text(domainLabel ?? 'Shared listing')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: switch (_state) {
-              _ShareLoadState.loading => const CircularProgressIndicator(),
+              _ShareLoadState.loading => const _ShareCardSkeleton(),
               _ShareLoadState.notFound => _message(
                 context,
                 icon: Icons.link_off,
@@ -89,7 +94,9 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
                 context,
                 icon: Icons.error_outline,
                 title: 'Could not load',
-                body: 'Try again later. Contact details are never shown here.',
+                body: 'Try again. Contact details are never shown here.',
+                actionLabel: 'Try again',
+                onAction: _load,
               ),
               _ShareLoadState.ready => _ReadyCard(card: _card!),
             },
@@ -104,6 +111,8 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
     required IconData icon,
     required String title,
     required String body,
+    String actionLabel = 'Explore safely',
+    VoidCallback? onAction,
   }) => Card(
     child: Padding(
       padding: const EdgeInsets.all(24),
@@ -117,14 +126,54 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
           Text(body, textAlign: TextAlign.center),
           const SizedBox(height: 18),
           FilledButton(
-            onPressed: () =>
-                Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false),
-            child: const Text('Explore safely'),
+            onPressed:
+                onAction ??
+                () => Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/',
+                  (_) => false,
+                ),
+            child: Text(actionLabel),
           ),
         ],
       ),
     ),
   );
+}
+
+class _ShareCardSkeleton extends StatelessWidget {
+  const _ShareCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AspectRatio(aspectRatio: 4 / 3, child: ImageSkeleton()),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(height: 18, width: 120, color: AppColors.darkCream),
+                const SizedBox(height: 12),
+                Container(
+                  height: 28,
+                  width: double.infinity,
+                  color: AppColors.darkCream,
+                ),
+                const SizedBox(height: 8),
+                Container(height: 16, width: 180, color: AppColors.darkCream),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ReadyCard extends StatelessWidget {
@@ -133,6 +182,7 @@ class _ReadyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final policy = AppDomains.byId(card.domain);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -152,6 +202,20 @@ class _ReadyCard extends StatelessWidget {
                   child: const Icon(Icons.image_outlined, size: 64),
                 ),
               ),
+            )
+          else
+            ColoredBox(
+              color: AppColors.darkCream,
+              child: const AspectRatio(
+                aspectRatio: 4 / 3,
+                child: Center(
+                  child: Icon(
+                    Icons.image_outlined,
+                    size: 64,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
             ),
           Padding(
             padding: const EdgeInsets.all(24),
@@ -160,18 +224,66 @@ class _ReadyCard extends StatelessWidget {
               children: [
                 Wrap(
                   spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Chip(label: Text(AppDomains.byId(card.domain).label)),
+                    Chip(
+                      label: Text(policy.label),
+                      avatar: Icon(
+                        Icons.category_outlined,
+                        size: 16,
+                        color: policy.color,
+                      ),
+                    ),
                     if (card.verified)
-                      const Chip(label: Text('Self-attested ID')),
-                    if (card.promoted) const Chip(label: Text('Top')),
+                      const Tooltip(
+                        message:
+                            'Owner marked an ID claim — not independently verified',
+                        child: Chip(label: Text('Self-attested ID')),
+                      ),
+                    if (card.promoted)
+                      const Tooltip(
+                        message: 'This listing paid for extra visibility',
+                        child: Chip(label: Text('Top')),
+                      ),
                   ],
                 ),
+                if (card.verified || card.promoted) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    [
+                      if (card.verified)
+                        'Self-attested ID is a claim by the owner, not a check by us.',
+                      if (card.promoted) 'Top means boosted visibility.',
+                    ].join(' '),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                  ),
+                ],
+                if (card.sideLabel != null && card.sideLabel!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    card.sideLabel!,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: policy.color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   card.headline,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
+                if (card.detailLine.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    card.detailLine,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                  ),
+                ],
                 if (card.locationLabel.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
@@ -182,8 +294,6 @@ class _ReadyCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                if (card.ageBand != null) Text('Age band ${card.ageBand}'),
-                if (card.tradeLabel != null) Text(card.tradeLabel!),
                 const SizedBox(height: 12),
                 Text(
                   'Names, bios, phones, WhatsApp, Telegram, and documents are never included on public cards.',

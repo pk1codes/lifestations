@@ -39,16 +39,20 @@ void main() {
 
     await tester.tap(find.text('Likes'));
     await tester.pumpAndSettle();
-    expect(find.text('No likes yet'), findsOneWidget);
+    expect(find.text('None yet'), findsWidgets);
+    expect(find.byKey(const Key('page_domain_label')), findsWidgets);
 
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
-    expect(find.text('My posts'), findsOneWidget);
-    expect(find.text('Add your first post'), findsOneWidget);
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.byKey(const Key('page_domain_label')), findsWidgets);
+    expect(find.text('Posts'), findsOneWidget);
+    expect(find.text('Name, phone, city'), findsOneWidget);
+    expect(find.text('Add one'), findsOneWidget);
     expect(find.text('Get more views'), findsNothing);
     expect(find.text('Settings & safety'), findsNothing);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.campaign_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.campaign_outlined), findsWidgets);
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
@@ -59,8 +63,8 @@ void main() {
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();
 
-    // Zero posts: My posts skips the empty layer and opens the new-post picker.
-    await tester.tap(find.text('My posts'));
+    // Zero posts: empty Posts row opens the new-post picker.
+    await tester.tap(find.byKey(const Key('me_posts_empty')));
     await tester.pumpAndSettle();
     expect(find.text('New post'), findsOneWidget);
     expect(find.text('Jobs'), findsOneWidget);

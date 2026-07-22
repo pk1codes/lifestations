@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 /// Quiet multi-photo pager: swipe + dots when there are 2+ pages.
 /// Shared by Browse cards and Likes detail.
 class PhotoGalleryPager extends StatefulWidget {
-  const PhotoGalleryPager({
-    required this.children,
-    this.overlay,
-    super.key,
-  });
+  const PhotoGalleryPager({required this.children, this.overlay, super.key});
 
   final List<Widget> children;
   final Widget? overlay;

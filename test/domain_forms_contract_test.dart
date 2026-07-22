@@ -56,6 +56,7 @@ void main() {
         salaryBand: '₹8–12k',
         languages: ['Hindi'],
         photoCount: 0,
+        howMany: '1',
       ).isValid,
       isTrue,
     );

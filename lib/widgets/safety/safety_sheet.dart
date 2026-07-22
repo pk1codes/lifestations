@@ -11,11 +11,12 @@ Future<void> showSafetySheet(
   required AppDomainId domain,
   required String targetId,
   required String ownerId,
+  SafetyRepository? safety,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    builder: (context) => SafeArea(
+    builder: (sheetContext) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
         child: Column(
@@ -26,38 +27,47 @@ Future<void> showSafetySheet(
               title: const Text('Block'),
               subtitle: const Text('Remove from every feed immediately'),
               onTap: () {
-                context.read<BlockStore>().block(ownerId);
-                context.read<DiscoveryStore>().block(ownerId);
-                Navigator.pop(context);
+                sheetContext.read<BlockStore>().block(ownerId);
+                sheetContext.read<DiscoveryStore>().block(ownerId);
+                final messenger = ScaffoldMessenger.of(sheetContext);
+                Navigator.pop(sheetContext);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Blocked')),
+                );
               },
             ),
             ListTile(
               leading: const Icon(Icons.flag_outlined),
               title: const Text('Report post'),
               onTap: () async {
-                await SafetyRepository().report(
+                await (safety ?? SafetyRepository()).report(
                   domain: domain,
                   targetId: targetId,
                   reason: 'other',
                 );
-                if (context.mounted) Navigator.pop(context);
+                if (!sheetContext.mounted) return;
+                final messenger = ScaffoldMessenger.of(sheetContext);
+                Navigator.pop(sheetContext);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Report submitted')),
+                );
               },
             ),
             ListTile(
               leading: const Icon(Icons.child_care_outlined),
               title: const Text('Report underage / child safety'),
               onTap: () async {
-                await SafetyRepository().flagImage(
+                await (safety ?? SafetyRepository()).flagImage(
                   domain: domain,
                   targetId: targetId,
                   reason: 'child_safety',
                 );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Urgent report submitted')),
-                  );
-                }
+                if (!sheetContext.mounted) return;
+                final messenger = ScaffoldMessenger.of(sheetContext);
+                Navigator.pop(sheetContext);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Urgent report submitted')),
+                );
               },
             ),
             const ListTile(

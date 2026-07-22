@@ -13,7 +13,7 @@ Future<void> hydrateOwnedListings({
   required String ownerId,
   required OwnedListingCache media,
   required ProfileStore marriage,
-  required JobsProfileStore jobs,
+  required JobsOfferStore jobs,
   required RoomsOfferStore rooms,
   required BikesOfferStore bikes,
   required HomeHelpOfferStore homeHelp,
@@ -33,14 +33,7 @@ Future<void> hydrateOwnedListings({
       repo: repo,
       fromCard: marriageFromCard,
     ),
-    _hydrateProfile(
-      domain: AppDomainId.jobs,
-      ownerId: ownerId,
-      media: media,
-      store: jobs,
-      repo: repo,
-      fromCard: jobsFromCard,
-    ),
+    _hydrateJobsOffers(ownerId: ownerId, media: media, store: jobs, repo: repo),
     _hydrateOffers(
       domain: AppDomainId.rooms,
       ownerId: ownerId,
@@ -66,6 +59,35 @@ Future<void> hydrateOwnedListings({
       fromCard: homeHelpFromCard,
     ),
   ]);
+}
+
+/// Jobs moved from profiles → offers; pull offers, else one legacy profile.
+Future<void> _hydrateJobsOffers({
+  required String ownerId,
+  required OwnedListingCache media,
+  required JobsOfferStore store,
+  required DomainRepository repo,
+}) async {
+  await _hydrateOffers(
+    domain: AppDomainId.jobs,
+    ownerId: ownerId,
+    media: media,
+    store: store,
+    repo: repo,
+    fromCard: jobsFromCard,
+  );
+  if (store.offers.isNotEmpty) return;
+
+  final card = await repo.fetchLegacyJobsProfile(ownerId: ownerId);
+  if (card == null) return;
+  final profile = jobsFromCard(card);
+  if (profile == null) return;
+  store.upsert(profile);
+  await media.setOfferId(AppDomainId.jobs, 0, card.id);
+  await media.setActive(AppDomainId.jobs, card.active, index: 0);
+  if (card.imageUrls.isNotEmpty) {
+    await media.setPhotos(AppDomainId.jobs, card.imageUrls, index: 0);
+  }
 }
 
 Future<void> _hydrateProfile<T>({
@@ -196,6 +218,7 @@ JobsProfile? jobsFromCard(DiscoveryCardModel card) {
   final trade = attrs['tradeId'] as String? ?? JobsProfile.trades.first;
   final salary =
       attrs['salaryBand'] as String? ?? JobsProfile.salaryBands.first;
+  final howMany = attrs['howMany'] as String?;
   return JobsProfile(
     role: const {'seek', 'offer'}.contains(role) ? role : 'seek',
     tradeId: JobsProfile.trades.contains(trade)
@@ -205,6 +228,10 @@ JobsProfile? jobsFromCard(DiscoveryCardModel card) {
     salaryBand: JobsProfile.salaryBands.contains(salary)
         ? salary
         : JobsProfile.salaryBands.first,
+    photoCount: card.imageUrls.length.clamp(0, 3),
+    howMany: howMany != null && JobsProfile.howManyOptions.contains(howMany)
+        ? howMany
+        : (role == 'offer' ? JobsProfile.howManyOptions.first : null),
   );
 }
 
@@ -282,6 +309,7 @@ HomeHelpOffer? homeHelpFromCard(DiscoveryCardModel card) {
   final languages = List<String>.from(
     attrs['languages'] as List? ?? const <String>['Hindi'],
   );
+  final howMany = attrs['howMany'] as String?;
   return HomeHelpOffer(
     role: HomeHelpOffer.roles.contains(role) ? role : 'have',
     service: HomeHelpOffer.services.contains(service)
@@ -298,6 +326,9 @@ HomeHelpOffer? homeHelpFromCard(DiscoveryCardModel card) {
         .toList(growable: false),
     photoCount: card.imageUrls.length,
     cityId: card.cityId.isNotEmpty ? card.cityId : 'mumbai',
+    howMany: howMany != null && HomeHelpOffer.howManyOptions.contains(howMany)
+        ? howMany
+        : (role == 'need' ? HomeHelpOffer.howManyOptions.first : null),
   );
 }
 

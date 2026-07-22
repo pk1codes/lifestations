@@ -30,16 +30,20 @@ void main() {
 
   test('photo errors map to short user lines', () {
     expect(
-      ImagePipeline.friendlyError(StateError('Portrait must show exactly one face')),
+      ImagePipeline.friendlyError(
+        StateError('Portrait must show exactly one face'),
+      ),
       'Use a clear photo of one face.',
     );
     expect(
-      ImagePipeline.friendlyError(const FormatException('Image must be 5 MiB or smaller')),
-      'Photo is too large. Choose a smaller one.',
+      ImagePipeline.friendlyError(
+        const FormatException('Image must be 5 MiB or smaller'),
+      ),
+      'Photo is too large.',
     );
     expect(
       ImagePipeline.friendlyError(Exception('firebase_storage/unauthorized')),
-      'Upload blocked. Close the form and try again.',
+      'Upload blocked. Try again.',
     );
   });
 

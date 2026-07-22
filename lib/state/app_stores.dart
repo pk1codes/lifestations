@@ -6,19 +6,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
+import '../services/discovery_feed_cache.dart';
+import '../services/domain_repository.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/identity_repository.dart';
 import '../services/likes_repository.dart';
+import '../services/listing_image_cache.dart';
 
 class DomainController extends ChangeNotifier {
   DomainController(this._prefs)
     : _selected = AppDomainId.values[_prefs.getInt(_domainKey) ?? 0],
       _tabs = {
         for (final domain in AppDomainId.values)
-          domain: (_prefs.getInt('tab_${domain.name}') ?? 0).clamp(0, maxTabIndex),
+          domain: (_prefs.getInt('tab_${domain.name}') ?? 0).clamp(
+            0,
+            maxTabIndex,
+          ),
       };
 
   static const _domainKey = 'selected_domain';
+
   /// Browse = 0, Likes = 1, Me = 2.
   static const maxTabIndex = 2;
   final SharedPreferences _prefs;
@@ -59,8 +66,10 @@ class IdentityStore extends ChangeNotifier {
       cityId: _prefs.getString('identity_city_id') ?? '',
       cityLabel: _prefs.getString('identity_city_label') ?? '',
       nativeLanguage: _prefs.getString('identity_language') ?? '',
-      photoUrls: _prefs.getStringList('identity_photo_urls') ?? const <String>[],
+      photoUrls:
+          _prefs.getStringList('identity_photo_urls') ?? const <String>[],
       phoneVerified: _prefs.getBool('identity_phone_verified') ?? false,
+      dialCodePreference: _prefs.getString('identity_dial_code') ?? '91',
     );
   }
 
@@ -110,6 +119,7 @@ class IdentityStore extends ChangeNotifier {
       _prefs.setString('identity_language', identity.nativeLanguage),
       _prefs.setStringList('identity_photo_urls', identity.photoUrls),
       _prefs.setBool('identity_phone_verified', identity.phoneVerified),
+      _prefs.setString('identity_dial_code', identity.dialCodePreference),
     ]);
     try {
       await _repository.save(identity);
@@ -133,14 +143,20 @@ class IdentityStore extends ChangeNotifier {
 enum SyncStatus { idle, loading, ready, error }
 
 class DiscoveryStore extends ChangeNotifier {
-  DiscoveryStore(this.domain);
+  DiscoveryStore(this.domain, {this._feedCache});
 
   final AppDomainId domain;
+  final DiscoveryFeedCache? _feedCache;
   final List<DiscoveryCardModel> _cards = <DiscoveryCardModel>[];
   final Set<String> _actioned = <String>{};
   final Set<String> _blocked = <String>{};
   SyncStatus status = SyncStatus.idle;
   String? error;
+  StreamSubscription<List<DiscoveryCardModel>>? _liveSub;
+  static DiscoveryStore? _activeLive;
+
+  /// Assigned by app bootstrap so Browse can retry a failed remote sync.
+  Future<void> Function()? onRetry;
 
   List<DiscoveryCardModel> get cards => List.unmodifiable(
     _cards.where(
@@ -198,6 +214,96 @@ class DiscoveryStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Apply remote cards: keep local objects when unchanged; persist + warm images.
+  void applyRemote(Iterable<DiscoveryCardModel> values, {bool persist = true}) {
+    final remote = values
+        .where((card) => card.domain == domain)
+        .where((card) => !DiscoveryFeedCache.isDemo(card))
+        .toList(growable: false);
+    if (remote.isEmpty) {
+      markReady();
+      return;
+    }
+    final merged = DiscoveryFeedCache.mergeKeepingUnchanged(_cards, remote);
+    load(merged);
+    if (persist) {
+      unawaited(_feedCache?.write(domain, merged) ?? Future<void>.value());
+    }
+    ListingImageCache.warmCards(merged);
+  }
+
+  /// Show a loading state when the feed is still empty.
+  void beginRemoteSync() {
+    error = null;
+    if (_cards.isEmpty && status != SyncStatus.loading) {
+      status = SyncStatus.loading;
+      notifyListeners();
+    }
+  }
+
+  void failRemoteSync([String message = 'Could not load. Try again.']) {
+    error = message;
+    status = SyncStatus.error;
+    notifyListeners();
+  }
+
+  void markReady() {
+    if (status == SyncStatus.ready && error == null) return;
+    status = SyncStatus.ready;
+    error = null;
+    notifyListeners();
+  }
+
+  Future<void> retryRemoteSync() async {
+    final fn = onRetry;
+    if (fn == null) return;
+    beginRemoteSync();
+    await fn();
+  }
+
+  /// Live updates for the open Browse domain (one domain at a time).
+  void startLiveFeed(DomainRepository repository) {
+    if (!identical(_activeLive, this)) {
+      _activeLive?.stopLiveFeed();
+    }
+    _activeLive = this;
+    stopLiveFeed();
+    if (!FirebaseBootstrap.ready) return;
+    _liveSub = repository
+        .watchDiscover(domain)
+        .listen(
+          (remote) {
+            final live = remote
+                .where((card) => !DiscoveryFeedCache.isDemo(card))
+                .toList(growable: false);
+            if (live.isNotEmpty) {
+              applyRemote(live);
+            } else if (status == SyncStatus.loading) {
+              markReady();
+            }
+          },
+          onError: (_) {
+            // Keep last good cards; user can pull to refresh.
+            if (status == SyncStatus.loading && _cards.isEmpty) {
+              failRemoteSync();
+            } else if (status == SyncStatus.loading) {
+              markReady();
+            }
+          },
+        );
+  }
+
+  void stopLiveFeed() {
+    unawaited(_liveSub?.cancel() ?? Future<void>.value());
+    _liveSub = null;
+  }
+
+  @override
+  void dispose() {
+    stopLiveFeed();
+    super.dispose();
+  }
+
   void action(String id) {
     if (_actioned.add(id)) notifyListeners();
   }
@@ -213,10 +319,16 @@ class DiscoveryStore extends ChangeNotifier {
 }
 
 class LikesStore extends ChangeNotifier {
-  LikesStore({LikesRepository? repository})
-    : _repository = repository ?? LikesRepository();
+  LikesStore({LikesRepository? repository, SharedPreferences? preferences})
+    : _repository = repository ?? LikesRepository(),
+      _prefs = preferences {
+    _loadDismissedInbound();
+  }
+
+  static const _dismissedInboundKey = 'likes_dismissed_inbound';
 
   final LikesRepository _repository;
+  final SharedPreferences? _prefs;
   final Map<AppDomainId, Set<String>> _outbound = <AppDomainId, Set<String>>{};
   final Map<AppDomainId, Set<String>> _inbound = <AppDomainId, Set<String>>{};
   final Map<AppDomainId, List<LikeEntry>> _outboundEntries =
@@ -224,23 +336,58 @@ class LikesStore extends ChangeNotifier {
   final Map<AppDomainId, List<LikeEntry>> _inboundEntries =
       <AppDomainId, List<LikeEntry>>{};
   final Map<AppDomainId, Set<String>> _chatReady = <AppDomainId, Set<String>>{};
+  final Set<String> _dismissedInbound = <String>{};
   final List<StreamSubscription<List<LikeEntry>>> _inboundSubs =
       <StreamSubscription<List<LikeEntry>>>[];
 
+  static String _dismissKey(AppDomainId domain, String otherUid) =>
+      '${domain.name}|$otherUid';
+
+  void _loadDismissedInbound() {
+    final stored = _prefs?.getStringList(_dismissedInboundKey);
+    if (stored == null) return;
+    _dismissedInbound
+      ..clear()
+      ..addAll(stored);
+  }
+
+  Future<void> _persistDismissedInbound() async {
+    try {
+      await _prefs?.setStringList(
+        _dismissedInboundKey,
+        _dismissedInbound.toList(growable: false),
+      );
+    } catch (_) {}
+  }
+
+  bool isInboundDismissed(AppDomainId domain, String otherUid) =>
+      _dismissedInbound.contains(_dismissKey(domain, otherUid));
+
+  List<LikeEntry> _visibleInbound(AppDomainId domain) {
+    final all = _inboundEntries[domain] ?? const <LikeEntry>[];
+    return all
+        .where((e) => !isInboundDismissed(domain, e.otherUid))
+        .toList(growable: false);
+  }
+
   Set<String> outbound(AppDomainId domain) =>
       Set.unmodifiable(_outbound[domain] ?? <String>{});
-  Set<String> inbound(AppDomainId domain) =>
-      Set.unmodifiable(_inbound[domain] ?? <String>{});
+  Set<String> inbound(AppDomainId domain) => Set.unmodifiable({
+    for (final id in _inbound[domain] ?? const <String>{})
+      if (!isInboundDismissed(domain, id)) id,
+  });
 
   List<LikeEntry> outboundEntries(AppDomainId domain) =>
       List.unmodifiable(_outboundEntries[domain] ?? const <LikeEntry>[]);
   List<LikeEntry> inboundEntries(AppDomainId domain) =>
-      List.unmodifiable(_inboundEntries[domain] ?? const <LikeEntry>[]);
+      List.unmodifiable(_visibleInbound(domain));
 
   int get outboundCount =>
       _outbound.values.fold<int>(0, (total, ids) => total + ids.length);
-  int get inboundCount =>
-      _inbound.values.fold<int>(0, (total, ids) => total + ids.length);
+  int get inboundCount => AppDomainId.values.fold<int>(
+    0,
+    (total, domain) => total + _visibleInbound(domain).length,
+  );
 
   /// WhatsApp / Telegram icons unlock for mutual pairs (or peer already opened chat).
   bool chatIconsActive(AppDomainId domain, String otherId) =>
@@ -289,11 +436,71 @@ class LikesStore extends ChangeNotifier {
     return isMutual(domain, targetId);
   }
 
-  /// After WhatsApp/Telegram open — unlock chat icons on the other device too.
-  Future<void> signalChatOpened(
+  /// Remove an "I liked" row — deletes both like docs when online.
+  Future<void> unlike(AppDomainId domain, String targetId) async {
+    if (targetId.isEmpty) return;
+    try {
+      await _repository.unlike(domain: domain, targetUid: targetId);
+    } catch (error) {
+      debugPrint('Unlike remote failed: $error');
+    }
+    _removeOutboundLocal(domain, targetId);
+  }
+
+  void _removeOutboundLocal(AppDomainId domain, String targetId) {
+    _outbound[domain]?.remove(targetId);
+    _outboundEntries[domain]?.removeWhere((e) => e.otherUid == targetId);
+    _chatReady[domain]?.remove(targetId);
+    notifyListeners();
+  }
+
+  /// Hide a "Liked me" row for this user (does not delete their like).
+  Future<void> dismissInbound(AppDomainId domain, String fromUid) async {
+    if (fromUid.isEmpty) return;
+    final key = _dismissKey(domain, fromUid);
+    if (!_dismissedInbound.add(key)) return;
+    await _persistDismissedInbound();
+    _chatReady[domain]?.remove(fromUid);
+    notifyListeners();
+  }
+
+  /// Restore a dismissed inbound row (Undo).
+  Future<void> restoreInbound(AppDomainId domain, String fromUid) async {
+    if (!_dismissedInbound.remove(_dismissKey(domain, fromUid))) return;
+    await _persistDismissedInbound();
+    notifyListeners();
+  }
+
+  /// Restore an outbound like locally after Undo (re-writes when possible).
+  Future<void> restoreOutbound(
     AppDomainId domain,
-    String otherUid,
-  ) async {
+    String targetId, {
+    DiscoveryCardModel? snapshot,
+  }) async {
+    if (targetId.isEmpty) return;
+    if (_outbound[domain]?.contains(targetId) ?? false) return;
+    try {
+      await like(domain, targetId, snapshot: snapshot);
+    } catch (_) {
+      (_outbound[domain] ??= <String>{}).add(targetId);
+      final entries = _outboundEntries[domain] ??= <LikeEntry>[];
+      entries.removeWhere((entry) => entry.otherUid == targetId);
+      entries.insert(
+        0,
+        LikeEntry(
+          domain: domain,
+          otherUid: targetId,
+          direction: LikeDirection.outbound,
+          card: snapshot,
+          createdAt: DateTime.now(),
+        ),
+      );
+      notifyListeners();
+    }
+  }
+
+  /// After WhatsApp/Telegram open — unlock chat icons on the other device too.
+  Future<void> signalChatOpened(AppDomainId domain, String otherUid) async {
     markChatReady(domain, otherUid);
     await _repository.signalChatOpened(domain: domain, otherUid: otherUid);
   }
@@ -345,7 +552,7 @@ class LikesStore extends ChangeNotifier {
       id: (listingId != null && listingId.isNotEmpty) ? listingId : fromUid,
       domain: domain,
       ownerId: fromUid,
-      title: (title != null && title.isNotEmpty) ? title : 'Someone',
+      title: (title != null && title.isNotEmpty) ? title : 'Liked',
       subtitle: subtitle ?? '',
       cityId: '',
       cityLabel: cityLabel ?? '',
@@ -364,7 +571,8 @@ class LikesStore extends ChangeNotifier {
 
   bool isMutual(AppDomainId domain, String otherId) =>
       (_outbound[domain]?.contains(otherId) ?? false) &&
-      (_inbound[domain]?.contains(otherId) ?? false);
+      (_inbound[domain]?.contains(otherId) ?? false) &&
+      !isInboundDismissed(domain, otherId);
 
   bool canUnlock({
     required AppDomainId domain,
@@ -392,6 +600,7 @@ class LikesStore extends ChangeNotifier {
           _inboundEntries[domain] = List<LikeEntry>.from(entries);
           _inbound[domain] = {for (final entry in entries) entry.otherUid};
           for (final entry in entries) {
+            if (isInboundDismissed(domain, entry.otherUid)) continue;
             if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
               (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
             }
@@ -424,6 +633,7 @@ class LikesStore extends ChangeNotifier {
       _outbound[domain] = {for (final entry in outbound) entry.otherUid};
       _inbound[domain] = {for (final entry in inbound) entry.otherUid};
       for (final entry in inbound) {
+        if (isInboundDismissed(domain, entry.otherUid)) continue;
         if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
           (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
         }

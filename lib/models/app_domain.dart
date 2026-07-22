@@ -65,16 +65,16 @@ abstract final class AppDomains {
     enabled: true,
   );
 
-  /// Jobs — deep work blue.
+  /// Jobs — deep work blue. Multi listing (I have / I need per trade).
   static const jobs = DomainPolicy(
     id: AppDomainId.jobs,
     label: 'Jobs',
     frequency: 94.5,
     color: Color(0xFF1D4ED8),
-    storageKind: DomainStorageKind.profiles,
+    storageKind: DomainStorageKind.offers,
     subject: OfferSubject.person,
     mediaPolicy: MediaPolicy.face,
-    maxProfiles: 1,
+    maxProfiles: 5,
     minPhotos: 1,
     maxPhotos: 3,
     roles: <String>['seek', 'offer'],
@@ -122,7 +122,7 @@ abstract final class AppDomains {
     storageKind: DomainStorageKind.offers,
     subject: OfferSubject.person,
     mediaPolicy: MediaPolicy.either,
-    maxProfiles: 3,
+    maxProfiles: 5,
     minPhotos: 0,
     maxPhotos: 4,
     roles: <String>['need', 'have'],

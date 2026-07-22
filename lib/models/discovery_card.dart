@@ -18,6 +18,7 @@ class DiscoveryCardModel {
     this.refreshed = false,
     this.promoted = false,
     this.active = true,
+    this.refreshedAtMs,
   });
 
   final String id;
@@ -35,8 +36,27 @@ class DiscoveryCardModel {
   final bool verified;
   final bool refreshed;
   final bool promoted;
+
   /// False when the owner paused the listing (hidden from Browse).
   final bool active;
+
+  /// Backend `refreshedAt` / `updatedAt` millis — used for local cache freshness.
+  final int? refreshedAtMs;
+
+  /// Stamp for “same as last time?” — prefer server time, else content fingerprint.
+  String get cacheStamp {
+    final ms = refreshedAtMs;
+    if (ms != null && ms > 0) return '$id@$ms';
+    return '$id|'
+        '$title|'
+        '$subtitle|'
+        '$cityId|'
+        '${imageUrls.join(',')}|'
+        '$active|'
+        '${categoryTags.join(',')}|'
+        '${role ?? ''}|'
+        '${ageBand ?? ''}';
+  }
 
   DiscoveryCardModel copyWith({
     String? id,
@@ -55,6 +75,7 @@ class DiscoveryCardModel {
     bool? refreshed,
     bool? promoted,
     bool? active,
+    int? refreshedAtMs,
   }) => DiscoveryCardModel(
     id: id ?? this.id,
     domain: domain ?? this.domain,
@@ -72,6 +93,7 @@ class DiscoveryCardModel {
     refreshed: refreshed ?? this.refreshed,
     promoted: promoted ?? this.promoted,
     active: active ?? this.active,
+    refreshedAtMs: refreshedAtMs ?? this.refreshedAtMs,
   );
 
   Map<String, Object?> toPublicJson() {
@@ -129,6 +151,7 @@ class Identity {
     this.nativeLanguage = '',
     this.photoUrls = const <String>[],
     this.phoneVerified = false,
+    this.dialCodePreference = '91',
   });
 
   final String userId;
@@ -139,6 +162,9 @@ class Identity {
   final String nativeLanguage;
   final List<String> photoUrls;
   final bool phoneVerified;
+
+  /// Last chosen dial digits (`91` or `965`) for Account / OTP chips.
+  final String dialCodePreference;
 
   bool get isValid =>
       displayName.trim().length >= 2 &&
@@ -156,6 +182,7 @@ class Identity {
     String? nativeLanguage,
     List<String>? photoUrls,
     bool? phoneVerified,
+    String? dialCodePreference,
   }) => Identity(
     userId: userId ?? this.userId,
     displayName: displayName ?? this.displayName,
@@ -165,5 +192,6 @@ class Identity {
     nativeLanguage: nativeLanguage ?? this.nativeLanguage,
     photoUrls: photoUrls ?? this.photoUrls,
     phoneVerified: phoneVerified ?? this.phoneVerified,
+    dialCodePreference: dialCodePreference ?? this.dialCodePreference,
   );
 }

@@ -32,6 +32,7 @@ assert.ok(
   "domain-scoped public cards",
 );
 assert.ok(rules.includes("'headline'") && rules.includes("'locationLabel'"), "public card allowlist fields");
+assert.ok(rules.includes("'detailLine'") && rules.includes("'sideLabel'"), "public card meta fields");
 assert.ok(!/allow update: if true/.test(rules), "no open update allow");
 
 const hosting = JSON.parse(

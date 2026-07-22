@@ -34,6 +34,16 @@ class MarriageProfile {
 
   static const genders = <String>['woman', 'man', 'other'];
   static const seekingOptions = <String>['woman', 'man', 'everyone'];
+
+  /// Same bands the age → ageBand mapping writes on publish.
+  static const ageBands = <String>[
+    '18-24',
+    '25-29',
+    '30-34',
+    '35-39',
+    '40-49',
+    '50+',
+  ];
   static const salaryBands = <String>[
     'Prefer not to say',
     'Under ₹5L/year',
@@ -94,12 +104,12 @@ class MarriageProfile {
   ];
 
   String get ageBand => switch (age) {
-    < 25 => '18-24',
-    < 30 => '25-29',
-    < 35 => '30-34',
-    < 40 => '35-39',
-    < 50 => '40-49',
-    _ => '50+',
+    < 25 => ageBands[0],
+    < 30 => ageBands[1],
+    < 35 => ageBands[2],
+    < 40 => ageBands[3],
+    < 50 => ageBands[4],
+    _ => ageBands[5],
   };
   bool get isValid =>
       age >= 18 &&
@@ -117,19 +127,39 @@ class JobsProfile {
     required this.tradeId,
     required this.cityId,
     required this.salaryBand,
+    this.photoCount = 0,
+    this.howMany,
   });
   final String role;
   final String tradeId;
   final String cityId;
   final String salaryBand;
+  final int photoCount;
 
-  String get needLine =>
-      role == 'seek' ? 'Looking for $tradeId work' : 'Need $tradeId help';
+  /// Demand only (“I need”) — how many people. Null on supply.
+  final String? howMany;
+
+  String get needLine => tradeId;
+  bool get isDemand => role == 'offer';
   bool get isValid =>
-      const {'seek', 'offer'}.contains(role) &&
+      roles.contains(role) &&
       trades.contains(tradeId) &&
       cityId.isNotEmpty &&
-      salaryBands.contains(salaryBand);
+      salaryBands.contains(salaryBand) &&
+      photoCount <= 3 &&
+      (isDemand || photoCount >= 1) &&
+      (!isDemand || howManyOptions.contains(howMany));
+
+  /// Post + filter role ids (seek = I have, offer = I need).
+  static const roles = <String>['seek', 'offer'];
+  static String roleLabel(String role) => switch (role) {
+    'seek' => 'I have',
+    'offer' => 'I need',
+    _ => role,
+  };
+
+  /// Necessity chips for demand listings.
+  static const howManyOptions = <String>['1', '2', '3', '4', '5', 'Team'];
 
   static const trades = <String>[
     'Cook',
@@ -208,8 +238,8 @@ class RoomsOffer {
     'Power backup',
   ];
 
-  String get title => '$type for rent';
-  String get subtitle => '₹$monthlyRent/month • $furnishing';
+  String get title => type;
+  String get subtitle => '₹$monthlyRent/month';
 
   bool get isValid =>
       types.contains(type) &&
@@ -276,7 +306,7 @@ class BikesOffer {
 
   String get title =>
       '$make ${model?.trim().isNotEmpty == true ? model!.trim() : type}';
-  String get subtitle => '₹$hourlyRent/hour • $fromTime–$toTime';
+  String get subtitle => '₹$hourlyRent/hour';
 
   bool get isValid =>
       types.contains(type) &&
@@ -313,6 +343,7 @@ class HomeHelpOffer {
     required this.languages,
     required this.photoCount,
     this.cityId = 'mumbai',
+    this.howMany,
   });
   final String role;
   final String service;
@@ -322,7 +353,11 @@ class HomeHelpOffer {
   final int photoCount;
   final String cityId;
 
+  /// Demand only (“I need”) — how many people.
+  final String? howMany;
+
   static const roles = <String>['have', 'need'];
+  static const howManyOptions = <String>['1', '2', '3', '4', '5', 'Team'];
   static const services = <String>[
     'Cook',
     'Maid',
@@ -352,8 +387,9 @@ class HomeHelpOffer {
     'Malayalam',
   ];
 
-  String get title => role == 'have' ? '$service available' : '$service needed';
-  String get subtitle => '${role == 'have' ? 'Available' : 'Hiring'} • $shift';
+  String get title => service;
+  String get subtitle => '$shift · $salaryBand';
+  bool get isDemand => role == 'need';
 
   bool get isValid =>
       roles.contains(role) &&
@@ -364,5 +400,6 @@ class HomeHelpOffer {
       languages.isNotEmpty &&
       languages.every(languageOptions.contains) &&
       photoCount <= 4 &&
-      (role == 'need' || photoCount >= 1);
+      (role == 'need' || photoCount >= 1) &&
+      (!isDemand || howManyOptions.contains(howMany));
 }

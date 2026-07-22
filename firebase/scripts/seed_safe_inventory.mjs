@@ -156,7 +156,7 @@ async function seedJobs(db) {
       .set(
         {
           categoryName: cat.categoryName,
-          profileIds: cat.profileIds ?? [],
+          offerIds: cat.profileIds ?? cat.offerIds ?? [],
           region: cat.region ?? '',
           cityId: cat.cityId ?? '',
           order: cat.order ?? 0,
@@ -167,33 +167,51 @@ async function seedJobs(db) {
 
   for (const p of profiles) {
     const uid = p.id;
+    const role = p.jobsRole ?? p.role ?? 'seek';
+    const trade =
+      p.tradeId ||
+      (Array.isArray(p.categories) && p.categories[0]) ||
+      'Cook';
+    const cityLabel = p.cityLabel || p.location || 'Mumbai & MMR';
+    const cityId =
+      p.cityId ||
+      (String(cityLabel).toLowerCase().includes('delhi')
+        ? 'delhi'
+        : String(cityLabel).toLowerCase().includes('bengal')
+          ? 'bengaluru'
+          : 'mumbai');
+    const salaryBand = p.salaryBand || 'Prefer not to say';
+    const photoUrls = p.photoSlots || p.photos || [];
+    const attributes = {
+      tradeId: trade,
+      salaryBand,
+    };
+    if (role === 'offer') {
+      attributes.howMany = p.howMany || '1';
+    }
     const publicDoc = {
-      name: p.name,
-      bio: p.bio ?? p.needLine ?? '',
-      ...emptyPublicContact(),
-      jobsRole: p.jobsRole ?? p.role ?? 'seek',
-      tradeId: p.tradeId ?? '',
-      jobTitle: p.jobTitle ?? '',
-      salaryBand: p.salaryBand ?? '',
-      nativeLanguage: p.nativeLanguage ?? '',
-      photos: p.photos ?? [],
-      photoUrl: p.photoUrl ?? '',
-      photoThumbUrl: p.photoThumbUrl ?? '',
-      photoLargeUrl: p.photoLargeUrl ?? '',
-      userId: uid,
-      domain: 'jobs',
-      categories: p.categories ?? [],
-      cityId: p.cityId ?? '',
-      cityLabel: p.cityLabel ?? p.location ?? '',
+      id: uid,
+      domainId: 'jobs',
+      ownerId: uid,
+      title: trade,
+      subtitle: salaryBand,
+      cityId,
+      cityLabel,
+      categoryTags: [trade],
+      photoUrls,
+      role,
+      attributes,
+      verified: p.verifiedUser === true,
       active: true,
       seeded: true,
       updatedAt: now,
+      refreshedAt: now,
       createdAt: now,
     };
     await db
       .collection('domains')
       .doc('jobs')
-      .collection('profiles')
+      .collection('offers')
       .doc(uid)
       .set(publicDoc, { merge: true });
     await upsertVault(db, uid, p);

@@ -23,7 +23,7 @@ void main() {
           photoCount: 1,
         ),
       );
-    final jobs = JobsProfileStore();
+    final jobs = JobsOfferStore();
     final rooms = RoomsOfferStore()
       ..upsert(
         const RoomsOffer(
@@ -48,8 +48,12 @@ void main() {
     final bikes = BikesOfferStore();
     final homeHelp = HomeHelpOfferStore();
 
-    await media.setPhotos(AppDomainId.marriage, const ['https://a.example/m.jpg']);
-    await media.setPhotos(AppDomainId.rooms, const ['https://a.example/r0.jpg'], index: 0);
+    await media.setPhotos(AppDomainId.marriage, const [
+      'https://a.example/m.jpg',
+    ]);
+    await media.setPhotos(AppDomainId.rooms, const [
+      'https://a.example/r0.jpg',
+    ], index: 0);
 
     final posts = collectOwnedPosts(
       ownerId: 'u1',
@@ -66,9 +70,9 @@ void main() {
     expect(posts[0].domain, AppDomainId.marriage);
     expect(posts[0].card.imageUrls, ['https://a.example/m.jpg']);
     expect(posts[1].offerIndex, 0);
-    expect(posts[1].card.title, '1 BHK for rent');
+    expect(posts[1].card.title, '1 BHK');
     expect(posts[1].card.imageUrls, ['https://a.example/r0.jpg']);
     expect(posts[2].offerIndex, 1);
-    expect(posts[2].card.title, 'Studio for rent');
+    expect(posts[2].card.title, 'Studio');
   });
 }

@@ -18,7 +18,10 @@ void main() {
   });
 
   test('card role uses thumb preview then medium primary', () {
-    expect(MediaUrls.preview(medium, FastImageRole.card), MediaUrls.thumb(medium));
+    expect(
+      MediaUrls.preview(medium, FastImageRole.card),
+      MediaUrls.thumb(medium),
+    );
     expect(MediaUrls.primary(medium, FastImageRole.card), medium);
     expect(MediaUrls.preview(medium, FastImageRole.thumb), isNull);
     expect(

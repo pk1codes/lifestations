@@ -6,6 +6,7 @@ import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
+import 'save_gate.dart';
 
 class RoomsForm extends StatefulWidget {
   const RoomsForm({
@@ -71,9 +72,9 @@ class _RoomsFormState extends State<RoomsForm> {
     children: [
       Text(
         'Rooms',
-        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-          color: _domain.color,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(color: _domain.color),
       ),
       const SizedBox(height: 16),
       SingleChoiceChips(
@@ -125,9 +126,15 @@ class _RoomsFormState extends State<RoomsForm> {
         onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
       const SizedBox(height: 12),
-      FilledButton(
-        style: FilledButton.styleFrom(backgroundColor: _domain.color),
-        onPressed: () async {
+      SaveGateButton(
+        missing: [
+          photosNeededLabel(
+            have: widget.photoUrls.length,
+            need: _domain.minPhotos,
+          ),
+        ].where((s) => s.isNotEmpty).toList(growable: false),
+        accent: _domain.color,
+        onSave: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
           final offer = RoomsOffer(
@@ -139,18 +146,14 @@ class _RoomsFormState extends State<RoomsForm> {
             photoCount: widget.photoUrls.length,
             amenities: _amenities.toList(),
           );
-          if (!offer.isValid) {
-            messenger.showSnackBar(
-              const SnackBar(content: Text('Add 2 photos.')),
-            );
-            return;
-          }
           try {
-            context.read<RoomsOfferStore>().upsert(
+            await context.read<RoomsOfferStore>().synchronizeUpsert(
               offer,
               index: widget.editIndex,
+              write: (value) async {
+                await widget.onAfterSave?.call(value);
+              },
             );
-            await widget.onAfterSave?.call(offer);
             if (widget.onSaveSuccess != null) {
               widget.onSaveSuccess!();
             } else {
@@ -164,7 +167,6 @@ class _RoomsFormState extends State<RoomsForm> {
             );
           }
         },
-        child: const Text('Save'),
       ),
     ],
   );

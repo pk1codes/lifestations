@@ -6,10 +6,12 @@ import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
+import 'save_gate.dart';
 
 class JobsForm extends StatefulWidget {
   const JobsForm({
     this.initial,
+    this.editIndex,
     this.onPickPhoto,
     this.onRemovePhoto,
     this.photoUrls = const <String>[],
@@ -23,6 +25,7 @@ class JobsForm extends StatefulWidget {
     super.key,
   });
   final JobsProfile? initial;
+  final int? editIndex;
   final Future<bool> Function(int slot)? onPickPhoto;
   final ValueChanged<int>? onRemovePhoto;
   final List<String> photoUrls;
@@ -43,6 +46,7 @@ class _JobsFormState extends State<JobsForm> {
   late String _trade;
   late String _salary;
   late String _city;
+  late String _howMany;
 
   DomainPolicy get _domain => AppDomains.jobs;
 
@@ -54,7 +58,11 @@ class _JobsFormState extends State<JobsForm> {
     _trade = initial?.tradeId ?? JobsProfile.trades.first;
     _salary = initial?.salaryBand ?? JobsProfile.salaryBands.first;
     _city = initial?.cityId ?? 'mumbai';
+    _howMany = initial?.howMany ?? JobsProfile.howManyOptions.first;
   }
+
+  bool get _isDemand => _role == 'offer';
+  int get _minPhotos => _isDemand ? 0 : 1;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -62,16 +70,16 @@ class _JobsFormState extends State<JobsForm> {
     children: [
       Text(
         'Jobs',
-        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-          color: _domain.color,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(color: _domain.color),
       ),
       const SizedBox(height: 16),
       SingleChoiceChips(
         label: 'Looking for',
-        values: const ['seek', 'offer'],
+        values: JobsProfile.roles,
         selected: _role,
-        text: (v) => v == 'seek' ? 'I have' : 'I need',
+        text: JobsProfile.roleLabel,
         onSelected: (v) => setState(() => _role = v),
       ),
       SingleChoiceChips(
@@ -80,6 +88,13 @@ class _JobsFormState extends State<JobsForm> {
         selected: _trade,
         onSelected: (v) => setState(() => _trade = v),
       ),
+      if (_isDemand)
+        SingleChoiceChips(
+          label: 'How many',
+          values: JobsProfile.howManyOptions,
+          selected: _howMany,
+          onSelected: (v) => setState(() => _howMany = v),
+        ),
       SingleChoiceChips(
         label: 'Monthly salary',
         values: JobsProfile.salaryBands,
@@ -88,15 +103,12 @@ class _JobsFormState extends State<JobsForm> {
       ),
       CityDropdown(value: _city, onChanged: (v) => setState(() => _city = v)),
       const SizedBox(height: 12),
-      Text(
-        _role == 'seek' ? 'Looking for $_trade work' : 'Need $_trade help',
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
+      Text(_trade, style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
       PhotoSlotStrip(
         urls: widget.photoUrls,
         previews: widget.photoPreviews,
-        minimum: _domain.minPhotos,
+        minimum: _minPhotos,
         maximum: _domain.maxPhotos,
         accent: _domain.color,
         softAccent: _domain.softColor,
@@ -108,43 +120,45 @@ class _JobsFormState extends State<JobsForm> {
         onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
       const SizedBox(height: 12),
-      FilledButton(
-        style: FilledButton.styleFrom(backgroundColor: _domain.color),
-        onPressed: () async {
+      SaveGateButton(
+        missing: [
+          if (!_isDemand)
+            photosNeededLabel(have: widget.photoUrls.length, need: _minPhotos),
+        ].where((s) => s.isNotEmpty).toList(growable: false),
+        accent: _domain.color,
+        onSave: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
-          if (widget.photoUrls.length < _domain.minPhotos) {
-            messenger.showSnackBar(
-              const SnackBar(content: Text('Add a photo.')),
-            );
-            return;
-          }
           final profile = JobsProfile(
             role: _role,
             tradeId: _trade,
             cityId: _city,
             salaryBand: _salary,
+            photoCount: widget.photoUrls.length,
+            howMany: _isDemand ? _howMany : null,
           );
-          final store = context.read<JobsProfileStore>();
-          store.saveLocal(profile);
-          final ok = await store.synchronize((value) async {
-            await widget.onAfterSave?.call(value);
-          });
-          if (!ok) {
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text(store.syncError ?? 'Could not save. Try again.'),
-              ),
+          if (!profile.isValid) return;
+          try {
+            await context.read<JobsOfferStore>().synchronizeUpsert(
+              profile,
+              index: widget.editIndex,
+              write: (value) async {
+                await widget.onAfterSave?.call(value);
+              },
             );
-            return;
-          }
-          if (widget.onSaveSuccess != null) {
-            widget.onSaveSuccess!();
-          } else {
-            navigator.pop();
+            if (widget.onSaveSuccess != null) {
+              widget.onSaveSuccess!();
+            } else {
+              navigator.pop();
+            }
+          } on StateError catch (error) {
+            messenger.showSnackBar(SnackBar(content: Text(error.message)));
+          } catch (_) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Could not save. Try again.')),
+            );
           }
         },
-        child: const Text('Save'),
       ),
     ],
   );

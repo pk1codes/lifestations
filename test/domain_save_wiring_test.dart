@@ -30,16 +30,35 @@ void main() {
   test('Jobs Save payload builds a valid discovery card', () {
     final card = publisher.buildJobsCard(
       ownerId: 'u1',
+      offerId: 'jobs_1',
       profile: const JobsProfile(
         role: 'seek',
         tradeId: 'Driver',
         cityId: 'delhi',
         salaryBand: 'Prefer not to say',
+        photoCount: 1,
       ),
       photoUrls: const ['https://cdn.example/j.webp'],
     );
     expect(card.domain, AppDomainId.jobs);
+    expect(card.id, 'jobs_1');
     expect(card.title, contains('Driver'));
+  });
+
+  test('Jobs demand includes how many', () {
+    final card = publisher.buildJobsCard(
+      ownerId: 'u1',
+      offerId: 'jobs_need',
+      profile: const JobsProfile(
+        role: 'offer',
+        tradeId: 'Security',
+        cityId: 'mumbai',
+        salaryBand: '₹15–25k/mo',
+        howMany: 'Team',
+      ),
+    );
+    expect(card.attributes['howMany'], 'Team');
+    expect(card.role, 'offer');
   });
 
   test('Rooms Save payload builds a valid discovery card', () {
@@ -54,7 +73,10 @@ void main() {
         cityId: 'mumbai',
         photoCount: 2,
       ),
-      photoUrls: const ['https://cdn.example/r0.webp', 'https://cdn.example/r1.webp'],
+      photoUrls: const [
+        'https://cdn.example/r0.webp',
+        'https://cdn.example/r1.webp',
+      ],
     );
     expect(card.domain, AppDomainId.rooms);
     expect(card.id, 'rooms_1');

@@ -16,7 +16,7 @@ void main() {
     late SharedPreferences prefs;
     late OwnedListingCache media;
     late ProfileStore marriage;
-    late JobsProfileStore jobs;
+    late JobsOfferStore jobs;
     late RoomsOfferStore rooms;
     late BikesOfferStore bikes;
     late HomeHelpOfferStore homeHelp;
@@ -26,7 +26,7 @@ void main() {
       prefs = await SharedPreferences.getInstance();
       media = OwnedListingCache(prefs);
       marriage = ProfileStore(prefs);
-      jobs = JobsProfileStore(prefs);
+      jobs = JobsOfferStore(preferences: prefs);
       rooms = RoomsOfferStore(preferences: prefs);
       bikes = BikesOfferStore(preferences: prefs);
       homeHelp = HomeHelpOfferStore(preferences: prefs);
@@ -174,8 +174,12 @@ void main() {
       );
       await media.setOfferId(AppDomainId.rooms, 0, 'room_a');
       await media.setOfferId(AppDomainId.rooms, 1, 'room_b');
-      await media.setPhotos(AppDomainId.rooms, const ['https://a.webp'], index: 0);
-      await media.setPhotos(AppDomainId.rooms, const ['https://b.webp'], index: 1);
+      await media.setPhotos(AppDomainId.rooms, const [
+        'https://a.webp',
+      ], index: 0);
+      await media.setPhotos(AppDomainId.rooms, const [
+        'https://b.webp',
+      ], index: 1);
 
       // Exercise cache shift used after a successful remote delete.
       rooms.removeAt(0);

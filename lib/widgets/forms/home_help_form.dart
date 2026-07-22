@@ -6,6 +6,7 @@ import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
+import 'save_gate.dart';
 
 class HomeHelpForm extends StatefulWidget {
   const HomeHelpForm({
@@ -46,6 +47,7 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
   late String _shift;
   late String _salary;
   late String _city;
+  late String _howMany;
   late Set<String> _languages;
 
   DomainPolicy get _domain => AppDomains.homeHelp;
@@ -59,12 +61,14 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
     _shift = initial?.shift ?? HomeHelpOffer.shifts.first;
     _salary = initial?.salaryBand ?? HomeHelpOffer.salaryBands.first;
     _city = initial?.cityId ?? 'mumbai';
+    _howMany = initial?.howMany ?? HomeHelpOffer.howManyOptions.first;
     _languages = {
       ...(initial?.languages ?? const <String>['Hindi']),
     };
   }
 
-  int get _minPhotos => _role == 'have' ? 1 : 0;
+  bool get _isDemand => _role == 'need';
+  int get _minPhotos => _isDemand ? 0 : 1;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -72,9 +76,9 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
     children: [
       Text(
         'Home Help',
-        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-          color: _domain.color,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(color: _domain.color),
       ),
       const SizedBox(height: 16),
       SingleChoiceChips(
@@ -90,6 +94,13 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
         selected: _service,
         onSelected: (v) => setState(() => _service = v),
       ),
+      if (_isDemand)
+        SingleChoiceChips(
+          label: 'How many',
+          values: HomeHelpOffer.howManyOptions,
+          selected: _howMany,
+          onSelected: (v) => setState(() => _howMany = v),
+        ),
       SingleChoiceChips(
         label: 'Shift',
         values: HomeHelpOffer.shifts,
@@ -125,9 +136,14 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
         onRemove: (slot) => widget.onRemovePhoto?.call(slot),
       ),
       const SizedBox(height: 12),
-      FilledButton(
-        style: FilledButton.styleFrom(backgroundColor: _domain.color),
-        onPressed: () async {
+      SaveGateButton(
+        missing: [
+          if (_role == 'have')
+            photosNeededLabel(have: widget.photoUrls.length, need: _minPhotos),
+          if (_languages.isEmpty) 'Choose a language',
+        ].where((s) => s.isNotEmpty).toList(growable: false),
+        accent: _domain.color,
+        onSave: () async {
           final messenger = ScaffoldMessenger.of(context);
           final navigator = Navigator.of(context);
           final offer = HomeHelpOffer(
@@ -138,25 +154,17 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
             languages: _languages.toList(),
             photoCount: widget.photoUrls.length,
             cityId: _city,
+            howMany: _isDemand ? _howMany : null,
           );
-          if (!offer.isValid) {
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text(
-                  _role == 'have'
-                      ? 'Add a photo.'
-                      : 'Choose a language.',
-                ),
-              ),
-            );
-            return;
-          }
+          if (!offer.isValid) return;
           try {
-            context.read<HomeHelpOfferStore>().upsert(
+            await context.read<HomeHelpOfferStore>().synchronizeUpsert(
               offer,
               index: widget.editIndex,
+              write: (value) async {
+                await widget.onAfterSave?.call(value);
+              },
             );
-            await widget.onAfterSave?.call(offer);
             if (widget.onSaveSuccess != null) {
               widget.onSaveSuccess!();
             } else {
@@ -170,7 +178,6 @@ class _HomeHelpFormState extends State<HomeHelpForm> {
             );
           }
         },
-        child: const Text('Save'),
       ),
     ],
   );

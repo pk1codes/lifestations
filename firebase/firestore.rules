@@ -231,7 +231,7 @@ service cloud.firestore {
     function validOffer(domainId) {
       let d = request.resource.data;
       return allowedDomain(domainId)
-        && domainId in ['rooms', 'bikes', 'home_help']
+        && domainId in ['rooms', 'bikes', 'home_help', 'jobs']
         && validDiscoveryListing(domainId)
         && d.photoUrls.size() <= 8
         && (!('body' in d) || (d.body is string && d.body.size() <= 400));
@@ -240,9 +240,11 @@ service cloud.firestore {
     function validPublicCard() {
       let d = request.resource.data;
       // Allowlisted projection only — no free-form title/bio/name fields.
+      // detailLine / sideLabel match ListingMeta (salary, I have/I need, etc.).
       return d.keys().hasOnly([
           'slug', 'active', 'ownerId', 'domain', 'sourceId',
-          'headline', 'locationLabel', 'ageBand', 'role', 'tradeLabel',
+          'headline', 'locationLabel', 'detailLine', 'sideLabel',
+          'ageBand', 'role', 'tradeLabel',
           'categoryTags', 'photoUrl', 'verified', 'promoted'
         ])
         && d.keys().hasAll([
@@ -263,6 +265,8 @@ service cloud.firestore {
         && d.headline.size() <= 80
         && d.locationLabel is string
         && d.locationLabel.size() <= 80
+        && (!('detailLine' in d) || (d.detailLine is string && d.detailLine.size() <= 80))
+        && (!('sideLabel' in d) || (d.sideLabel is string && d.sideLabel.size() <= 40))
         && (!('ageBand' in d) || (d.ageBand is string && d.ageBand.size() <= 12))
         && (!('role' in d) || (d.role is string && d.role.size() <= 20))
         && (!('tradeLabel' in d) || (d.tradeLabel is string && d.tradeLabel.size() <= 60))

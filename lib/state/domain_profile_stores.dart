@@ -66,7 +66,8 @@ abstract class LocalFirstStore<T> extends ChangeNotifier {
 
 String _friendlySyncError(Object error) {
   final text = '$error'.toLowerCase();
-  if (text.contains('permission-denied') || text.contains('permission_denied')) {
+  if (text.contains('permission-denied') ||
+      text.contains('permission_denied')) {
     return 'Could not save. Check sign-in and try again.';
   }
   if (text.contains('resource-exhausted') || text.contains('too many')) {
@@ -111,53 +112,68 @@ class ProfileStore extends LocalFirstStore<MarriageProfile> {
   }
 }
 
-class JobsProfileStore extends LocalFirstStore<JobsProfile> {
-  JobsProfileStore([SharedPreferences? preferences]) : _prefs = preferences {
-    _load();
-  }
+/// Multi Jobs listings (I have / I need per trade). Replaces the old single profile store.
+class JobsOfferStore extends MultiOfferStore<JobsProfile> {
+  JobsOfferStore({SharedPreferences? preferences})
+    : super(AppDomainId.jobs, preferences: preferences);
 
-  static const _key = 'owned_jobs_profile_json';
-  final SharedPreferences? _prefs;
+  static const _key = 'owned_jobs_offers_json';
+  static const _legacyKey = 'owned_jobs_profile_json';
 
-  void _load() {
-    final raw = _prefs?.getString(_key);
-    if (raw == null || raw.isEmpty) return;
+  @override
+  void loadPersisted() {
+    final listRaw = prefs?.getStringList(_key);
+    if (listRaw != null && listRaw.isNotEmpty) {
+      final loaded = <JobsProfile>[];
+      for (final item in listRaw) {
+        try {
+          loaded.add(_jobsFromMap(jsonDecode(item) as Map<String, dynamic>));
+        } catch (_) {}
+      }
+      setOffersForLoad(loaded);
+      return;
+    }
+    // One-time migrate from single Jobs profile.
+    final legacy = prefs?.getString(_legacyKey);
+    if (legacy == null || legacy.isEmpty) return;
     try {
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-      setValue(
-        JobsProfile(
-          role: map['role'] as String? ?? 'seek',
-          tradeId: map['tradeId'] as String? ?? JobsProfile.trades.first,
-          cityId: map['cityId'] as String? ?? 'mumbai',
-          salaryBand:
-              map['salaryBand'] as String? ?? JobsProfile.salaryBands.first,
-        ),
-      );
+      final profile = _jobsFromMap(jsonDecode(legacy) as Map<String, dynamic>);
+      setOffersForLoad([profile]);
+      persistOffers();
+      unawaited(prefs?.remove(_legacyKey) ?? Future<void>.value());
     } catch (_) {}
   }
 
   @override
-  void persistLocal(JobsProfile value) {
-    final prefs = _prefs;
-    if (prefs == null) return;
+  void persistOffers() {
+    final p = prefs;
+    if (p == null) return;
     unawaited(
-      prefs.setString(
+      p.setStringList(
         _key,
-        jsonEncode({
-          'role': value.role,
-          'tradeId': value.tradeId,
-          'cityId': value.cityId,
-          'salaryBand': value.salaryBand,
-        }),
+        offers.map((o) => jsonEncode(_jobsToMap(o))).toList(growable: false),
       ),
     );
   }
-
-  @override
-  void clearPersisted() {
-    unawaited(_prefs?.remove(_key) ?? Future<void>.value());
-  }
 }
+
+JobsProfile _jobsFromMap(Map<String, dynamic> map) => JobsProfile(
+  role: map['role'] as String? ?? 'seek',
+  tradeId: map['tradeId'] as String? ?? JobsProfile.trades.first,
+  cityId: map['cityId'] as String? ?? 'mumbai',
+  salaryBand: map['salaryBand'] as String? ?? JobsProfile.salaryBands.first,
+  photoCount: map['photoCount'] as int? ?? 0,
+  howMany: map['howMany'] as String?,
+);
+
+Map<String, Object?> _jobsToMap(JobsProfile value) => {
+  'role': value.role,
+  'tradeId': value.tradeId,
+  'cityId': value.cityId,
+  'salaryBand': value.salaryBand,
+  'photoCount': value.photoCount,
+  if (value.howMany != null) 'howMany': value.howMany,
+};
 
 abstract class MultiOfferStore<T> extends ChangeNotifier {
   MultiOfferStore(this.domain, {SharedPreferences? preferences})
@@ -211,6 +227,26 @@ abstract class MultiOfferStore<T> extends ChangeNotifier {
       ..clear()
       ..addAll(values);
   }
+
+  /// Keeps local UI responsive, but reverts if the remote publish fails.
+  Future<void> synchronizeUpsert(
+    T offer, {
+    int? index,
+    required Future<void> Function(T value) write,
+  }) async {
+    final before = List<T>.from(_offers);
+    upsert(offer, index: index);
+    try {
+      await write(offer);
+    } catch (_) {
+      _offers
+        ..clear()
+        ..addAll(before);
+      notifyListeners();
+      persistOffers();
+      rethrow;
+    }
+  }
 }
 
 class RoomsOfferStore extends MultiOfferStore<RoomsOffer> {
@@ -233,7 +269,8 @@ class RoomsOfferStore extends MultiOfferStore<RoomsOffer> {
             furnishing:
                 map['furnishing'] as String? ??
                 RoomsOffer.furnishingOptions.first,
-            monthlyRent: map['monthlyRent'] as int? ?? RoomsOffer.rentPresets.first,
+            monthlyRent:
+                map['monthlyRent'] as int? ?? RoomsOffer.rentPresets.first,
             depositMonths: map['depositMonths'] as int? ?? 0,
             cityId: map['cityId'] as String? ?? 'mumbai',
             photoCount: map['photoCount'] as int? ?? 2,
@@ -370,6 +407,7 @@ class HomeHelpOfferStore extends MultiOfferStore<HomeHelpOffer> {
             ),
             photoCount: map['photoCount'] as int? ?? 0,
             cityId: map['cityId'] as String? ?? 'mumbai',
+            howMany: map['howMany'] as String?,
           ),
         );
       } catch (_) {}
@@ -394,6 +432,7 @@ class HomeHelpOfferStore extends MultiOfferStore<HomeHelpOffer> {
                 'languages': o.languages,
                 'photoCount': o.photoCount,
                 'cityId': o.cityId,
+                if (o.howMany != null) 'howMany': o.howMany,
               }),
             )
             .toList(growable: false),
@@ -407,10 +446,23 @@ class MatchPreferencesStore extends ChangeNotifier {
   String? gender;
   String? ageBand;
 
+  bool get hasActive =>
+      (cityId != null && cityId!.isNotEmpty) ||
+      (gender != null && gender!.isNotEmpty) ||
+      (ageBand != null && ageBand!.isNotEmpty);
+
   void update({String? city, String? genderValue, String? age}) {
     cityId = city;
     gender = genderValue;
     ageBand = age;
+    notifyListeners();
+  }
+
+  void clear() {
+    if (!hasActive) return;
+    cityId = null;
+    gender = null;
+    ageBand = null;
     notifyListeners();
   }
 }
@@ -420,10 +472,23 @@ class JobsDiscoverPrefsStore extends ChangeNotifier {
   String? role;
   String? tradeId;
 
+  bool get hasActive =>
+      (cityId != null && cityId!.isNotEmpty) ||
+      (role != null && role!.isNotEmpty) ||
+      (tradeId != null && tradeId!.isNotEmpty);
+
   void update({String? city, String? roleValue, String? trade}) {
     cityId = city;
     role = roleValue;
     tradeId = trade;
+    notifyListeners();
+  }
+
+  void clear() {
+    if (!hasActive) return;
+    cityId = null;
+    role = null;
+    tradeId = null;
     notifyListeners();
   }
 }

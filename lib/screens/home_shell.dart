@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -12,10 +12,12 @@ import '../models/app_domain.dart';
 import '../models/card_side.dart';
 import '../models/discovery_card.dart';
 import '../models/domain_profiles.dart';
+import '../models/like_display.dart';
 import '../models/owned_post.dart';
 import '../services/account_services.dart';
 import 'legal_screens.dart';
 import '../services/contact_service.dart';
+import '../services/domain_repository.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/form_media_controller.dart';
 import '../services/likes_repository.dart';
@@ -28,15 +30,20 @@ import '../services/push_service.dart';
 import '../services/refresh_boost_service.dart';
 import '../services/share_service.dart';
 import '../state/app_stores.dart';
+import '../widgets/listing_meta.dart';
 import '../state/domain_profile_stores.dart';
 import '../theme/app_theme.dart';
+import '../widgets/forms/form_fields.dart';
 import '../widgets/forms/bikes_form.dart';
 import '../widgets/forms/home_help_form.dart';
 import '../widgets/forms/jobs_form.dart';
 import '../widgets/forms/marriage_form.dart';
-import '../widgets/domain_sphere_selector.dart';
+import '../widgets/domain_tile_picker.dart';
+import '../widgets/domain_switcher_button.dart';
+import '../widgets/expandable_domain_section.dart';
 import '../widgets/forms/rooms_form.dart';
 import '../widgets/forms/photo_source_sheet.dart';
+import '../widgets/tap_feedback.dart';
 import '../services/image_prefetch.dart';
 import '../services/media_urls.dart';
 import '../widgets/fast_network_image.dart';
@@ -53,20 +60,21 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   StreamSubscription<User?>? _authSub;
   var _hydratedUid = '';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       PushService.onInboundLikeData = (data) {
         if (!mounted) return;
         final likes = context.read<LikesStore>();
-        final chatReady = data['chatReady'] == 'true' ||
-            data['type'] == 'chat_ready';
+        final chatReady =
+            data['chatReady'] == 'true' || data['type'] == 'chat_ready';
         final peer = data['fromUid'] ?? data['peerUid'] ?? '';
         likes.applyInboundPush(
           domainSlug: data['domain'] ?? '',
@@ -81,16 +89,18 @@ class _HomeShellState extends State<HomeShell> {
         unawaited(likes.hydrateAll());
       };
       unawaited(_hydrateSession());
-      _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-        if (!mounted) return;
-        if (user == null || user.uid == _hydratedUid) return;
-        unawaited(_hydrateSession());
-      });
+      if (Firebase.apps.isNotEmpty) {
+        _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+          if (!mounted) return;
+          if (user == null || user.uid == _hydratedUid) return;
+          unawaited(_hydrateSession());
+        });
+      }
       final controller = context.read<DomainController>();
       if (!controller.shouldShowCoachMark) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Hold the radio button to change Marriage, Jobs, Rooms…'),
+          content: Text('Tap the domain name to change Marriage, Jobs, Rooms…'),
           duration: Duration(seconds: 8),
           showCloseIcon: true,
         ),
@@ -101,9 +111,17 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     PushService.onInboundLikeData = null;
     _authSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    // Pull latest listings without requiring force-quit.
+    unawaited(context.read<DiscoveryStore>().retryRemoteSync());
   }
 
   Future<void> _hydrateSession() async {
@@ -131,7 +149,7 @@ class _HomeShellState extends State<HomeShell> {
       ownerId: uid,
       media: context.read<OwnedListingCache>(),
       marriage: context.read<ProfileStore>(),
-      jobs: context.read<JobsProfileStore>(),
+      jobs: context.read<JobsOfferStore>(),
       rooms: context.read<RoomsOfferStore>(),
       bikes: context.read<BikesOfferStore>(),
       homeHelp: context.read<HomeHelpOfferStore>(),
@@ -177,17 +195,10 @@ class _HomeShellState extends State<HomeShell> {
         },
         destinations: <NavigationDestination>[
           NavigationDestination(
-            icon: GestureDetector(
-              key: const Key('domain_tuner'),
-              onLongPress: () => showDomainDial(context),
-              child: const Tooltip(
-                message: 'Hold to change Marriage, Jobs, Rooms…',
-                child: Icon(Icons.radio),
-              ),
-            ),
-            selectedIcon: GestureDetector(
-              onLongPress: () => showDomainDial(context),
-              child: Icon(Icons.radio, color: controller.policy.color),
+            icon: const Icon(Icons.travel_explore_outlined),
+            selectedIcon: Icon(
+              Icons.travel_explore,
+              color: controller.policy.color,
             ),
             label: l10n.text('browse'),
           ),
@@ -282,170 +293,214 @@ class _TabEntranceState extends State<_TabEntrance>
 
 Future<void> showDomainDial(BuildContext context) async {
   final controller = context.read<DomainController>();
-  unawaited(AudioPlayer().play(AssetSource('audio/rotary.wav'), volume: .35));
-  var front = AppDomains.byId(controller.selected);
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setSheetState) => AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          color: front.softSurface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              front.color.withValues(alpha: .18),
-              front.softSurface,
-              AppColors.cream,
-            ],
-            stops: const [0, 0.35, 1],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: DomainSphereSelector(
-                    selected: controller.selected,
-                    onFrontDomainChanged: (id) {
-                      final next = AppDomains.byId(id);
-                      if (next.id == front.id) return;
-                      setSheetState(() => front = next);
-                    },
-                    onDomainSelected: (id) {
-                      controller.selectDomain(id);
-                      Navigator.pop(context);
-                    },
-                  ),
-                ),
-              ],
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DomainTilePicker(
+              selected: controller.selected,
+              onDomainSelected: (id) {
+                controller.selectDomain(id);
+                Navigator.pop(context);
+              },
             ),
-          ),
+          ],
         ),
       ),
     ),
   );
 }
 
-class DiscoverScreen extends StatelessWidget {
+class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
+
+  /// Count only — never implies GPS/"nearby" accuracy.
+  static String feedCountLabel(int count) => '$count';
+
+  @override
+  State<DiscoverScreen> createState() => _DiscoverScreenState();
+}
+
+class _DiscoverScreenState extends State<DiscoverScreen> {
+  AppDomainId? _watching;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final domain = context.watch<DomainController>().selected;
+    if (_watching == domain) return;
+    _watching = domain;
+    final store = context.read<DiscoveryStore>();
+    store.startLiveFeed(FirestoreDomainRepository());
+  }
+
+  @override
+  void dispose() {
+    // Store may already be swapped; best-effort stop via last known.
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final domain = context.watch<DomainController>().policy;
     final store = context.watch<DiscoveryStore>();
     if (!domain.enabled) return ComingSoonView(domain: domain);
-    final viewerUid = FirebaseAuth.instance.currentUser?.uid;
+    final viewerUid = Firebase.apps.isEmpty
+        ? null
+        : FirebaseAuth.instance.currentUser?.uid;
     final visible = store.cardsForViewer(viewerUid);
+    final matchPrefs = context.watch<MatchPreferencesStore>();
+    final jobsPrefs = context.watch<JobsDiscoverPrefsStore>();
     final cards = domain.id == AppDomainId.jobs
-        ? () {
-            final prefs = context.watch<JobsDiscoverPrefsStore>();
-            return store.filtered(
-              source: visible,
-              cityId: prefs.cityId,
-              role: prefs.role,
-              tradeId: prefs.tradeId,
-            );
-          }()
-        : () {
-            final prefs = context.watch<MatchPreferencesStore>();
-            return store.filtered(
-              source: visible,
-              cityId: prefs.cityId,
-              gender: domain.id == AppDomainId.marriage ? prefs.gender : null,
-              ageBand: domain.id == AppDomainId.marriage ? prefs.ageBand : null,
-            );
-          }();
-    return CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          pinned: true,
-          backgroundColor: domain.softSurface.withValues(alpha: .96),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _domainIcons[domain.id],
-                    color: domain.color,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    domain.label,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: domain.color,
-                    ),
-                  ),
-                ],
+        ? store.filtered(
+            source: visible,
+            cityId: jobsPrefs.cityId,
+            role: jobsPrefs.role,
+            tradeId: jobsPrefs.tradeId,
+          )
+        : store.filtered(
+            source: visible,
+            cityId: matchPrefs.cityId,
+            gender: domain.id == AppDomainId.marriage
+                ? matchPrefs.gender
+                : null,
+            ageBand: domain.id == AppDomainId.marriage
+                ? matchPrefs.ageBand
+                : null,
+          );
+    final filterChips = browseActiveFilterLabels(
+      domainId: domain.id,
+      match: matchPrefs,
+      jobs: jobsPrefs,
+    );
+    final filtersOn = filterChips.isNotEmpty;
+    return RefreshIndicator(
+      color: domain.color,
+      onRefresh: () => store.retryRemoteSync(),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: domain.softSurface.withValues(alpha: .96),
+            title: DomainPageTitle(
+              title: domain.label,
+              subtitle: DiscoverScreen.feedCountLabel(cards.length),
+              titleColor: domain.color,
+            ),
+            actions: [
+              DomainSwitcherButton(
+                color: domain.color,
+                onPressed: () => showDomainDial(context),
               ),
-              Text(
-                '${cards.length} nearby',
-                style: Theme.of(context).textTheme.bodySmall,
+              IconButton(
+                tooltip: 'Filters',
+                onPressed: () => _showFilters(context, domain),
+                icon: Badge(
+                  isLabelVisible: filtersOn,
+                  smallSize: 8,
+                  child: Icon(Icons.tune, color: domain.color),
+                ),
               ),
             ],
           ),
-          actions: [
-            IconButton(
-              tooltip: 'Filters',
-              onPressed: () => _showFilters(context, domain),
-              icon: Icon(Icons.tune, color: domain.color),
+          if (filtersOn)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    for (final label in filterChips) Chip(label: Text(label)),
+                    ActionChip(
+                      key: const Key('clear_filters'),
+                      label: const Text('Clear'),
+                      onPressed: () => _clearBrowseFilters(context, domain.id),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
-        if (cards.isEmpty)
-          SliverFillRemaining(child: _EmptyFeed(onReset: store.reset))
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            sliver: SliverList.separated(
-              itemCount: cards.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 18),
-              itemBuilder: (context, index) {
-                // User is about to see this card — warm it + the next few.
-                ImagePrefetch.aroundCards(context, cards, focusIndex: index);
-                return DiscoveryCard(
-                card: cards[index],
-                onPass: () => store.action(cards[index].id),
-                onLike: () async {
-                  final card = cards[index];
-                  final messenger = ScaffoldMessenger.of(context);
-                  final likes = context.read<LikesStore>();
-                  try {
-                    final ready = await ensureWhatsAppForAction(context);
-                    if (!ready || !context.mounted) return false;
-                    final mutual = await likes.like(
-                      domain.id,
-                      card.ownerId,
-                      snapshot: card,
-                    );
-                    store.action(card.id);
-                    if (mutual && context.mounted) _showMatch(context, card);
-                    return true;
-                  } catch (error) {
-                    final message = error is StateError
-                        ? error.message
-                        : 'Could not save like. Try again.';
-                    messenger.showSnackBar(SnackBar(content: Text(message)));
-                    return false;
-                  }
+          if (cards.isEmpty)
+            SliverFillRemaining(
+              child: store.status == SyncStatus.loading
+                  ? const BrowseFeedLoading()
+                  : store.status == SyncStatus.error
+                  ? BrowseFeedError(
+                      message: store.error ?? 'Could not load. Try again.',
+                      onRetry: () => store.retryRemoteSync(),
+                    )
+                  : EmptyBrowseFeed(
+                      domainLabel: domain.label,
+                      hasFilters: filtersOn,
+                      onClearFilters: filtersOn
+                          ? () => _clearBrowseFilters(context, domain.id)
+                          : null,
+                      onReset: store.reset,
+                      onChangeDomain: () => showDomainDial(context),
+                    ),
+            )
+          else
+            // Keep existing list body — replaced in next patch chunk if needed.
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              sliver: SliverList.separated(
+                itemCount: cards.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 18),
+                itemBuilder: (context, index) {
+                  ImagePrefetch.aroundCards(context, cards, focusIndex: index);
+                  return DiscoveryCard(
+                    card: cards[index],
+                    onPass: () => store.action(cards[index].id),
+                    onLike: () async {
+                      final card = cards[index];
+                      final messenger = ScaffoldMessenger.of(context);
+                      final likes = context.read<LikesStore>();
+                      try {
+                        final ready = await ensureWhatsAppForAction(
+                          context,
+                          purpose: WhatsAppGatePurpose.like,
+                        );
+                        if (!ready || !context.mounted) return false;
+                        final mutual = await likes.like(
+                          domain.id,
+                          card.ownerId,
+                          snapshot: card,
+                        );
+                        store.action(card.id);
+                        if (mutual && context.mounted) {
+                          _showMatch(context, card);
+                        }
+                        return true;
+                      } catch (error) {
+                        final message = error is StateError
+                            ? error.message
+                            : 'Could not save like. Try again.';
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(message)),
+                        );
+                        return false;
+                      }
+                    },
+                  );
                 },
-              );
-              },
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -460,13 +515,13 @@ class DiscoveryCard extends StatelessWidget {
 
   final DiscoveryCardModel card;
   final VoidCallback onPass;
+
   /// Returns true when the like (or gate) succeeded and the card may dismiss.
   final Future<bool> Function() onLike;
 
   @override
   Widget build(BuildContext context) {
-    final side = cardSideMark(card);
-    final fact = cardFactLine(card);
+    final title = cardTitleLine(card);
     final l10n = AppLocalizations.of(context);
     final domainColor = AppDomains.byId(card.domain).color;
     return Dismissible(
@@ -492,178 +547,140 @@ class DiscoveryCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: domainColor, width: 5),
-            ),
+            border: Border(left: BorderSide(color: domainColor, width: 5)),
           ),
-          child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AspectRatio(
-              aspectRatio: 4 / 3,
-              child: PhotoGalleryPager(
-                overlay: card.promoted
-                    ? Positioned(
-                        right: 12,
-                        top: 12,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: .55),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            child: Text(
-                              'Top',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                    : null,
-                children: card.imageUrls.isEmpty
-                    ? <Widget>[
-                        _SyntheticArtwork(
-                          label: card.title,
-                          seed: card.id.hashCode,
-                        ),
-                      ]
-                    : card.imageUrls
-                          .map(
-                            (url) => _BrowsePhoto(
-                              url: url,
-                              label: card.title,
-                              seed: card.id.hashCode,
-                            ),
-                          )
-                          .toList(growable: false),
-              ),
-            ),
-            if (side != null)
-              ColoredBox(
-                color: side.color.withValues(alpha: .12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(side.icon, size: 18, color: side.color),
-                      const SizedBox(width: 8),
-                      Text(
-                        side.label,
-                        style: TextStyle(
-                          color: side.color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          card.title,
-                          style: Theme.of(context).textTheme.titleLarge,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        tooltip: l10n.text('more'),
-                        onSelected: (value) async {
-                          if (value == 'share') {
-                            await _share(context);
-                          } else if (value == 'safety') {
-                            await showSafetySheet(
-                              context,
-                              domain: card.domain,
-                              targetId: card.id,
-                              ownerId: card.ownerId,
-                            );
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          PopupMenuItem(
-                            value: 'share',
-                            child: Text(l10n.text('share')),
-                          ),
-                          PopupMenuItem(
-                            value: 'safety',
-                            child: Text(l10n.text('safety')),
-                          ),
-                        ],
-                        icon: const Icon(Icons.more_vert),
-                      ),
-                    ],
-                  ),
-                  if (fact.trim().isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      fact,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: PhotoGalleryPager(
+                      overlay: card.promoted
+                          ? Positioned(
+                              right: 12,
+                              top: 12,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: .55),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  child: Text(
+                                    'Top',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : null,
+                      children: card.imageUrls.isEmpty
+                          ? <Widget>[
+                              _SyntheticArtwork(
+                                label: title,
+                                seed: card.id.hashCode,
+                              ),
+                            ]
+                          : card.imageUrls
+                                .map(
+                                  (url) => _BrowsePhoto(
+                                    url: url,
+                                    label: title,
+                                    seed: card.id.hashCode,
+                                  ),
+                                )
+                                .toList(growable: false),
                     ),
-                  ],
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 18,
-                        color: AppColors.muted,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          card.cityLabel,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppColors.muted),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  ),
+                  ListingMeta(
+                    card: card,
+                    showCity: false,
+                    contentPadding: const EdgeInsets.fromLTRB(16, 2, 8, 0),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: l10n.text('more'),
+                      onSelected: (value) async {
+                        if (value == 'share') {
+                          await _share(context);
+                        } else if (value == 'safety') {
+                          await showSafetySheet(
+                            context,
+                            domain: card.domain,
+                            targetId: card.id,
+                            ownerId: card.ownerId,
+                          );
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'share',
+                          child: Text(l10n.text('share')),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _RoundAction(
-                        key: const Key('skip_button'),
-                        tooltip: l10n.text('pass'),
-                        icon: Icons.close,
-                        color: AppColors.muted,
-                        filled: false,
-                        compact: true,
-                        onPressed: onPass,
-                      ),
-                      const SizedBox(width: 10),
-                      _RoundAction(
-                        key: const Key('interested_button'),
-                        tooltip: l10n.text('like'),
-                        icon: Icons.favorite,
-                        color: domainColor,
-                        filled: true,
-                        compact: true,
-                        onPressed: () => unawaited(onLike()),
-                      ),
-                    ],
+                        PopupMenuItem(
+                          value: 'safety',
+                          child: Text(l10n.text('safety')),
+                        ),
+                      ],
+                      icon: const Icon(Icons.more_vert),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 18,
+                          color: AppColors.muted,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            card.cityLabel,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppColors.muted),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _RoundAction(
+                          key: const Key('skip_button'),
+                          tooltip: l10n.text('pass'),
+                          icon: Icons.close,
+                          color: AppColors.muted,
+                          filled: false,
+                          compact: true,
+                          onPressed: onPass,
+                        ),
+                        const SizedBox(width: 10),
+                        _RoundAction(
+                          key: const Key('interested_button'),
+                          tooltip: l10n.text('like'),
+                          icon: Icons.favorite,
+                          color: domainColor,
+                          filled: true,
+                          compact: true,
+                          onPressed: () => unawaited(onLike()),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+              const Positioned(
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(child: _BrowseCardCornerAccent()),
+              ),
+            ],
           ),
         ),
       ),
@@ -695,6 +712,46 @@ class DiscoveryCard extends StatelessWidget {
       );
 }
 
+/// Faint L-border framing the bottom-right corner of Browse cards.
+class _BrowseCardCornerAccent extends StatelessWidget {
+  const _BrowseCardCornerAccent();
+
+  static final _color = AppColors.muted.withValues(alpha: .28);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: CustomPaint(painter: _CornerLPainter(color: _color)),
+    );
+  }
+}
+
+class _CornerLPainter extends CustomPainter {
+  const _CornerLPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.25
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final path = Path()
+      ..moveTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CornerLPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class _RoundAction extends StatelessWidget {
   const _RoundAction({
     required this.tooltip,
@@ -717,9 +774,11 @@ class _RoundAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconSize = compact ? 26.0 : 34.0;
     final padding = compact ? 12.0 : 16.0;
+    final overlay = AppTapFeedback.overlayColor();
     final button = filled
         ? IconButton.filled(
             onPressed: onPressed,
+            enableFeedback: true,
             icon: Icon(icon),
             iconSize: iconSize,
             padding: EdgeInsets.all(padding),
@@ -727,10 +786,11 @@ class _RoundAction extends StatelessWidget {
             style: IconButton.styleFrom(
               backgroundColor: color,
               foregroundColor: Colors.white,
-            ),
+            ).copyWith(overlayColor: overlay),
           )
         : IconButton.outlined(
             onPressed: onPressed,
+            enableFeedback: true,
             icon: Icon(icon),
             iconSize: iconSize,
             padding: EdgeInsets.all(padding),
@@ -738,7 +798,7 @@ class _RoundAction extends StatelessWidget {
             style: IconButton.styleFrom(
               foregroundColor: color,
               side: BorderSide(color: color, width: 2),
-            ),
+            ).copyWith(overlayColor: overlay),
           );
     return Tooltip(message: tooltip, child: button);
   }
@@ -820,11 +880,6 @@ class ComingSoonView extends StatelessWidget {
           'The listing foundation is ready. Public discovery will open after safety and local supply checks.',
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 20),
-        FilledButton.tonal(
-          onPressed: () {},
-          child: const Text('Join the waitlist'),
-        ),
       ],
     ),
   );
@@ -845,6 +900,7 @@ class LikesScreen extends StatelessWidget {
             title: 'I liked',
             count: likes.outboundCount,
             icon: Icons.favorite,
+            direction: LikeDirection.outbound,
             entriesFor: likes.outboundEntries,
             likes: likes,
           ),
@@ -853,6 +909,7 @@ class LikesScreen extends StatelessWidget {
             title: 'Liked me',
             count: likes.inboundCount,
             icon: Icons.favorite_border,
+            direction: LikeDirection.inbound,
             entriesFor: likes.inboundEntries,
             likes: likes,
           ),
@@ -867,6 +924,7 @@ class _LikesSection extends StatelessWidget {
     required this.title,
     required this.count,
     required this.icon,
+    required this.direction,
     required this.entriesFor,
     required this.likes,
   });
@@ -874,6 +932,7 @@ class _LikesSection extends StatelessWidget {
   final String title;
   final int count;
   final IconData icon;
+  final LikeDirection direction;
   final List<LikeEntry> Function(AppDomainId domain) entriesFor;
   final LikesStore likes;
 
@@ -885,31 +944,7 @@ class _LikesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 10),
-          child: Row(
-            children: [
-              Icon(icon, size: 22, color: AppColors.rose),
-              const SizedBox(width: 8),
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.darkCream,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$count',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _HubSectionHeader(title: title, icon: icon, count: count),
         if (domainsWithLikes.isEmpty)
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
@@ -918,7 +953,6 @@ class _LikesSection extends StatelessWidget {
         else
           ...domainsWithLikes.map((policy) {
             final entries = entriesFor(policy.id);
-            // Warm list thumbs as soon as a domain section is on screen.
             ImagePrefetch.warmAll(
               context,
               entries.map((e) {
@@ -928,72 +962,31 @@ class _LikesSection extends StatelessWidget {
               }).whereType<String>(),
               role: FastImageRole.thumb,
             );
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              clipBehavior: Clip.antiAlias,
-              child: Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  initiallyExpanded: false,
-                  tilePadding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                  childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-                  leading: CircleAvatar(
-                    backgroundColor: policy.softColor,
-                    child: Icon(
-                      _domainIcons[policy.id],
-                      color: policy.color,
-                      size: 22,
+            return ExpandableDomainSection(
+              sectionKey: Key('likes_domain_${policy.id.name}'),
+              domain: policy,
+              count: entries.length,
+              icon: _domainIcons[policy.id] ?? Icons.circle,
+              children: [
+                for (final entry in entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _LikeRow(
+                      entry: entry,
+                      mutual: likes.chatIconsActive(
+                        entry.domain,
+                        entry.otherUid,
+                      ),
+                      onOpen: () => _showLikeDetail(context, entry),
+                      onRemove: () => _removeLikeRow(
+                        context,
+                        likes: likes,
+                        entry: entry,
+                        direction: direction,
+                      ),
                     ),
                   ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          policy.label,
-                          style: TextStyle(
-                            color: policy.color,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: policy.softColor,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${entries.length}',
-                          style: TextStyle(
-                            color: policy.color,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  children: entries
-                      .map(
-                        (entry) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _LikeRow(
-                            entry: entry,
-                            mutual: likes.chatIconsActive(
-                              entry.domain,
-                              entry.otherUid,
-                            ),
-                            onOpen: () => _showLikeDetail(context, entry),
-                          ),
-                        ),
-                      )
-                      .toList(growable: false),
-                ),
-              ),
+              ],
             );
           }),
       ],
@@ -1001,152 +994,168 @@ class _LikesSection extends StatelessWidget {
   }
 }
 
+Future<void> _removeLikeRow(
+  BuildContext context, {
+  required LikesStore likes,
+  required LikeEntry entry,
+  required LikeDirection direction,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  if (direction == LikeDirection.outbound) {
+    final snapshot = entry.card;
+    await likes.unlike(entry.domain, entry.otherUid);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text(LikeConsent.removedSnack),
+        action: SnackBarAction(
+          label: LikeConsent.undo,
+          onPressed: () {
+            unawaited(
+              likes.restoreOutbound(
+                entry.domain,
+                entry.otherUid,
+                snapshot: snapshot,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    return;
+  }
+  await likes.dismissInbound(entry.domain, entry.otherUid);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(
+    SnackBar(
+      content: const Text(LikeConsent.removedSnack),
+      action: SnackBarAction(
+        label: LikeConsent.undo,
+        onPressed: () {
+          unawaited(likes.restoreInbound(entry.domain, entry.otherUid));
+        },
+      ),
+    ),
+  );
+}
+
 class _LikeRow extends StatelessWidget {
   const _LikeRow({
     required this.entry,
     required this.mutual,
     required this.onOpen,
+    required this.onRemove,
   });
 
   final LikeEntry entry;
   final bool mutual;
   final VoidCallback onOpen;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final card = entry.card;
-    final blank = _isPlaceholderLikeCard(card);
-    final title = blank
-        ? ((card?.title.trim().isNotEmpty ?? false) &&
-                  card!.title != 'Liked post'
-              ? card.title
-              : 'Someone')
-        : (card?.title ?? 'Liked post');
-    final city = card?.cityLabel ?? '';
+    final blank = LikeDisplay.isPlaceholderCard(card);
+    final title = LikeDisplay.rowTitle(card);
     final photo = card?.imageUrls.isNotEmpty == true
         ? card!.imageUrls.first
         : null;
     final policy = AppDomains.byId(entry.domain);
-    return Material(
+    return AppInkWell(
       color: policy.softColor.withValues(alpha: .35),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onOpen,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 72,
-                  height: 72,
-                  child: photo == null
-                      ? const _BlankLikeThumb()
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            _LikePhoto(
-                              url: photo,
-                              label: title,
-                              seed: entry.otherUid.hashCode,
-                            ),
-                            if ((card?.imageUrls.length ?? 0) > 1)
-                              Positioned(
-                                right: 4,
-                                bottom: 4,
-                                child: PhotoExtraBadge(
-                                  extraCount: card!.imageUrls.length - 1,
-                                ),
-                              ),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    if (blank) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'No listing yet',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.muted,
-                        ),
-                      ),
-                    ] else if (city.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 16,
-                            color: AppColors.muted,
-                          ),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: Text(
-                              city,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.muted),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Row(
+      onTap: onOpen,
+      padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 72,
+              height: 72,
+              child: photo == null
+                  ? const _BlankLikeThumb()
+                  : Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Icon(
-                          mutual ? Icons.lock_open : Icons.lock_outline,
-                          size: 16,
-                          color: mutual
-                              ? CardSideMark.supplyColor
-                              : AppColors.muted,
+                        _LikePhoto(
+                          url: photo,
+                          label: title,
+                          seed: entry.otherUid.hashCode,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          mutual ? 'Both interested' : 'Waiting',
-                          style: TextStyle(
-                            color: mutual
-                                ? CardSideMark.supplyColor
-                                : AppColors.muted,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
+                        if ((card?.imageUrls.length ?? 0) > 1)
+                          Positioned(
+                            right: 4,
+                            bottom: 4,
+                            child: PhotoExtraBadge(
+                              extraCount: card!.imageUrls.length - 1,
+                            ),
                           ),
-                        ),
                       ],
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (blank)
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  )
+                else if (card != null)
+                  ListingMeta(card: card, compact: true),
+                if (blank) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    LikeDisplay.missingListing,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      mutual ? Icons.lock_open : Icons.lock_outline,
+                      size: 16,
+                      color: mutual
+                          ? CardSideMark.supplyColor
+                          : AppColors.muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      mutual ? LikeConsent.listMutual : LikeConsent.listWaiting,
+                      style: TextStyle(
+                        color: mutual
+                            ? CardSideMark.supplyColor
+                            : AppColors.muted,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const Icon(Icons.chevron_right, color: AppColors.muted),
-            ],
+              ],
+            ),
           ),
-        ),
+          IconButton(
+            key: Key(
+              'like_remove_${entry.direction.name}_${entry.domain.name}_${entry.otherUid}',
+            ),
+            tooltip: LikeConsent.removeTooltip,
+            onPressed: onRemove,
+            icon: const Icon(Icons.close_rounded),
+            color: AppColors.muted,
+          ),
+        ],
       ),
     );
   }
-}
-
-bool _isPlaceholderLikeCard(DiscoveryCardModel? card) {
-  if (card == null) return true;
-  final title = card.title.trim();
-  return title.isEmpty ||
-      title == 'Someone' ||
-      title == 'Liked post' ||
-      (card.attributes['identityOnly'] == true);
 }
 
 class _BlankLikeThumb extends StatelessWidget {
@@ -1171,26 +1180,69 @@ class _BlankLikeHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: AppColors.darkCream,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.person_outline, color: AppColors.muted, size: 40),
-            SizedBox(height: 8),
-            Text(
-              'No photos yet',
-              style: TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
+    return CustomPaint(
+      painter: _DashedRectPainter(
+        color: AppColors.muted.withValues(alpha: .45),
+      ),
+      child: const ColoredBox(
+        color: AppColors.darkCream,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.person_outline, color: AppColors.muted, size: 40),
+              SizedBox(height: 8),
+              Text(
+                'No photos yet',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _DashedRectPainter extends CustomPainter {
+  _DashedRectPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    const dash = 6.0;
+    const gap = 4.0;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(1, 1, size.width - 2, size.height - 2),
+          const Radius.circular(16),
+        ),
+      );
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dash;
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0, metric.length)),
+          paint,
+        );
+        distance = next + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRectPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _LikePhoto extends StatelessWidget {
@@ -1252,14 +1304,18 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     if (likes.isMutual(entry.domain, entry.otherUid)) return;
     setState(() => _likingBack = true);
     try {
-      final ready = await ensureWhatsAppForAction(context);
+      final ready = await ensureWhatsAppForAction(
+        context,
+        purpose: WhatsAppGatePurpose.likeBack,
+      );
       if (!ready || !mounted) return;
-      final card = entry.card ??
+      final card =
+          entry.card ??
           DiscoveryCardModel(
             id: entry.otherUid,
             domain: entry.domain,
             ownerId: entry.otherUid,
-            title: 'Someone',
+            title: LikeDisplay.placeholderTitle,
             subtitle: '',
             cityId: '',
             cityLabel: '',
@@ -1273,16 +1329,18 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       );
       if (!mounted) return;
       if (mutual) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Both interested — you can chat')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text(LikeConsent.mutualSnack)));
       }
     } catch (error) {
       if (!mounted) return;
       final message = error is StateError
           ? error.message
-          : 'Could not like back. Try again.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+          : LikeConsent.acceptFailed;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _likingBack = false);
     }
@@ -1293,9 +1351,9 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final identity = context.read<IdentityStore>();
     final likes = context.read<LikesStore>();
     if (!likes.isMutual(entry.domain, entry.otherUid)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Like back first to unlock chat')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text(LikeConsent.acceptFirst)));
       return null;
     }
     if (!identity.identity.phoneVerified) {
@@ -1310,18 +1368,18 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       );
       if (!mounted) return null;
       if (contact == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Phone not ready yet')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Phone not ready yet')));
         return null;
       }
       setState(() => _contact = contact);
       return contact;
     } catch (_) {
       if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Check phone first')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Check phone first')));
       return null;
     } finally {
       if (mounted) setState(() => _unlocking = false);
@@ -1341,9 +1399,9 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     if (contact == null || !mounted) return;
     final handle = contact.telegramHandle?.trim() ?? '';
     if (handle.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No Telegram yet')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No Telegram yet')));
       return;
     }
     final likes = context.read<LikesStore>();
@@ -1360,21 +1418,14 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final alreadyLiked = likes.outbound(entry.domain).contains(entry.otherUid);
     final inbound = entry.direction == LikeDirection.inbound;
     final card = entry.card;
-    final placeholder = _isPlaceholderLikeCard(card);
-    final title = placeholder
-        ? ((card?.title.trim().isNotEmpty ?? false) &&
-                  card!.title != 'Liked post'
-              ? card.title
-              : 'Someone')
-        : (card?.title ?? 'Liked post');
-    final fact = placeholder || card == null ? '' : cardFactLine(card);
+    final placeholder = LikeDisplay.isPlaceholderCard(card);
+    final title = LikeDisplay.rowTitle(card);
     final photos = card?.imageUrls ?? const <String>[];
-    final side = placeholder || card == null ? null : cardSideMark(card);
     final statusText = mutual || chatActive
-        ? 'Both interested — chat'
+        ? LikeConsent.mutualDetail
         : inbound
-        ? 'They liked you — like back to unlock chat'
-        : 'Waiting for them';
+        ? LikeConsent.inboundHint
+        : LikeConsent.outboundWaiting;
 
     return SafeArea(
       child: Padding(
@@ -1386,180 +1437,155 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
         child: SingleChildScrollView(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(color: policy.color, width: 4),
-              ),
+              border: Border(left: BorderSide(color: policy.color, width: 4)),
             ),
             child: Padding(
               padding: const EdgeInsets.only(left: 12),
               child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: policy.softColor,
-                    child: Icon(
-                      _domainIcons[policy.id],
-                      color: policy.color,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    policy.label,
-                    style: TextStyle(
-                      color: policy.color,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Safety',
-                    onPressed: () => showSafetySheet(
-                      context,
-                      domain: entry.domain,
-                      targetId: entry.otherUid,
-                      ownerId: entry.otherUid,
-                    ),
-                    icon: const Icon(Icons.more_vert),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              AspectRatio(
-                aspectRatio: 4 / 3,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: photos.isEmpty
-                      ? const _BlankLikeHero()
-                      : PhotoGalleryPager(
-                          children: photos
-                              .map(
-                                (url) => _LikePhoto(
-                                  url: url,
-                                  label: title,
-                                  seed: entry.otherUid.hashCode,
-                                  role: FastImageRole.detail,
-                                ),
-                              )
-                              .toList(growable: false),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: policy.softColor,
+                        child: Icon(
+                          _domainIcons[policy.id],
+                          color: policy.color,
+                          size: 18,
                         ),
-                ),
-              ),
-              if (side != null) ...[
-                const SizedBox(height: 12),
-                ColoredBox(
-                  color: side.color.withValues(alpha: .12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(side.icon, size: 18, color: side.color),
-                        const SizedBox(width: 8),
-                        Text(
-                          side.label,
-                          style: TextStyle(
-                            color: side.color,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        policy.label,
+                        style: TextStyle(
+                          color: policy.color,
+                          fontWeight: FontWeight.w700,
                         ),
-                      ],
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Safety',
+                        onPressed: () => showSafetySheet(
+                          context,
+                          domain: entry.domain,
+                          targetId: entry.otherUid,
+                          ownerId: entry.otherUid,
+                        ),
+                        icon: const Icon(Icons.more_vert),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: photos.isEmpty
+                          ? const _BlankLikeHero()
+                          : PhotoGalleryPager(
+                              children: photos
+                                  .map(
+                                    (url) => _LikePhoto(
+                                      url: url,
+                                      label: title,
+                                      seed: entry.otherUid.hashCode,
+                                      role: FastImageRole.detail,
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            ),
                     ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              if (placeholder) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'No listing in ${policy.label} yet',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.muted,
-                  ),
-                ),
-              ],
-              if (fact.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(fact),
-              ],
-              if (card?.cityLabel.isNotEmpty ?? false) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 18,
-                      color: AppColors.muted,
-                    ),
-                    const SizedBox(width: 4),
+                  if (placeholder) ...[
+                    const SizedBox(height: 12),
+                    Text(title, style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 6),
                     Text(
-                      card!.cityLabel,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.muted,
+                      '${LikeDisplay.missingListing} · ${policy.label}',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                    ),
+                    if (card?.cityLabel.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 18,
+                            color: AppColors.muted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            card!.cityLabel,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ] else if (card != null) ...[
+                    const SizedBox(height: 12),
+                    ListingMeta(card: card),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    statusText,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: chatActive
+                          ? CardSideMark.supplyColor
+                          : AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (inbound && !alreadyLiked) ...[
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: _likingBack ? null : _likeBack,
+                      icon: _likingBack
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.favorite),
+                      label: Text(
+                        _likingBack
+                            ? LikeConsent.acceptingCta
+                            : LikeConsent.acceptCta,
                       ),
                     ),
                   ],
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(
-                statusText,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: chatActive
-                      ? CardSideMark.supplyColor
-                      : AppColors.muted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (inbound && !alreadyLiked) ...[
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: _likingBack ? null : _likeBack,
-                  icon: _likingBack
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.favorite),
-                  label: Text(_likingBack ? 'Liking…' : 'Like back'),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ContactActionButton(
-                      label: 'WhatsApp',
-                      icon: Icons.chat,
-                      color: const Color(0xFF25D366),
-                      enabled: chatActive && !_unlocking,
-                      locked: !chatActive,
-                      busy: _unlocking,
-                      onPressed: _openWhatsApp,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _ContactActionButton(
-                      label: 'Telegram',
-                      icon: Icons.send,
-                      color: const Color(0xFF229ED9),
-                      enabled: chatActive && !_unlocking,
-                      locked: !chatActive,
-                      busy: _unlocking,
-                      onPressed: _openTelegram,
-                    ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ContactActionButton(
+                          label: 'WhatsApp',
+                          icon: Icons.chat,
+                          color: const Color(0xFF25D366),
+                          enabled: chatActive && !_unlocking,
+                          locked: !chatActive,
+                          busy: _unlocking,
+                          onPressed: _openWhatsApp,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _ContactActionButton(
+                          label: 'Telegram',
+                          icon: Icons.send,
+                          color: const Color(0xFF229ED9),
+                          enabled: chatActive && !_unlocking,
+                          locked: !chatActive,
+                          busy: _unlocking,
+                          onPressed: _openTelegram,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
               ),
             ),
           ),
@@ -1597,7 +1623,7 @@ class _ContactActionButton extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    locked ? 'Both must be interested' : 'Please wait…',
+                    locked ? LikeConsent.bothNeeded : 'Please wait…',
                   ),
                 ),
               );
@@ -1629,10 +1655,13 @@ class MeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final identity = context.watch<IdentityStore>();
-    final posted = _postedDomains(context);
+    final posts = _ownedPosts(context);
     final photoUrl = identity.identity.photoUrls.isNotEmpty
         ? identity.identity.photoUrls.first
         : null;
+    final canPostMore = AppDomains.all.any(
+      (domain) => domain.enabled && _domainCanAddPost(context, domain.id),
+    );
     return _Page(
       title: 'Me',
       actions: [
@@ -1645,44 +1674,215 @@ class MeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _MeActionCard(
-            accent: identity.completed ? AppColors.rose : AppColors.muted,
+          _HubSectionHeader(title: 'Account', icon: Icons.person_outline),
+          _MeHubRow(
             onTap: () => showIdentityForm(context),
             leading: _IdentityAvatar(photoUrl: photoUrl),
             title: identity.completed
                 ? identity.identity.displayName
-                : 'Add my details',
-            subtitle: identity.completed
+                : 'Name, phone, city',
+            subtitle:
+                identity.completed && identity.identity.cityLabel.isNotEmpty
                 ? identity.identity.cityLabel
-                : 'Name, phone & city',
-            trailing: identity.completed && identity.identity.phoneVerified
-                ? const Icon(Icons.verified, color: AppColors.rose, size: 22)
                 : null,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!hasWhatsAppNumber(identity.identity))
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: _WhatsAppNeededPill(),
+                  )
+                else if (identity.completed && identity.identity.phoneVerified)
+                  const Icon(Icons.verified, color: AppColors.rose, size: 22),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
-          _MeActionCard(
-            accent: posted.isEmpty ? AppColors.muted : posted.first.color,
-            footerColors: posted.map((domain) => domain.color).toList(growable: false),
-            onTap: () {
-              if (posted.isEmpty) {
-                _showNewPostPicker(context);
-              } else {
-                _showMyPostsSheet(context);
-              }
-            },
-            leading: CircleAvatar(
-              radius: 24,
-              backgroundColor: AppColors.darkCream,
-              child: Icon(
-                posted.isEmpty ? Icons.campaign_outlined : Icons.check_circle,
-                color: posted.isEmpty ? AppColors.muted : posted.first.color,
+          _HubSectionHeader(
+            title: 'Posts',
+            icon: Icons.campaign_outlined,
+            count: posts.length,
+          ),
+          if (posts.isEmpty)
+            _MeHubRow(
+              key: const Key('me_posts_empty'),
+              onTap: () => _showNewPostPicker(context),
+              leading: CircleAvatar(
+                radius: _IdentityAvatar.radius,
+                backgroundColor: AppColors.surface,
+                child: Icon(
+                  Icons.campaign_outlined,
+                  size: _IdentityAvatar.radius * 0.9,
+                  color: AppColors.muted,
+                ),
+              ),
+              title: 'Add one',
+            )
+          else ...[
+            for (final policy in AppDomains.all)
+              if (posts.any((p) => p.domain == policy.id))
+                ExpandableDomainSection(
+                  sectionKey: Key('me_domain_${policy.id.name}'),
+                  domain: policy,
+                  count: posts.where((p) => p.domain == policy.id).length,
+                  icon: _domainIcons[policy.id] ?? Icons.circle,
+                  children: [
+                    for (final post in posts.where(
+                      (p) => p.domain == policy.id,
+                    ))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _OwnedPostRow(
+                          post: post,
+                          onOpen: () => _showOwnedPostDetail(context, post),
+                        ),
+                      ),
+                  ],
+                ),
+            if (canPostMore)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _MeHubRow(
+                  onTap: () => _showNewPostPicker(context),
+                  leading: CircleAvatar(
+                    radius: _IdentityAvatar.radius,
+                    backgroundColor: AppColors.surface,
+                    child: Icon(
+                      Icons.add_circle_outline,
+                      size: _IdentityAvatar.radius * 0.9,
+                      color: AppColors.rose,
+                    ),
+                  ),
+                  title: 'Add one',
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _WhatsAppNeededPill extends StatelessWidget {
+  const _WhatsAppNeededPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('me_whatsapp_needed_pill'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.whatsapp.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.whatsapp.withValues(alpha: .45)),
+      ),
+      child: const Text(
+        'WhatsApp needed to like',
+        style: TextStyle(
+          color: Color(0xFF128C7E),
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _MeHubRow extends StatelessWidget {
+  const _MeHubRow({
+    required this.onTap,
+    required this.leading,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    super.key,
+  });
+
+  final VoidCallback onTap;
+  final Widget leading;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppInkWell(
+      color: AppColors.darkCream.withValues(alpha: .45),
+      onTap: onTap,
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          leading,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (subtitle != null && subtitle!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (trailing != null)
+            Padding(padding: const EdgeInsets.only(right: 4), child: trailing),
+          const Icon(Icons.chevron_right, color: AppColors.muted),
+        ],
+      ),
+    );
+  }
+}
+
+class _HubSectionHeader extends StatelessWidget {
+  const _HubSectionHeader({required this.title, this.icon, this.count});
+
+  final String title;
+  final IconData? icon;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 22, color: AppColors.rose),
+            const SizedBox(width: 8),
+          ],
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          if (count != null) ...[
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.darkCream,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$count',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            title: 'My posts',
-            subtitle: posted.isEmpty
-                ? 'Add your first post'
-                : '${_totalPostCount(context)} posted',
-          ),
+          ],
         ],
       ),
     );
@@ -1693,7 +1893,8 @@ class _IdentityAvatar extends StatelessWidget {
   const _IdentityAvatar({this.photoUrl});
 
   final String? photoUrl;
-  static const double _radius = 32;
+  static const double radius = 32;
+  static const double _radius = radius;
 
   @override
   Widget build(BuildContext context) {
@@ -1734,94 +1935,9 @@ class _IdentityAvatar extends StatelessWidget {
   }
 }
 
-class _MeActionCard extends StatelessWidget {
-  const _MeActionCard({
-    required this.accent,
-    required this.onTap,
-    required this.leading,
-    required this.title,
-    this.subtitle,
-    this.trailing,
-    this.footerColors = const <Color>[],
-  });
-
-  final Color accent;
-  final VoidCallback onTap;
-  final Widget leading;
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-  final List<Color> footerColors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: accent, width: 5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 18, 16, 18),
-                child: Row(
-                  children: [
-                    leading,
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.titleLarge,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (subtitle != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              subtitle!,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: AppColors.muted),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    ?trailing,
-                  ],
-                ),
-              ),
-              if (footerColors.isNotEmpty)
-                SizedBox(
-                  height: 6,
-                  child: Row(
-                    children: [
-                      for (final color in footerColors)
-                        Expanded(child: ColoredBox(color: color)),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 void _watchPostStores(BuildContext context) {
   context.watch<ProfileStore>();
-  context.watch<JobsProfileStore>();
+  context.watch<JobsOfferStore>();
   context.watch<RoomsOfferStore>();
   context.watch<BikesOfferStore>();
   context.watch<HomeHelpOfferStore>();
@@ -1843,7 +1959,7 @@ List<OwnedPost> _ownedPosts(BuildContext context) {
   return collectOwnedPosts(
     ownerId: _ownerUid(context),
     marriage: context.read<ProfileStore>(),
-    jobs: context.read<JobsProfileStore>(),
+    jobs: context.read<JobsOfferStore>(),
     rooms: context.read<RoomsOfferStore>(),
     bikes: context.read<BikesOfferStore>(),
     homeHelp: context.read<HomeHelpOfferStore>(),
@@ -1852,27 +1968,12 @@ List<OwnedPost> _ownedPosts(BuildContext context) {
   );
 }
 
-List<DomainPolicy> _postedDomains(BuildContext context) {
-  _watchPostStores(context);
-  return AppDomains.all
-      .where((domain) => domain.enabled && _domainPostCount(context, domain.id) > 0)
-      .toList(growable: false);
-}
-
-int _totalPostCount(BuildContext context) {
-  _watchPostStores(context);
-  return AppDomainId.values.fold<int>(
-    0,
-    (sum, id) => sum + _domainPostCount(context, id),
-  );
-}
-
 int _domainPostCount(BuildContext context, AppDomainId id) {
   switch (id) {
     case AppDomainId.marriage:
       return context.read<ProfileStore>().value != null ? 1 : 0;
     case AppDomainId.jobs:
-      return context.read<JobsProfileStore>().value != null ? 1 : 0;
+      return context.read<JobsOfferStore>().offers.length;
     case AppDomainId.rooms:
       return context.read<RoomsOfferStore>().offers.length;
     case AppDomainId.bikes:
@@ -1898,121 +1999,13 @@ String _domainPostSubtitle(BuildContext context, DomainPolicy domain) {
   return '$count of $max · $action';
 }
 
-Future<void> _showMyPostsSheet(BuildContext context) async {
-  // Open immediately from local cache; refresh remote in the background.
-  final uid = _ownerUid(context);
-  unawaited(
-    hydrateOwnedListings(
-      ownerId: uid,
-      media: context.read<OwnedListingCache>(),
-      marriage: context.read<ProfileStore>(),
-      jobs: context.read<JobsProfileStore>(),
-      rooms: context.read<RoomsOfferStore>(),
-      bikes: context.read<BikesOfferStore>(),
-      homeHelp: context.read<HomeHelpOfferStore>(),
-    ),
-  );
-  if (!context.mounted) return;
-  return showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (sheetContext) {
-      final posts = _ownedPosts(sheetContext);
-      final canPostMore = AppDomains.all.any(
-        (domain) =>
-            domain.enabled && _domainCanAddPost(sheetContext, domain.id),
-      );
-      final hasAds = posts.isNotEmpty;
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'My posts',
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              if (posts.isEmpty)
-                Text(
-                  'No posts yet',
-                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.muted,
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.55,
-                  ),
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: posts
-                        .map(
-                          (post) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _OwnedPostRow(
-                              post: post,
-                              onOpen: () =>
-                                  _showOwnedPostDetail(context, post),
-                            ),
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                ),
-              if (canPostMore)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(
-                    backgroundColor: AppColors.darkCream,
-                    child: Icon(
-                      Icons.add_circle_outline,
-                      color: AppColors.rose,
-                    ),
-                  ),
-                  title: Text(posts.isEmpty ? 'New post' : 'Add another'),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    // Host Me context stays mounted after My posts closes.
-                    _showNewPostPicker(context);
-                  },
-                ),
-              if (hasAds) ...[
-                const Divider(height: 24),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(
-                    backgroundColor: AppColors.darkCream,
-                    child: Icon(Icons.trending_up, color: AppColors.rose),
-                  ),
-                  title: const Text('Get more views'),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _showGrowthSheet(context);
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
 Future<void> _showOwnedPostDetail(BuildContext hostContext, OwnedPost post) {
   return showModalBottomSheet<void>(
     context: hostContext,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (sheetContext) => _OwnedPostDetailSheet(
-      post: post,
-      hostContext: hostContext,
-    ),
+    builder: (sheetContext) =>
+        _OwnedPostDetailSheet(post: post, hostContext: hostContext),
   );
 }
 
@@ -2025,119 +2018,79 @@ class _OwnedPostRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final card = post.card;
-    final title = card.title;
-    final city = card.cityLabel;
+    final title = cardTitleLine(card);
     final photo = card.imageUrls.isNotEmpty ? card.imageUrls.first : null;
     final policy = AppDomains.byId(post.domain);
-    return Material(
+    return AppInkWell(
       color: policy.softColor.withValues(alpha: .35),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onOpen,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 72,
-                  height: 72,
-                  child: photo == null
-                      ? _SyntheticArtwork(
+      onTap: onOpen,
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 72,
+              height: 72,
+              child: photo == null
+                  ? _SyntheticArtwork(label: title, seed: card.id.hashCode)
+                  : Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _LikePhoto(
+                          url: photo,
                           label: title,
                           seed: card.id.hashCode,
-                        )
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            _LikePhoto(
-                              url: photo,
-                              label: title,
-                              seed: card.id.hashCode,
-                            ),
-                            if (card.imageUrls.length > 1)
-                              Positioned(
-                                right: 4,
-                                bottom: 4,
-                                child: PhotoExtraBadge(
-                                  extraCount: card.imageUrls.length - 1,
-                                ),
-                              ),
-                          ],
                         ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    if (city.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 16,
-                            color: AppColors.muted,
-                          ),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: Text(
-                              city,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.muted),
+                        if (card.imageUrls.length > 1)
+                          Positioned(
+                            right: 4,
+                            bottom: 4,
+                            child: PhotoExtraBadge(
+                              extraCount: card.imageUrls.length - 1,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                    if (post.paused) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Paused',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Text(
-                      policy.label,
-                      style: TextStyle(
-                        color: policy.color,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: policy.color),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListingMeta(card: card, compact: true),
+                if (post.paused) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Paused',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  policy.label,
+                  style: TextStyle(
+                    color: policy.color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: policy.color),
+        ],
       ),
     );
   }
 }
 
 class _OwnedPostDetailSheet extends StatefulWidget {
-  const _OwnedPostDetailSheet({
-    required this.post,
-    required this.hostContext,
-  });
+  const _OwnedPostDetailSheet({required this.post, required this.hostContext});
 
   final OwnedPost post;
   final BuildContext hostContext;
@@ -2160,10 +2113,8 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
   Widget build(BuildContext context) {
     final policy = AppDomains.byId(_post.domain);
     final card = _post.card;
-    final title = card.title;
-    final fact = cardFactLine(card);
+    final title = cardTitleLine(card);
     final photos = card.imageUrls;
-    final side = cardSideMark(card);
     final paused = _post.paused;
 
     return SafeArea(
@@ -2176,9 +2127,7 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
         child: SingleChildScrollView(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(color: policy.color, width: 4),
-              ),
+              border: Border(left: BorderSide(color: policy.color, width: 4)),
             ),
             child: Padding(
               padding: const EdgeInsets.only(left: 12),
@@ -2241,55 +2190,8 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
                             ),
                     ),
                   ),
-                  if (side != null) ...[
-                    const SizedBox(height: 12),
-                    ColoredBox(
-                      color: side.color.withValues(alpha: .12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(side.icon, size: 18, color: side.color),
-                            const SizedBox(width: 8),
-                            Text(
-                              side.label,
-                              style: TextStyle(
-                                color: side.color,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 12),
-                  Text(title, style: Theme.of(context).textTheme.titleLarge),
-                  if (fact.trim().isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(fact),
-                  ],
-                  if (card.cityLabel.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_outlined,
-                          size: 18,
-                          color: AppColors.muted,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          card.cityLabel,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppColors.muted),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ListingMeta(card: card),
                   const SizedBox(height: 16),
                   FilledButton(
                     style: FilledButton.styleFrom(
@@ -2306,6 +2208,16 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
                             );
                           },
                     child: const Text('Edit'),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            _showGrowthSheet(widget.hostContext);
+                          },
+                    child: const Text('Get more views'),
                   ),
                   const SizedBox(height: 8),
                   FilledButton.tonal(
@@ -2342,9 +2254,7 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
       );
       if (!mounted) return;
       setState(() {
-        _post = _post.copyWith(
-          card: _post.card.copyWith(active: !nextPaused),
-        );
+        _post = _post.copyWith(card: _post.card.copyWith(active: !nextPaused));
         _busy = false;
       });
       messenger.showSnackBar(
@@ -2363,7 +2273,7 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
     final messenger = ScaffoldMessenger.of(host);
     final media = host.read<OwnedListingCache>();
     final marriage = host.read<ProfileStore>();
-    final jobs = host.read<JobsProfileStore>();
+    final jobs = host.read<JobsOfferStore>();
     final rooms = host.read<RoomsOfferStore>();
     final bikes = host.read<BikesOfferStore>();
     final homeHelp = host.read<HomeHelpOfferStore>();
@@ -2439,9 +2349,9 @@ Future<void> _showNewPostPicker(BuildContext hostContext) {
               if (open.isEmpty)
                 Text(
                   'All post slots are full.',
-                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.muted,
-                  ),
+                  style: Theme.of(
+                    sheetContext,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                 )
               else
                 ...open.map(
@@ -2498,16 +2408,13 @@ class _DomainAdRow extends StatelessWidget {
           ),
           title: Text(
             domain.label,
-            style: TextStyle(
-              color: domain.color,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: domain.color, fontWeight: FontWeight.w700),
           ),
           subtitle: Text(
             subtitle ?? domainPostLine(domain.id, l10n),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.muted,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
           ),
           trailing: trailing,
           onTap: onTap,
@@ -2525,7 +2432,9 @@ const _domainIcons = <AppDomainId, IconData>{
   AppDomainId.homeHelp: Icons.cleaning_services,
 };
 
-Future<void> _showGrowthSheet(BuildContext context) => showModalBottomSheet<void>(
+Future<void> _showGrowthSheet(
+  BuildContext context,
+) => showModalBottomSheet<void>(
   context: context,
   showDragHandle: true,
   builder: (context) => SafeArea(
@@ -2677,25 +2586,51 @@ class _Page extends StatelessWidget {
   final List<Widget>? actions;
 
   @override
-  Widget build(BuildContext context) => CustomScrollView(
-    slivers: [
-      SliverAppBar(
-        pinned: true,
-        backgroundColor: AppColors.cream.withValues(alpha: .95),
-        title: Text(title, style: Theme.of(context).textTheme.titleLarge),
-        actions: actions,
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.all(16),
-        sliver: SliverToBoxAdapter(child: child),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final domain = context.watch<DomainController>().policy;
+    return CustomScrollView(
+      slivers: [
+        SliverAppBar(
+          pinned: true,
+          backgroundColor: domain.softSurface.withValues(alpha: .95),
+          title: DomainPageTitle(
+            title: title,
+            subtitle: domain.label,
+            subtitleColor: domain.color,
+            subtitleKey: const Key('page_domain_label'),
+          ),
+          actions: [
+            DomainSwitcherButton(
+              color: domain.color,
+              onPressed: () => showDomainDial(context),
+            ),
+            ...?actions,
+          ],
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverToBoxAdapter(child: child),
+        ),
+      ],
+    );
+  }
 }
 
-class _EmptyFeed extends StatelessWidget {
-  const _EmptyFeed({required this.onReset});
+class EmptyBrowseFeed extends StatelessWidget {
+  const EmptyBrowseFeed({
+    required this.domainLabel,
+    required this.hasFilters,
+    required this.onReset,
+    required this.onChangeDomain,
+    this.onClearFilters,
+    super.key,
+  });
+
+  final String domainLabel;
+  final bool hasFilters;
   final VoidCallback onReset;
+  final VoidCallback onChangeDomain;
+  final VoidCallback? onClearFilters;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -2706,16 +2641,132 @@ class _EmptyFeed extends StatelessWidget {
         children: [
           const Icon(Icons.travel_explore, size: 54),
           const SizedBox(height: 16),
-          const Text('Nothing more here for now.'),
+          Text(
+            hasFilters
+                ? 'Nothing in $domainLabel matches your filters.'
+                : 'Nothing in $domainLabel right now.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
+          if (onClearFilters != null) ...[
+            FilledButton(
+              key: const Key('empty_clear_filters'),
+              onPressed: onClearFilters,
+              child: const Text('Clear filters'),
+            ),
+            const SizedBox(height: 8),
+          ],
           FilledButton.tonal(
             onPressed: onReset,
             child: const Text('Show again'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            key: const Key('empty_change_domain'),
+            onPressed: onChangeDomain,
+            child: const Text('Change domain'),
           ),
         ],
       ),
     ),
   );
+}
+
+class BrowseFeedLoading extends StatelessWidget {
+  const BrowseFeedLoading({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Padding(
+      padding: EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Loading…'),
+        ],
+      ),
+    ),
+  );
+}
+
+class BrowseFeedError extends StatelessWidget {
+  const BrowseFeedError({
+    required this.message,
+    required this.onRetry,
+    super.key,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_outlined, size: 54),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const Key('feed_retry'),
+            onPressed: onRetry,
+            child: const Text('Try again'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Visible labels for active Browse filters (city / gender / age / role / trade).
+List<String> browseActiveFilterLabels({
+  required AppDomainId domainId,
+  required MatchPreferencesStore match,
+  required JobsDiscoverPrefsStore jobs,
+}) {
+  final labels = <String>[];
+  if (domainId == AppDomainId.jobs) {
+    final city = jobs.cityId;
+    if (city != null && city.isNotEmpty) {
+      labels.add(cityLabels[city] ?? city);
+    }
+    final role = jobs.role;
+    if (role != null && role.isNotEmpty) {
+      labels.add(JobsProfile.roleLabel(role));
+    }
+    final trade = jobs.tradeId;
+    if (trade != null && trade.isNotEmpty) labels.add(trade);
+    return labels;
+  }
+  final city = match.cityId;
+  if (city != null && city.isNotEmpty) {
+    labels.add(cityLabels[city] ?? city);
+  }
+  if (domainId == AppDomainId.marriage) {
+    final gender = match.gender;
+    if (gender != null && gender.isNotEmpty) labels.add(gender);
+    final age = match.ageBand;
+    if (age != null && age.isNotEmpty) labels.add(age);
+  }
+  return labels;
+}
+
+void _clearBrowseFilters(BuildContext context, AppDomainId domainId) {
+  if (domainId == AppDomainId.jobs) {
+    context.read<JobsDiscoverPrefsStore>().clear();
+  } else {
+    context.read<MatchPreferencesStore>().clear();
+  }
 }
 
 Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
@@ -2743,21 +2794,8 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String?>(
-                initialValue: city,
-                decoration: const InputDecoration(labelText: 'City'),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('Any city')),
-                  DropdownMenuItem(
-                    value: 'mumbai',
-                    child: Text('Mumbai & MMR'),
-                  ),
-                  DropdownMenuItem(value: 'delhi', child: Text('Delhi NCR')),
-                  DropdownMenuItem(
-                    value: 'bengaluru',
-                    child: Text('Bengaluru'),
-                  ),
-                ],
+              CityFilterDropdown(
+                value: city,
                 onChanged: (v) => setState(() => city = v),
               ),
               if (domain.id == AppDomainId.marriage) ...[
@@ -2765,11 +2803,11 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                 DropdownButtonFormField<String?>(
                   initialValue: gender,
                   decoration: const InputDecoration(labelText: 'Gender'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Any')),
-                    DropdownMenuItem(value: 'woman', child: Text('Woman')),
-                    DropdownMenuItem(value: 'man', child: Text('Man')),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Any')),
+                    ...MarriageProfile.genders.map(
+                      (v) => DropdownMenuItem(value: v, child: Text(v)),
+                    ),
                   ],
                   onChanged: (v) => setState(() => gender = v),
                 ),
@@ -2779,14 +2817,9 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                   decoration: const InputDecoration(labelText: 'Age band'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('Any')),
-                    ...[
-                      '18-24',
-                      '25-29',
-                      '30-34',
-                      '35-39',
-                      '40-49',
-                      '50+',
-                    ].map((v) => DropdownMenuItem(value: v, child: Text(v))),
+                    ...MarriageProfile.ageBands.map(
+                      (v) => DropdownMenuItem(value: v, child: Text(v)),
+                    ),
                   ],
                   onChanged: (v) => setState(() => age = v),
                 ),
@@ -2796,10 +2829,14 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                 DropdownButtonFormField<String?>(
                   initialValue: role,
                   decoration: const InputDecoration(labelText: 'Looking for'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Any')),
-                    DropdownMenuItem(value: 'seek', child: Text('I have')),
-                    DropdownMenuItem(value: 'offer', child: Text('I need')),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Any')),
+                    ...JobsProfile.roles.map(
+                      (v) => DropdownMenuItem(
+                        value: v,
+                        child: Text(JobsProfile.roleLabel(v)),
+                      ),
+                    ),
                   ],
                   onChanged: (v) => setState(() => role = v),
                 ),
@@ -2839,30 +2876,35 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
   );
 }
 
-Future<void> _showMatch(
-  BuildContext context,
-  DiscoveryCardModel card,
-) => showDialog<void>(
+Future<void> showMatchDialog(BuildContext context) => showDialog<void>(
   context: context,
-  builder: (context) => AlertDialog(
+  builder: (dialogContext) => AlertDialog(
     icon: const Icon(Icons.favorite, color: AppColors.rose, size: 42),
     title: const Text('Both interested'),
     content: const Text(
-      'Verify your phone when you are ready to unlock the private contact card.',
+      'Both interested — WhatsApp. '
+      'Verify your phone when you tap WhatsApp.',
       textAlign: TextAlign.center,
     ),
     actions: [
       TextButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: () => Navigator.pop(dialogContext),
         child: const Text('Later'),
       ),
       FilledButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: () {
+          final domains = dialogContext.read<DomainController>();
+          Navigator.pop(dialogContext);
+          domains.selectTab(1); // Likes
+        },
         child: const Text('Continue'),
       ),
     ],
   ),
 );
+
+Future<void> _showMatch(BuildContext context, DiscoveryCardModel card) =>
+    showMatchDialog(context);
 
 Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
   context: context,
@@ -2878,10 +2920,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Settings',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text('Settings', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Text('Language', style: Theme.of(context).textTheme.titleMedium),
               RadioGroup<String?>(
@@ -2889,10 +2928,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                 onChanged: locale.setLocale,
                 child: const Column(
                   children: [
-                    RadioListTile(
-                      value: null,
-                      title: Text('Phone language'),
-                    ),
+                    RadioListTile(value: null, title: Text('Phone language')),
                     RadioListTile(value: 'en', title: Text('English')),
                     RadioListTile(value: 'hi', title: Text('हिन्दी')),
                   ],
@@ -2970,11 +3006,7 @@ Future<void> showDomainProfileForm(
           if (profile != null) store.saveLocal(profile);
         }
       case AppDomainId.jobs:
-        final store = context.read<JobsProfileStore>();
-        if (store.value == null) {
-          final profile = jobsFromCard(activeEdit.card);
-          if (profile != null) store.saveLocal(profile);
-        }
+        break;
       case AppDomainId.rooms:
       case AppDomainId.bikes:
       case AppDomainId.homeHelp:
@@ -3010,9 +3042,12 @@ Future<void> showDomainProfileForm(
   Future<void> rememberMedia({int? offerIndex}) async {
     final urls = List<String>.from(media.urls);
     if (domain.storageKind == DomainStorageKind.offers) {
-      final index = offerIndex ??
+      final index =
+          offerIndex ??
           activeEdit?.offerIndex ??
           (switch (domain.id) {
+            AppDomainId.jobs =>
+              context.read<JobsOfferStore>().offers.length - 1,
             AppDomainId.rooms =>
               context.read<RoomsOfferStore>().offers.length - 1,
             AppDomainId.bikes =>
@@ -3029,7 +3064,8 @@ Future<void> showDomainProfileForm(
     }
   }
 
-  media.onUrlsChanged = (urls) => rememberMedia(offerIndex: activeEdit?.offerIndex);
+  media.onUrlsChanged = (urls) =>
+      rememberMedia(offerIndex: activeEdit?.offerIndex);
 
   if (activeEdit != null) {
     media.seedUrls(activeEdit.card.imageUrls);
@@ -3074,18 +3110,15 @@ Future<void> showDomainProfileForm(
   void finishSaved(BuildContext formContext) {
     Navigator.of(formContext).pop();
     hostMessenger.showSnackBar(
-      SnackBar(
-        content: const Text('Saved'),
-        backgroundColor: domain.color,
-      ),
+      SnackBar(content: const Text('Saved'), backgroundColor: domain.color),
     );
   }
 
   final marriageInitial = activeEdit?.domain == AppDomainId.marriage
       ? context.read<ProfileStore>().value
       : null;
-  final jobsInitial = activeEdit?.domain == AppDomainId.jobs
-      ? context.read<JobsProfileStore>().value
+  final jobsInitial = activeEdit != null
+      ? jobsFromOwned(activeEdit, context.read<JobsOfferStore>())
       : null;
   final roomsInitial = activeEdit != null
       ? roomsFromOwned(activeEdit, context.read<RoomsOfferStore>())
@@ -3139,6 +3172,7 @@ Future<void> showDomainProfileForm(
               ),
               AppDomainId.jobs => JobsForm(
                 initial: jobsInitial,
+                editIndex: activeEdit?.offerIndex,
                 photoUrls: urls,
                 photoPreviews: previews,
                 busySlot: busy,
@@ -3152,9 +3186,10 @@ Future<void> showDomainProfileForm(
                   await publisher.publishJobs(
                     ownerId: publishOwnerId(),
                     profile: profile,
+                    offerId: offerId,
                     photoUrls: List<String>.from(media.urls),
                   );
-                  await rememberMedia();
+                  await rememberMedia(offerIndex: activeEdit?.offerIndex);
                 },
               ),
               AppDomainId.rooms => RoomsForm(
@@ -3265,4 +3300,3 @@ Future<void> showDomainProfileForm(
     ),
   ).whenComplete(media.dispose);
 }
-

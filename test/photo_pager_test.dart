@@ -27,9 +27,7 @@ void main() {
         home: Scaffold(
           body: SizedBox(
             height: 200,
-            child: PhotoGalleryPager(
-              children: [ColoredBox(color: Colors.red)],
-            ),
+            child: PhotoGalleryPager(children: [ColoredBox(color: Colors.red)]),
           ),
         ),
       ),
@@ -40,16 +38,12 @@ void main() {
 
   testWidgets('extra badge shows +N', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: PhotoExtraBadge(extraCount: 2)),
-      ),
+      const MaterialApp(home: Scaffold(body: PhotoExtraBadge(extraCount: 2))),
     );
     expect(find.text('+2'), findsOneWidget);
 
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: PhotoExtraBadge(extraCount: 0)),
-      ),
+      const MaterialApp(home: Scaffold(body: PhotoExtraBadge(extraCount: 0))),
     );
     expect(find.text('+0'), findsNothing);
   });

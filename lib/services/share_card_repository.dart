@@ -130,6 +130,8 @@ class ShareCardRepository {
         sourceId: existing.sourceId,
         headline: existing.headline,
         locationLabel: existing.locationLabel,
+        detailLine: existing.detailLine,
+        sideLabel: existing.sideLabel,
         ageBand: existing.ageBand,
         role: existing.role,
         tradeLabel: existing.tradeLabel,

@@ -4,63 +4,96 @@ import 'package:flut_marriage/models/discovery_card.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('jobs and home help map seek/have to I have and offer/need to I need', () {
-    const haveJob = DiscoveryCardModel(
-      id: '1',
-      domain: AppDomainId.jobs,
-      ownerId: 'a',
-      title: 'Driver available',
-      subtitle: 'Looking for work',
-      cityId: 'mumbai',
-      cityLabel: 'Mumbai',
-      categoryTags: ['driver'],
-      imageUrls: [],
-      role: 'seek',
-    );
-    const needJob = DiscoveryCardModel(
-      id: '2',
-      domain: AppDomainId.jobs,
-      ownerId: 'b',
-      title: 'Driver needed',
-      subtitle: 'Hiring',
-      cityId: 'mumbai',
-      cityLabel: 'Mumbai',
-      categoryTags: ['driver'],
-      imageUrls: [],
-      role: 'offer',
-    );
-    expect(cardSideMark(haveJob)?.side, MarketplaceSide.supply);
-    expect(cardSideMark(haveJob)?.label, 'I have');
-    expect(cardSideMark(needJob)?.side, MarketplaceSide.demand);
-    expect(cardSideMark(needJob)?.label, 'I need');
+  test(
+    'jobs and home help map seek/have to I have and offer/need to I need',
+    () {
+      const haveJob = DiscoveryCardModel(
+        id: '1',
+        domain: AppDomainId.jobs,
+        ownerId: 'a',
+        title: 'Driver available',
+        subtitle: 'Looking for work',
+        cityId: 'mumbai',
+        cityLabel: 'Mumbai',
+        categoryTags: ['driver'],
+        imageUrls: [],
+        role: 'seek',
+        attributes: {'tradeId': 'driver', 'salaryBand': '₹15–25k'},
+      );
+      const needJob = DiscoveryCardModel(
+        id: '2',
+        domain: AppDomainId.jobs,
+        ownerId: 'b',
+        title: 'Driver needed',
+        subtitle: 'Hiring',
+        cityId: 'mumbai',
+        cityLabel: 'Mumbai',
+        categoryTags: ['driver'],
+        imageUrls: [],
+        role: 'offer',
+        attributes: {'tradeId': 'driver', 'salaryBand': '₹15–25k'},
+      );
+      expect(cardSideMark(haveJob)?.side, MarketplaceSide.supply);
+      expect(cardSideMark(haveJob)?.label, 'I have');
+      expect(cardSideMark(needJob)?.side, MarketplaceSide.demand);
+      expect(cardSideMark(needJob)?.label, 'I need');
+      expect(cardTitleLine(haveJob), 'Driver');
+      expect(cardFactLine(haveJob), '₹15–25k');
 
-    const haveHelp = DiscoveryCardModel(
-      id: '3',
-      domain: AppDomainId.homeHelp,
-      ownerId: 'c',
-      title: 'Cook available',
-      subtitle: 'Part-time',
-      cityId: 'delhi',
-      cityLabel: 'Delhi',
-      categoryTags: ['cook'],
-      imageUrls: [],
-      role: 'have',
-    );
-    const needHelp = DiscoveryCardModel(
-      id: '4',
-      domain: AppDomainId.homeHelp,
-      ownerId: 'd',
-      title: 'Cook needed',
-      subtitle: 'Hiring',
-      cityId: 'delhi',
-      cityLabel: 'Delhi',
-      categoryTags: ['cook'],
-      imageUrls: [],
-      role: 'need',
-    );
-    expect(cardSideMark(haveHelp)?.side, MarketplaceSide.supply);
-    expect(cardSideMark(needHelp)?.side, MarketplaceSide.demand);
-  });
+      const needJobQty = DiscoveryCardModel(
+        id: '2b',
+        domain: AppDomainId.jobs,
+        ownerId: 'b',
+        title: 'Driver',
+        subtitle: '₹15–25k',
+        cityId: 'mumbai',
+        cityLabel: 'Mumbai',
+        categoryTags: ['driver'],
+        imageUrls: [],
+        role: 'offer',
+        attributes: {
+          'tradeId': 'driver',
+          'salaryBand': '₹15–25k',
+          'howMany': '3',
+        },
+      );
+      expect(cardFactLine(needJobQty), 'Need 3 · ₹15–25k');
+
+      const haveHelp = DiscoveryCardModel(
+        id: '3',
+        domain: AppDomainId.homeHelp,
+        ownerId: 'c',
+        title: 'Cook available',
+        subtitle: 'Part-time',
+        cityId: 'delhi',
+        cityLabel: 'Delhi',
+        categoryTags: ['cook'],
+        imageUrls: [],
+        role: 'have',
+        attributes: {
+          'service': 'cook',
+          'shift': 'Morning',
+          'salaryBand': '₹10–15k',
+        },
+      );
+      const needHelp = DiscoveryCardModel(
+        id: '4',
+        domain: AppDomainId.homeHelp,
+        ownerId: 'd',
+        title: 'Cook needed',
+        subtitle: 'Hiring',
+        cityId: 'delhi',
+        cityLabel: 'Delhi',
+        categoryTags: ['cook'],
+        imageUrls: [],
+        role: 'need',
+      );
+      expect(cardSideMark(haveHelp)?.side, MarketplaceSide.supply);
+      expect(cardSideMark(needHelp)?.side, MarketplaceSide.demand);
+      expect(cardTitleLine(haveHelp), 'Cook');
+      expect(cardFactLine(haveHelp), 'Morning · ₹10–15k');
+    },
+  );
 
   test('rooms and bikes distinguish have vs need', () {
     const haveRoom = DiscoveryCardModel(
@@ -90,16 +123,17 @@ void main() {
     );
     expect(cardSideMark(haveRoom)?.label, 'I have');
     expect(cardSideMark(needRoom)?.label, 'I need');
-    expect(cardFactLine(haveRoom), 'Room • ₹8000/month');
+    expect(cardTitleLine(haveRoom), 'Room');
+    expect(cardFactLine(haveRoom), '₹8000/month');
   });
 
-  test('marriage uses looking-for mark, not marketplace sides', () {
+  test('marriage uses looking-for mark; title is age · gender only', () {
     const card = DiscoveryCardModel(
       id: '7',
       domain: AppDomainId.marriage,
       ownerId: 'g',
-      title: 'Profile',
-      subtitle: 'Synthetic',
+      title: 'Marriage · 25-29',
+      subtitle: 'Seeking man',
       cityId: 'delhi',
       cityLabel: 'Delhi',
       categoryTags: [],
@@ -108,7 +142,8 @@ void main() {
       attributes: {'gender': 'woman', 'seeking': 'man'},
     );
     expect(cardSideMark(card)?.side, MarketplaceSide.match);
-    expect(cardSideMark(card)?.label, 'Looking for man');
-    expect(cardFactLine(card), '25-29 • woman');
+    expect(cardSideMark(card)?.label, 'Looking for Man');
+    expect(cardTitleLine(card), '25-29 · Woman');
+    expect(cardFactLine(card), isEmpty);
   });
 }

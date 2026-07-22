@@ -9,7 +9,7 @@ import 'owned_listing_cache.dart';
 List<OwnedPost> collectOwnedPosts({
   required String ownerId,
   required ProfileStore marriage,
-  required JobsProfileStore jobs,
+  required JobsOfferStore jobs,
   required RoomsOfferStore rooms,
   required BikesOfferStore bikes,
   required HomeHelpOfferStore homeHelp,
@@ -35,18 +35,19 @@ List<OwnedPost> collectOwnedPosts({
     );
   }
 
-  final jobsProfile = jobs.value;
-  if (jobsProfile != null) {
+  for (var i = 0; i < jobs.offers.length; i++) {
     out.add(
       OwnedPost(
         domain: AppDomainId.jobs,
+        offerIndex: i,
         card: cards
             .buildJobsCard(
               ownerId: ownerId,
-              profile: jobsProfile,
-              photoUrls: media.photos(AppDomainId.jobs),
+              profile: jobs.offers[i],
+              offerId: media.offerId(AppDomainId.jobs, i),
+              photoUrls: media.photos(AppDomainId.jobs, i),
             )
-            .copyWith(active: media.isActive(AppDomainId.jobs)),
+            .copyWith(active: media.isActive(AppDomainId.jobs, i)),
       ),
     );
   }
@@ -103,6 +104,13 @@ List<OwnedPost> collectOwnedPosts({
   }
 
   return out;
+}
+
+JobsProfile? jobsFromOwned(OwnedPost post, JobsOfferStore store) {
+  final index = post.offerIndex;
+  if (post.domain != AppDomainId.jobs || index == null) return null;
+  if (index < 0 || index >= store.offers.length) return null;
+  return store.offers[index];
 }
 
 RoomsOffer? roomsFromOwned(OwnedPost post, RoomsOfferStore store) {

@@ -1,4 +1,5 @@
 import 'app_domain.dart';
+import 'card_side.dart';
 import 'discovery_card.dart';
 
 /// Redacted public projection for `/c/{slug}` deep links.
@@ -11,6 +12,8 @@ class PublicShareCard {
     required this.sourceId,
     required this.headline,
     required this.locationLabel,
+    this.detailLine = '',
+    this.sideLabel,
     this.ageBand,
     this.role,
     this.tradeLabel,
@@ -28,6 +31,8 @@ class PublicShareCard {
     'sourceId',
     'headline',
     'locationLabel',
+    'detailLine',
+    'sideLabel',
     'ageBand',
     'role',
     'tradeLabel',
@@ -57,6 +62,8 @@ class PublicShareCard {
   final String sourceId;
   final String headline;
   final String locationLabel;
+  final String detailLine;
+  final String? sideLabel;
   final String? ageBand;
   final String? role;
   final String? tradeLabel;
@@ -91,7 +98,7 @@ class PublicShareCard {
     return RegExp(r'^[a-zA-Z0-9]{6,64}$').hasMatch(token);
   }
 
-  /// Builds a redacted headline — never copies free-text title/subtitle/bio.
+  /// Builds a redacted headline from structured fields only — never free-text.
   factory PublicShareCard.fromDiscovery(
     DiscoveryCardModel card, {
     required String slug,
@@ -101,21 +108,23 @@ class PublicShareCard {
         .where(_isSafeLabel)
         .take(5)
         .toList(growable: false);
-    final tag = safeTags.isEmpty ? policy.label : safeTags.first;
     final role = _isSafeLabel(card.role) ? card.role : null;
-    final headline = [
-      if (card.domain == AppDomainId.jobs) _titleCase(tag) else policy.label,
-      if (role != null && role.isNotEmpty) role,
-      if (card.cityLabel.trim().isNotEmpty) card.cityLabel.trim(),
-    ].join(' · ');
+    var headline = cardTitleLine(card, allowFallback: false).trim();
+    if (headline.isEmpty) headline = policy.label;
+    if (headline.length > 80) headline = headline.substring(0, 80);
+    final fact = cardFactLine(card).trim();
+    final detail = fact.length > 80 ? fact.substring(0, 80) : fact;
+    final side = cardSideMark(card)?.label;
     return PublicShareCard(
       slug: slug,
       active: true,
       ownerId: card.ownerId,
       domain: card.domain,
       sourceId: card.id,
-      headline: headline.length > 80 ? headline.substring(0, 80) : headline,
+      headline: headline,
       locationLabel: card.cityLabel,
+      detailLine: detail,
+      sideLabel: side,
       ageBand: _isSafeLabel(card.ageBand) ? card.ageBand : null,
       role: role,
       tradeLabel:
@@ -140,6 +149,14 @@ class PublicShareCard {
       'sourceId': sourceId,
       'headline': headline,
       'locationLabel': locationLabel,
+      if (detailLine.isNotEmpty)
+        'detailLine': detailLine.length > 80
+            ? detailLine.substring(0, 80)
+            : detailLine,
+      if (sideLabel != null)
+        'sideLabel': sideLabel!.length > 40
+            ? sideLabel!.substring(0, 40)
+            : sideLabel,
       if (ageBand != null) 'ageBand': ageBand,
       if (role != null) 'role': role,
       if (tradeLabel != null) 'tradeLabel': tradeLabel,
@@ -183,6 +200,8 @@ class PublicShareCard {
       sourceId: data['sourceId'] as String,
       headline: data['headline'] as String,
       locationLabel: data['locationLabel'] as String,
+      detailLine: data['detailLine'] as String? ?? '',
+      sideLabel: data['sideLabel'] as String?,
       ageBand: data['ageBand'] as String?,
       role: data['role'] as String?,
       tradeLabel: data['tradeLabel'] as String?,
@@ -213,7 +232,4 @@ class PublicShareCard {
         ? value
         : null;
   }
-
-  static String _titleCase(String value) =>
-      '${value[0].toUpperCase()}${value.substring(1)}';
 }

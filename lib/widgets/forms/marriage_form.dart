@@ -7,6 +7,7 @@ import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
+import 'save_gate.dart';
 
 class MarriageForm extends StatefulWidget {
   const MarriageForm({
@@ -33,6 +34,7 @@ class MarriageForm extends StatefulWidget {
   final String? photoStatus;
   final String? photoError;
   final Future<void> Function(MarriageProfile profile)? onAfterSave;
+
   /// Called after a successful save instead of popping internally.
   final VoidCallback? onSaveSuccess;
 
@@ -56,8 +58,22 @@ class _MarriageFormState extends State<MarriageForm> {
   String? _occupation;
   String? _diet;
   String? _saveMessage;
+  var _saving = false;
 
   DomainPolicy get _domain => AppDomains.marriage;
+
+  List<String> get _missing {
+    final missing = <String>[];
+    final age = int.tryParse(_age.text.trim());
+    if (age == null || age < 18) missing.add('Age 18+');
+    final photos = photosNeededLabel(
+      have: widget.photoUrls.length,
+      need: _domain.minPhotos,
+    );
+    if (photos.isNotEmpty) missing.add(photos);
+    if (_bio.text.trim().length > 240) missing.add('Bio too long');
+    return missing;
+  }
 
   @override
   void initState() {
@@ -66,8 +82,11 @@ class _MarriageFormState extends State<MarriageForm> {
     _age = TextEditingController(text: '${initial?.age ?? 25}');
     _bio = TextEditingController(text: initial?.bio ?? '');
     _gender = initial?.gender ?? 'woman';
-    _seeking = initial?.seeking ??
-        (_gender == 'woman' ? 'man' : (_gender == 'man' ? 'woman' : 'everyone'));
+    _seeking =
+        initial?.seeking ??
+        (_gender == 'woman'
+            ? 'man'
+            : (_gender == 'man' ? 'woman' : 'everyone'));
     _city = initial?.cityId ?? 'mumbai';
     _salary = initial?.salaryBand;
     _religion = initial?.religion;
@@ -118,15 +137,16 @@ class _MarriageFormState extends State<MarriageForm> {
       children: [
         Text(
           'Marriage',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            color: _domain.color,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineMedium?.copyWith(color: _domain.color),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _age,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: 'Age'),
+          onChanged: (_) => setState(() {}),
           validator: (value) {
             final age = int.tryParse(value ?? '');
             return age == null || age < 18 || age > 99
@@ -173,18 +193,14 @@ class _MarriageFormState extends State<MarriageForm> {
           uploadProgress: widget.uploadProgress,
           statusText: widget.photoStatus,
           errorText: widget.photoError,
-          onPick: (slot) async =>
-              await widget.onPickPhoto?.call(slot) ?? false,
+          onPick: (slot) async => await widget.onPickPhoto?.call(slot) ?? false,
           onRemove: (slot) => widget.onRemovePhoto?.call(slot),
         ),
         if (_saveMessage != null) ...[
           const SizedBox(height: 8),
           Text(
             _saveMessage!,
-            style: TextStyle(
-              color: _domain.color,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: _domain.color, fontWeight: FontWeight.w600),
           ),
         ],
         const SizedBox(height: 4),
@@ -267,10 +283,11 @@ class _MarriageFormState extends State<MarriageForm> {
           ),
         ),
         const SizedBox(height: 8),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: _domain.color),
-          onPressed: _save,
-          child: const Text('Save'),
+        SaveGateButton(
+          missing: _missing,
+          accent: _domain.color,
+          busy: _saving,
+          onSave: _save,
         ),
       ],
     ),
@@ -294,8 +311,15 @@ class _MarriageFormState extends State<MarriageForm> {
   );
 
   Future<void> _save() async {
-    setState(() => _saveMessage = null);
-    if (!_key.currentState!.validate()) return;
+    if (_missing.isNotEmpty || _saving) return;
+    setState(() {
+      _saveMessage = null;
+      _saving = true;
+    });
+    if (!_key.currentState!.validate()) {
+      setState(() => _saving = false);
+      return;
+    }
     final profile = MarriageProfile(
       age: int.parse(_age.text),
       gender: _gender,
@@ -313,14 +337,14 @@ class _MarriageFormState extends State<MarriageForm> {
       diet: _diet,
     );
     if (!profile.isValid) {
-      setState(() => _saveMessage = 'Add a photo.');
-      return;
-    }
-    if (widget.photoUrls.isEmpty) {
-      setState(
-        () => _saveMessage =
-            'Photo not uploaded yet. Wait for “Photo added” then Save.',
-      );
+      setState(() {
+        _saveMessage = photosNeededLabel(
+          have: widget.photoUrls.length,
+          need: _domain.minPhotos,
+        );
+        if (_saveMessage!.isEmpty) _saveMessage = 'Check your details.';
+        _saving = false;
+      });
       return;
     }
     final store = context.read<ProfileStore>();
@@ -343,6 +367,8 @@ class _MarriageFormState extends State<MarriageForm> {
       }
     } catch (_) {
       setState(() => _saveMessage = 'Could not save. Try again.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 }

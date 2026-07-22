@@ -35,8 +35,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Marriage · intentional'), findsOneWidget);
     expect(find.text('Mumbai & MMR'), findsOneWidget);
+    expect(find.text('Marriage'), findsWidgets);
     expect(find.textContaining('never included'), findsOneWidget);
     expect(find.text('Explore safely'), findsOneWidget);
+  });
+
+  testWidgets('promoted share card explains Top badge', (tester) async {
+    final repo = ShareCardRepository()
+      ..putMemory(
+        const PublicShareCard(
+          slug: 'jobs_demo123',
+          active: true,
+          ownerId: 'owner',
+          domain: AppDomainId.jobs,
+          sourceId: 'src',
+          headline: 'Driver',
+          locationLabel: 'Delhi NCR',
+          promoted: true,
+          verified: true,
+        ),
+      );
+    await tester.pumpWidget(
+      Provider.value(
+        value: repo,
+        child: const MaterialApp(
+          home: PublicShareCardScreen(slug: 'jobs_demo123'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Top'), findsOneWidget);
+    expect(find.text('Self-attested ID'), findsOneWidget);
+    expect(find.textContaining('boosted visibility'), findsOneWidget);
+    expect(find.textContaining('not a check by us'), findsOneWidget);
   });
 
   testWidgets('missing share slug shows not found', (tester) async {

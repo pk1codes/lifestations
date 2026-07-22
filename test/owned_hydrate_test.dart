@@ -43,9 +43,7 @@ void main() {
     await cache.setPhotos(AppDomainId.marriage, const [
       'https://cdn.example/m.webp',
     ]);
-    expect(cache.photos(AppDomainId.marriage), [
-      'https://cdn.example/m.webp',
-    ]);
+    expect(cache.photos(AppDomainId.marriage), ['https://cdn.example/m.webp']);
   });
 
   test('resolveOwnedPhotoUrls prefers cache then card', () async {

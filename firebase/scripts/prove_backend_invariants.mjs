@@ -58,8 +58,17 @@ assert(
   !firestoreRules.includes('likedOutbound(targetUid)'),
   'legacy cross-domain likedOutbound removed',
 );
-assert(firestoreRules.includes('!isAnonymous()'), 'anonymous denied vault read');
-assert(firestoreRules.includes('mutualLike(userId)'), 'mutual like gates vault');
+// Vault is owner-only on the client; mutual unlock is Admin callable only.
+assert(
+  /match \/private\/\{docId\}[\s\S]*?allow read: if isOwner\(userId\);/.test(
+    firestoreRules,
+  ),
+  'vault owner-only client read',
+);
+assert(
+  firestoreRules.includes('unlockContact'),
+  'rules comment documents unlockContact callable',
+);
 assert(
   firestoreRules.includes('request.resource.data.hits <= 10'),
   'rate limit cap 10',
@@ -108,10 +117,16 @@ assert(
   'otp 60s cooldown',
 );
 
-const offerFn = firestoreRules.split('function validOffer')[1]
-  .split('function validPublicCard')[0];
-assert(offerFn.includes("!('whatsappNumber' in d)"), 'offer top-level whatsapp ban');
-assert(offerFn.includes("!('telegramHandle' in d)"), 'offer top-level telegram ban');
+// validOffer composes validDiscoveryListing — contact bans live there.
+const discoveryFn = firestoreRules.split('function validDiscoveryListing')[1]
+  .split('function validDomainProfile')[0];
+assert(discoveryFn.includes("!('whatsappNumber' in d)"), 'listing top-level whatsapp ban');
+assert(discoveryFn.includes("!('telegramHandle' in d)"), 'listing top-level telegram ban');
+assert(
+  firestoreRules.includes('function validOffer') &&
+    firestoreRules.includes('validDiscoveryListing(domainId)'),
+  'validOffer uses validDiscoveryListing',
+);
 
 const domainProfileFn = firestoreRules
   .split('function validDomainProfile')[1]
@@ -151,11 +166,19 @@ assert(functionsSrc.includes('exports.onReportCreated'), 'onReportCreated');
 assert(functionsSrc.includes('exports.onImageFlagCreated'), 'onImageFlagCreated');
 assert(functionsSrc.includes('exports.checkFeedThrottle'), 'checkFeedThrottle');
 assert(functionsSrc.includes('exports.onInboundLikeCreated'), 'onInboundLikeCreated');
+assert(functionsSrc.includes('exports.unlockContact'), 'unlockContact');
+assert(functionsSrc.includes('exports.deleteAccount'), 'deleteAccount');
+assert(functionsSrc.includes('enforceAppCheck: true'), 'App Check on sensitive callables');
 assert(functionsSrc.includes('SLACK_WEBHOOK_URL'), 'slack webhook optional');
-assert(functionsSrc.includes('maxHits = 10'), 'throttle max 10');
-assert(functionsSrc.includes('windowMs = 30_000'), 'throttle 30s window');
+assert(functionsSrc.includes('maxHits: 10'), 'throttle max 10');
+assert(functionsSrc.includes('windowMs: 30_000'), 'throttle 30s window');
 assert(functionsSrc.includes('flut_likes_high'), 'FCM channel flut_likes_high');
-assert(!functionsSrc.includes('whatsappNumber'), 'FCM payload omits whatsapp');
+// Unlock may return whatsappNumber; inbound like FCM must not put it in the payload.
+const inboundFcm = functionsSrc.split('exports.onInboundLikeCreated')[1] ?? '';
+assert(
+  !/data:\s*\{[^}]*whatsappNumber/.test(inboundFcm),
+  'inbound like FCM data omits whatsapp',
+);
 
 // --- Indexes ---
 const groups = indexes.indexes.map((i) => i.collectionGroup);
@@ -163,15 +186,18 @@ assert(groups.includes('offers'), 'offers indexes');
 assert(groups.includes('profiles'), 'profiles indexes');
 assert(indexes.indexes.length >= 14, `expected >=14 indexes, got ${indexes.indexes.length}`);
 
-// --- Placeholders (no accidental prod deploy identity required) ---
+// --- Project id (placeholder or real) ---
+const projectId = firebaserc.projects?.default ?? '';
 assert(
-  firebaserc.projects.default === 'YOUR_FIREBASE_PROJECT_ID',
-  '.firebaserc placeholder project',
+  projectId === 'YOUR_FIREBASE_PROJECT_ID' || /^[a-z0-9-]+$/.test(projectId),
+  '.firebaserc project id',
 );
 assert(
   rootFirebase.flutter?.platforms?.android?.default?.projectId ===
-    'YOUR_FIREBASE_PROJECT_ID',
-  'root firebase.json FlutterFire placeholder',
+    'YOUR_FIREBASE_PROJECT_ID' ||
+    typeof rootFirebase.flutter?.platforms?.android?.default?.projectId ===
+      'string',
+  'root firebase.json FlutterFire project field',
 );
 
 // --- Operational scripts exist ---
@@ -191,6 +217,7 @@ if (errors.length) {
 }
 
 console.log('Backend security invariants OK:', {
+  projectId,
   firestoreRulesBytes: firestoreRules.length,
   storageRulesBytes: storageRules.length,
   indexes: indexes.indexes.length,
@@ -199,5 +226,7 @@ console.log('Backend security invariants OK:', {
     'onImageFlagCreated',
     'checkFeedThrottle',
     'onInboundLikeCreated',
+    'unlockContact',
+    'deleteAccount',
   ],
 });

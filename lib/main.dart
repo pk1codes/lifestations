@@ -16,8 +16,10 @@ import 'screens/public_share_card_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'services/account_services.dart';
+import 'services/discovery_feed_cache.dart';
 import 'services/domain_repository.dart';
 import 'services/firebase_bootstrap.dart';
+import 'services/listing_image_cache.dart';
 import 'services/listing_publisher.dart';
 import 'services/owned_listing_cache.dart';
 import 'services/push_service.dart';
@@ -41,44 +43,63 @@ Future<void> main() async {
     ..maximumSizeBytes = 12 * 1024 * 1024;
 
   final prefs = await SharedPreferences.getInstance();
+  final feedCache = DiscoveryFeedCache(prefs);
   final domainController = DomainController(prefs);
   final stores = <AppDomainId, DiscoveryStore>{
-    for (final domain in AppDomainId.values) domain: DiscoveryStore(domain),
+    for (final domain in AppDomainId.values)
+      domain: DiscoveryStore(domain, feedCache: feedCache),
   };
   const seeds = SeedRepository();
   final allowSeeds = FeatureFlags.allowSeedsAtStartup;
-  if (allowSeeds) {
-    for (final entry in stores.entries) {
+  // Local-first: last live feed → else seeds (when allowed).
+  for (final entry in stores.entries) {
+    final cached = feedCache.read(entry.key);
+    if (cached.isNotEmpty) {
+      entry.value.load(cached);
+      ListingImageCache.warmCards(cached);
+    } else if (allowSeeds) {
       entry.value.load(seeds.forDomain(entry.key));
     }
   }
 
   Future<void> loadRemoteFeeds() async {
     if (!FirebaseBootstrap.ready) return;
+    for (final store in stores.values) {
+      store.onRetry ??= loadRemoteFeeds;
+      store.beginRemoteSync();
+    }
     try {
       await FirebaseBootstrap.ensureSignedIn();
     } catch (_) {
       // Stay on local/seed cards until the user can sign in.
+      for (final store in stores.values) {
+        if (store.status == SyncStatus.loading) store.markReady();
+      }
       return;
     }
-    final engine = ScopedSyncEngine(FirestoreDomainRepository());
-    for (final entry in stores.entries) {
-      final local = entry.value.cards;
-      final merged = await engine.merge(domain: entry.key, local: local);
-      final hasLive = merged.any(
-        (card) =>
-            !card.id.startsWith('demo_') &&
-            !card.ownerId.startsWith('demo_owner_'),
-      );
-      if (hasLive) {
-        // Real profiles won — never keep dummy cards in the same feed.
-        entry.value.load(ScopedSyncEngine.withoutDemos(merged));
-      } else if (FeatureFlags.allowBundledSeeds(remoteFeedEmpty: true)) {
-        entry.value.load(
-          merged.isEmpty ? seeds.forDomain(entry.key) : merged,
-        );
-      } else {
-        entry.value.load(merged);
+    try {
+      final engine = ScopedSyncEngine(FirestoreDomainRepository());
+      for (final entry in stores.entries) {
+        final local = entry.value.cards;
+        final merged = await engine.merge(domain: entry.key, local: local);
+        final hasLive = merged.any((card) => !DiscoveryFeedCache.isDemo(card));
+        if (hasLive) {
+          entry.value.applyRemote(ScopedSyncEngine.withoutDemos(merged));
+        } else if (FeatureFlags.allowBundledSeeds(remoteFeedEmpty: true)) {
+          entry.value.load(
+            merged.isEmpty ? seeds.forDomain(entry.key) : merged,
+          );
+        } else {
+          entry.value.load(merged);
+        }
+      }
+    } catch (_) {
+      for (final store in stores.values) {
+        if (store.cards.isEmpty) {
+          store.failRemoteSync();
+        } else if (store.status == SyncStatus.loading) {
+          store.markReady();
+        }
       }
     }
   }
@@ -133,10 +154,14 @@ class FlutMarriageApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider.value(value: domainController),
         ChangeNotifierProvider(create: (_) => IdentityStore(preferences)),
-        ChangeNotifierProvider(create: (_) => LikesStore()),
+        ChangeNotifierProvider(
+          create: (_) => LikesStore(preferences: preferences),
+        ),
         ChangeNotifierProvider(create: (_) => LocaleController(preferences)),
         ChangeNotifierProvider(create: (_) => ProfileStore(preferences)),
-        ChangeNotifierProvider(create: (_) => JobsProfileStore(preferences)),
+        ChangeNotifierProvider(
+          create: (_) => JobsOfferStore(preferences: preferences),
+        ),
         ChangeNotifierProvider(
           create: (_) => RoomsOfferStore(preferences: preferences),
         ),
@@ -146,9 +171,7 @@ class FlutMarriageApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => HomeHelpOfferStore(preferences: preferences),
         ),
-        ChangeNotifierProvider(
-          create: (_) => OwnedListingCache(preferences),
-        ),
+        ChangeNotifierProvider(create: (_) => OwnedListingCache(preferences)),
         ChangeNotifierProvider(create: (_) => MatchPreferencesStore()),
         ChangeNotifierProvider(create: (_) => JobsDiscoverPrefsStore()),
         ChangeNotifierProvider(

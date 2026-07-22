@@ -6,6 +6,7 @@ import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
 import 'form_fields.dart';
+import 'save_gate.dart';
 
 class BikesForm extends StatefulWidget {
   const BikesForm({
@@ -116,9 +117,9 @@ class _BikesFormState extends State<BikesForm> {
     children: [
       Text(
         'Bikes',
-        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-          color: _domain.color,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(color: _domain.color),
       ),
       const SizedBox(height: 16),
       SingleChoiceChips(
@@ -198,10 +199,7 @@ class _BikesFormState extends State<BikesForm> {
           ),
           title: Text(
             'More',
-            style: TextStyle(
-              color: _domain.color,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: _domain.color, fontWeight: FontWeight.w600),
           ),
           trailing: _extraFilled == 0
               ? null
@@ -235,10 +233,15 @@ class _BikesFormState extends State<BikesForm> {
         ),
       ),
       const SizedBox(height: 8),
-      FilledButton(
-        style: FilledButton.styleFrom(backgroundColor: _domain.color),
-        onPressed: _save,
-        child: const Text('Save'),
+      SaveGateButton(
+        missing: [
+          photosNeededLabel(
+            have: widget.photoUrls.length,
+            need: _domain.minPhotos,
+          ),
+        ].where((s) => s.isNotEmpty).toList(growable: false),
+        accent: _domain.color,
+        onSave: _save,
       ),
     ],
   );
@@ -265,17 +268,17 @@ class _BikesFormState extends State<BikesForm> {
       toTime: _time(_to),
       photoCount: widget.photoUrls.length,
     );
-    if (!offer.isValid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add 4 photos.')),
-      );
-      return;
-    }
+    if (!offer.isValid) return;
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      context.read<BikesOfferStore>().upsert(offer, index: widget.editIndex);
-      await widget.onAfterSave?.call(offer);
+      await context.read<BikesOfferStore>().synchronizeUpsert(
+        offer,
+        index: widget.editIndex,
+        write: (value) async {
+          await widget.onAfterSave?.call(value);
+        },
+      );
       if (widget.onSaveSuccess != null) {
         widget.onSaveSuccess!();
       } else {

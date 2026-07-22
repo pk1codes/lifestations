@@ -39,6 +39,7 @@ class FormMediaController extends ChangeNotifier {
   String? lastError;
   String? lastStatus;
   int? busySlot;
+
   /// 0.0–1.0 while a slot upload is in flight.
   double? uploadProgress;
 

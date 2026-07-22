@@ -52,7 +52,7 @@ service firebase.storage {
       allow write: if isOwner(userId)
         && isSmallUpload()
         && isAllowedImage()
-        && domainId in ['rooms', 'bikes', 'home_help']
+        && domainId in ['rooms', 'bikes', 'home_help', 'jobs']
         && slot.matches('[0-7]')
         && fileName.matches('.*\\.(webp|jpg|jpeg|png)');
       allow delete: if isOwner(userId);

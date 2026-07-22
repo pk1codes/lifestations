@@ -38,10 +38,10 @@ Future<ImageSource?> showPhotoSourceSheet(
                 'Take photo',
                 style: TextStyle(color: color, fontWeight: FontWeight.w700),
               ),
-              onTap: () =>
-                  Navigator.of(dialogContext, rootNavigator: true).pop(
-                    ImageSource.camera,
-                  ),
+              onTap: () => Navigator.of(
+                dialogContext,
+                rootNavigator: true,
+              ).pop(ImageSource.camera),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -53,10 +53,10 @@ Future<ImageSource?> showPhotoSourceSheet(
                 'Choose from gallery',
                 style: TextStyle(color: color, fontWeight: FontWeight.w700),
               ),
-              onTap: () =>
-                  Navigator.of(dialogContext, rootNavigator: true).pop(
-                    ImageSource.gallery,
-                  ),
+              onTap: () => Navigator.of(
+                dialogContext,
+                rootNavigator: true,
+              ).pop(ImageSource.gallery),
             ),
           ],
         ),

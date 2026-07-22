@@ -8,9 +8,8 @@ void main() {
     expect(cityLabels['delhi'], 'Delhi NCR');
     expect(cityLabels['jaipur'], 'Jaipur');
     final labels = citiesAz.map((e) => e.value).toList();
-    final sorted = [...labels]..sort(
-      (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
-    );
+    final sorted = [...labels]
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     expect(labels, sorted);
   });
 }

@@ -106,12 +106,14 @@ class PushService {
   Future<void> _showForeground(RemoteMessage message) async {
     final notification = message.notification;
     final data = message.data;
-    final title = notification?.title ??
+    final title =
+        notification?.title ??
         (data['type'] == 'inbound_like' ? 'Liked you' : 'Update');
-    final body = notification?.body ??
+    final body =
+        notification?.body ??
         (data['title']?.isNotEmpty == true
             ? '${data['title']} liked your ${data['domain'] ?? ''} post'
-            : 'Someone is interested in your post');
+            : 'A like on your post');
     // Never include contact details in notification body.
     await _local.show(
       message.hashCode,

@@ -91,7 +91,13 @@ class ImagePipeline {
     final ladder = CompressionLadder.forSourceBytes(bytes.length);
     // Prefer WebP; on web fall back to JPEG if WebP/pica fails.
     try {
-      return await _encode(bytes, ladder, CompressFormat.webp, 'image/webp', 'webp');
+      return await _encode(
+        bytes,
+        ladder,
+        CompressFormat.webp,
+        'image/webp',
+        'webp',
+      );
     } catch (_) {
       if (!kIsWeb) rethrow;
       return _encode(bytes, ladder, CompressFormat.jpeg, 'image/jpeg', 'jpg');
@@ -111,7 +117,9 @@ class ImagePipeline {
       _compress(bytes, largeWidth, ladder.largeQuality, format),
     ]);
     if (variants.any((part) => part.isEmpty)) {
-      throw const FormatException('Could not prepare photo. Try another image.');
+      throw const FormatException(
+        'Could not prepare photo. Try another image.',
+      );
     }
     return ProcessedImage(
       thumb: variants[0],
@@ -158,9 +166,7 @@ class ImagePipeline {
   /// Maps raw plugin/Firebase errors into short user-facing lines.
   static String friendlyError(Object error) {
     final text = '$error'.toLowerCase();
-    final code = error is FirebaseException
-        ? error.code.toLowerCase()
-        : '';
+    final code = error is FirebaseException ? error.code.toLowerCase() : '';
     if (text.contains('one face') || text.contains('portrait must')) {
       return 'Use a clear photo of one face.';
     }

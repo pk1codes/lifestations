@@ -2,12 +2,15 @@ import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('multi-offer domains allow several posts; marriage and jobs stay at one', () {
+  test('multi-offer domains allow several posts; marriage stays at one', () {
     expect(AppDomains.marriage.maxProfiles, 1);
-    expect(AppDomains.jobs.maxProfiles, 1);
+    expect(AppDomains.marriage.storageKind, DomainStorageKind.profiles);
+    expect(AppDomains.jobs.maxProfiles, 5);
+    expect(AppDomains.jobs.storageKind, DomainStorageKind.offers);
     expect(AppDomains.rooms.maxProfiles, 5);
     expect(AppDomains.bikes.maxProfiles, 5);
-    expect(AppDomains.homeHelp.maxProfiles, 3);
+    expect(AppDomains.homeHelp.maxProfiles, 5);
+    expect(AppDomains.homeHelp.storageKind, DomainStorageKind.offers);
   });
 
   test('can add while under cap', () {

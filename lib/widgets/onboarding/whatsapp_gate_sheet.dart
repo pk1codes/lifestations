@@ -4,12 +4,25 @@ import 'package:provider/provider.dart';
 import '../../models/discovery_card.dart';
 import '../../services/firebase_bootstrap.dart';
 import '../../services/identity_repository.dart';
+import '../../services/phone_number.dart';
 import '../../state/app_stores.dart';
 import '../../theme/app_theme.dart';
+import '../forms/dial_code_phone_field.dart';
 
 bool hasWhatsAppNumber(Identity identity) {
-  final digits = identity.whatsappNumber.replaceAll(RegExp(r'\D'), '');
-  return digits.length >= 8 && digits.length <= 15;
+  return isValidE164Digits(identity.whatsappNumber);
+}
+
+/// Why the WhatsApp sheet opened — drives title + primary CTA copy.
+enum WhatsAppGatePurpose {
+  /// Browse ♥ — Screen A.
+  like,
+
+  /// Liked me → Accept — chat — Screen B.
+  likeBack,
+
+  /// Publish / other actions (generic continue).
+  continueAction,
 }
 
 /// Returns true if WhatsApp is already saved, or the user just saved it.
@@ -17,11 +30,14 @@ bool hasWhatsAppNumber(Identity identity) {
 ///
 /// After a number exists locally, re-syncs the contact vault under a live
 /// auth uid so unlockContact does not fail with "Phone not ready".
-Future<bool> ensureWhatsAppForAction(BuildContext context) async {
+Future<bool> ensureWhatsAppForAction(
+  BuildContext context, {
+  WhatsAppGatePurpose purpose = WhatsAppGatePurpose.continueAction,
+}) async {
   final store = context.read<IdentityStore>();
   if (!hasWhatsAppNumber(store.identity)) {
     if (!context.mounted) return false;
-    final ok = await showWhatsAppGateSheet(context);
+    final ok = await showWhatsAppGateSheet(context, purpose: purpose);
     if (!ok) return false;
   }
   try {
@@ -36,18 +52,53 @@ Future<bool> ensureWhatsAppForAction(BuildContext context) async {
   return hasWhatsAppNumber(store.identity);
 }
 
-Future<bool> showWhatsAppGateSheet(BuildContext context) async {
+Future<bool> showWhatsAppGateSheet(
+  BuildContext context, {
+  WhatsAppGatePurpose purpose = WhatsAppGatePurpose.continueAction,
+}) async {
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => const _WhatsAppGateSheet(),
+    builder: (_) => _WhatsAppGateSheet(purpose: purpose),
   );
   return result ?? false;
 }
 
+@visibleForTesting
+String whatsAppGateTitle(WhatsAppGatePurpose purpose) => switch (purpose) {
+  WhatsAppGatePurpose.like => 'Add WhatsApp to like',
+  WhatsAppGatePurpose.likeBack => 'Add WhatsApp to accept',
+  WhatsAppGatePurpose.continueAction => 'Add WhatsApp to continue',
+};
+
+@visibleForTesting
+String whatsAppGateCta(WhatsAppGatePurpose purpose) => switch (purpose) {
+  WhatsAppGatePurpose.like => 'Save & like',
+  WhatsAppGatePurpose.likeBack => 'Save & accept',
+  WhatsAppGatePurpose.continueAction => 'Save & continue',
+};
+
+@visibleForTesting
+String whatsAppGateBody(WhatsAppGatePurpose purpose) => switch (purpose) {
+  WhatsAppGatePurpose.like =>
+    'People who like you back need a way to reach you. '
+        'Your number stays private until both are interested '
+        'and phone-verified.',
+  WhatsAppGatePurpose.likeBack =>
+    'To accept and chat, add WhatsApp. '
+        'Your number stays private until both are interested '
+        'and phone-verified.',
+  WhatsAppGatePurpose.continueAction =>
+    'Others need a way to reach you after a match. '
+        'Your number stays private until both are interested '
+        'and phone-verified.',
+};
+
 class _WhatsAppGateSheet extends StatefulWidget {
-  const _WhatsAppGateSheet();
+  const _WhatsAppGateSheet({required this.purpose});
+
+  final WhatsAppGatePurpose purpose;
 
   @override
   State<_WhatsAppGateSheet> createState() => _WhatsAppGateSheetState();
@@ -55,14 +106,20 @@ class _WhatsAppGateSheet extends StatefulWidget {
 
 class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
   late final TextEditingController _phone;
+  late PhoneDialCode _dial;
   final _formKey = GlobalKey<FormState>();
   var _busy = false;
 
   @override
   void initState() {
     super.initState();
-    final current = context.read<IdentityStore>().identity.whatsappNumber;
-    _phone = TextEditingController(text: current);
+    final current = context.read<IdentityStore>().identity;
+    final parts = splitStoredPhone(
+      current.whatsappNumber,
+      fallback: PhoneDialCode.fromDigits(current.dialCodePreference),
+    );
+    _dial = parts.dial;
+    _phone = TextEditingController(text: parts.national);
   }
 
   @override
@@ -81,8 +138,13 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
       }
       if (!mounted) return;
       final store = context.read<IdentityStore>();
-      final digits = _phone.text.replaceAll(RegExp(r'\D'), '');
-      await store.save(store.identity.copyWith(whatsappNumber: digits));
+      final e164 = toE164Digits(_dial, _phone.text);
+      await store.save(
+        store.identity.copyWith(
+          whatsappNumber: e164,
+          dialCodePreference: _dial.digits,
+        ),
+      );
       // Force vault write even when public identity fields are incomplete.
       await IdentityRepository().sync(store.identity);
       if (!mounted) return;
@@ -99,6 +161,7 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final purpose = widget.purpose;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -113,36 +176,28 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Add WhatsApp to continue',
+              whatsAppGateTitle(purpose),
+              key: const Key('whatsapp_gate_title'),
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
             Text(
-              'Others need a way to reach you after a match. '
-              'Your number stays private until both are interested '
-              'and phone-verified.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.muted,
-              ),
+              whatsAppGateBody(purpose),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
             ),
             const SizedBox(height: 16),
-            TextFormField(
+            DialCodePhoneField(
+              dial: _dial,
               controller: _phone,
-              keyboardType: TextInputType.phone,
+              label: 'WhatsApp number',
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'WhatsApp number',
-                hintText: '+91 98765 43210',
-              ),
-              validator: (value) {
-                final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
-                if (digits.length < 8) return 'Enter at least 8 digits';
-                if (digits.length > 15) return 'Use at most 15 digits';
-                return null;
-              },
+              onDialChanged: (code) => setState(() => _dial = code),
             ),
             const SizedBox(height: 18),
             FilledButton(
+              key: const Key('whatsapp_gate_save'),
               onPressed: _busy ? null : _saveAndContinue,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.whatsapp,
@@ -157,10 +212,11 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Save & continue'),
+                  : Text(whatsAppGateCta(purpose)),
             ),
             const SizedBox(height: 8),
             TextButton(
+              key: const Key('whatsapp_gate_not_now'),
               onPressed: _busy ? null : () => Navigator.of(context).pop(false),
               child: const Text('Not now'),
             ),

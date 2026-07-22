@@ -14,4 +14,22 @@ void main() {
       isTrue,
     );
   });
+
+  test('gate copy matches Browse like vs Liked-me like-back', () {
+    expect(whatsAppGateTitle(WhatsAppGatePurpose.like), 'Add WhatsApp to like');
+    expect(whatsAppGateCta(WhatsAppGatePurpose.like), 'Save & like');
+    expect(
+      whatsAppGateTitle(WhatsAppGatePurpose.likeBack),
+      'Add WhatsApp to accept',
+    );
+    expect(whatsAppGateCta(WhatsAppGatePurpose.likeBack), 'Save & accept');
+    expect(
+      whatsAppGateBody(WhatsAppGatePurpose.like),
+      contains('People who like you back'),
+    );
+    expect(
+      whatsAppGateBody(WhatsAppGatePurpose.likeBack),
+      contains('accept and chat'),
+    );
+  });
 }

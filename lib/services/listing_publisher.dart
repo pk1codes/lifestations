@@ -30,8 +30,8 @@ class ListingPublisher {
     id: ownerId,
     domain: AppDomainId.marriage,
     ownerId: ownerId,
-    title: 'Marriage · ${profile.ageBand}',
-    subtitle: 'Seeking ${profile.seeking}',
+    title: profile.ageBand,
+    subtitle: '',
     cityId: profile.cityId,
     cityLabel: cityLabels[profile.cityId] ?? profile.cityId,
     categoryTags: [
@@ -56,12 +56,13 @@ class ListingPublisher {
   DiscoveryCardModel buildJobsCard({
     required String ownerId,
     required JobsProfile profile,
+    required String offerId,
     List<String> photoUrls = const <String>[],
   }) => DiscoveryCardModel(
-    id: ownerId,
+    id: offerId,
     domain: AppDomainId.jobs,
     ownerId: ownerId,
-    title: profile.needLine,
+    title: profile.tradeId,
     subtitle: profile.salaryBand,
     cityId: profile.cityId,
     cityLabel: cityLabels[profile.cityId] ?? profile.cityId,
@@ -71,6 +72,8 @@ class ListingPublisher {
     attributes: {
       'tradeId': profile.tradeId,
       'salaryBand': profile.salaryBand,
+      if (profile.isDemand && profile.howMany != null)
+        'howMany': profile.howMany,
     },
   );
 
@@ -83,8 +86,8 @@ class ListingPublisher {
     id: offerId,
     domain: AppDomainId.rooms,
     ownerId: ownerId,
-    title: offer.title,
-    subtitle: offer.subtitle,
+    title: offer.type,
+    subtitle: '₹${offer.monthlyRent}/month',
     cityId: offer.cityId,
     cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
     categoryTags: [offer.type, ...offer.amenities.take(3)],
@@ -110,7 +113,7 @@ class ListingPublisher {
     domain: AppDomainId.bikes,
     ownerId: ownerId,
     title: offer.title,
-    subtitle: offer.subtitle,
+    subtitle: '₹${offer.hourlyRent}/hour',
     cityId: offer.cityId,
     cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
     categoryTags: [offer.type, offer.make],
@@ -128,8 +131,8 @@ class ListingPublisher {
     id: offerId,
     domain: AppDomainId.homeHelp,
     ownerId: ownerId,
-    title: offer.title,
-    subtitle: offer.subtitle,
+    title: offer.service,
+    subtitle: '${offer.shift} · ${offer.salaryBand}',
     cityId: offer.cityId,
     cityLabel: cityLabels[offer.cityId] ?? offer.cityId,
     categoryTags: [offer.service, ...offer.languages.take(2)],
@@ -140,6 +143,7 @@ class ListingPublisher {
       'shift': offer.shift,
       'salaryBand': offer.salaryBand,
       'languages': offer.languages,
+      if (offer.isDemand && offer.howMany != null) 'howMany': offer.howMany,
     },
   );
 
@@ -148,19 +152,21 @@ class ListingPublisher {
     required MarriageProfile profile,
     List<String> photoUrls = const <String>[],
   }) => _persist(
-    buildMarriageCard(
-      ownerId: ownerId,
-      profile: profile,
-      photoUrls: photoUrls,
-    ),
+    buildMarriageCard(ownerId: ownerId, profile: profile, photoUrls: photoUrls),
   );
 
   Future<DiscoveryCardModel> publishJobs({
     required String ownerId,
     required JobsProfile profile,
+    required String offerId,
     List<String> photoUrls = const <String>[],
   }) => _persist(
-    buildJobsCard(ownerId: ownerId, profile: profile, photoUrls: photoUrls),
+    buildJobsCard(
+      ownerId: ownerId,
+      profile: profile,
+      offerId: offerId,
+      photoUrls: photoUrls,
+    ),
   );
 
   Future<DiscoveryCardModel> publishRooms({
@@ -208,17 +214,28 @@ class ListingPublisher {
   Future<DiscoveryCardModel> _persist(DiscoveryCardModel card) async {
     _assertTextSafe(card);
     await _throttle.claim(ThrottledAction.post);
+    var toWrite = card;
     if (FirebaseBootstrap.ready) {
+      // Align owner with the live auth session (same uid photo upload used).
+      final user = await FirebaseBootstrap.ensureSignedIn();
       final policy = AppDomains.byId(card.domain);
+      if (card.ownerId != user.uid) {
+        toWrite = card.copyWith(
+          ownerId: user.uid,
+          id: policy.storageKind == DomainStorageKind.profiles
+              ? user.uid
+              : card.id,
+        );
+      }
       if (policy.storageKind == DomainStorageKind.profiles) {
-        await _repository.saveProfile(card);
+        await _repository.saveProfile(toWrite);
       } else {
-        await _repository.saveOffer(card);
+        await _repository.saveOffer(toWrite);
       }
     }
     // Owner share card must exist so peer Share links resolve (no ephemeral URLs).
-    await _share.createOrUpdate(card);
-    return card;
+    await _share.createOrUpdate(toWrite);
+    return toWrite;
   }
 
   void _assertTextSafe(DiscoveryCardModel card) {

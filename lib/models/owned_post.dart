@@ -3,11 +3,7 @@ import 'discovery_card.dart';
 
 /// One of the signed-in user's published posts (profile or multi-offer slot).
 class OwnedPost {
-  const OwnedPost({
-    required this.domain,
-    required this.card,
-    this.offerIndex,
-  });
+  const OwnedPost({required this.domain, required this.card, this.offerIndex});
 
   final AppDomainId domain;
   final DiscoveryCardModel card;

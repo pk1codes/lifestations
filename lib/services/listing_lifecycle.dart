@@ -49,7 +49,7 @@ class ListingLifecycleService {
     required OwnedPost post,
     required OwnedListingCache media,
     required ProfileStore marriage,
-    required JobsProfileStore jobs,
+    required JobsOfferStore jobs,
     required RoomsOfferStore rooms,
     required BikesOfferStore bikes,
     required HomeHelpOfferStore homeHelp,
@@ -72,8 +72,12 @@ class ListingLifecycleService {
         marriage.clearLocal();
         await media.clearProfileSlot(AppDomainId.marriage);
       case AppDomainId.jobs:
-        jobs.clearLocal();
-        await media.clearProfileSlot(AppDomainId.jobs);
+        await _deleteOfferSlot(
+          domain: AppDomainId.jobs,
+          index: post.offerIndex,
+          store: jobs,
+          media: media,
+        );
       case AppDomainId.rooms:
         await _deleteOfferSlot(
           domain: AppDomainId.rooms,

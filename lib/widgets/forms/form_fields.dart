@@ -119,12 +119,15 @@ class PhotoSlotStrip extends StatelessWidget {
   final Future<bool> Function(int slot) onPick;
   final ValueChanged<int> onRemove;
   final int? busySlot;
+
   /// 0.0–1.0 while uploading; null when idle.
   final double? uploadProgress;
   final String? statusText;
   final String? errorText;
+
   /// Optional short line above the slots. Empty = hidden.
   final String motivation;
+
   /// Necessity line under motivation. Null = default from min/max; empty = hide.
   final String? hint;
   final bool showTitle;
@@ -135,7 +138,8 @@ class PhotoSlotStrip extends StatelessWidget {
     final progressLabel = progress == null
         ? null
         : 'Uploading… ${(progress.clamp(0.0, 1.0) * 100).round()}%';
-    final resolvedHint = hint ??
+    final resolvedHint =
+        hint ??
         (minimum <= 0
             ? ''
             : minimum == maximum
@@ -177,11 +181,8 @@ class PhotoSlotStrip extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
               final url = index < urls.length ? urls[index] : null;
-              final preview = index < previews.length
-                  ? previews[index]
-                  : null;
-              final filled =
-                  (url != null && url.isNotEmpty) || preview != null;
+              final preview = index < previews.length ? previews[index] : null;
+              final filled = (url != null && url.isNotEmpty) || preview != null;
               final required = index < minimum;
               final busy = busySlot == index;
               final filledCount = [
@@ -191,9 +192,7 @@ class PhotoSlotStrip extends StatelessWidget {
                     i,
               ].length;
               final canEdit =
-                  !busy &&
-                  busySlot == null &&
-                  (filled || index == filledCount);
+                  !busy && busySlot == null && (filled || index == filledCount);
               return _PhotoSlot(
                 url: url,
                 previewBytes: preview,
@@ -271,8 +270,7 @@ class _PhotoSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filled =
-        previewBytes != null || (url != null && url!.isNotEmpty);
+    final filled = previewBytes != null || (url != null && url!.isNotEmpty);
     return Opacity(
       opacity: enabled || filled || busy ? 1 : 0.45,
       child: SizedBox(
@@ -288,7 +286,10 @@ class _PhotoSlot extends StatelessWidget {
                 child: InkWell(
                   onTap: onTap,
                   borderRadius: BorderRadius.circular(14),
-                  child: DecoratedBox(
+                  enableFeedback: true,
+                  splashColor: AppTapFeedback.splash,
+                  highlightColor: AppTapFeedback.highlight,
+                  child: Ink(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
@@ -324,11 +325,13 @@ class _PhotoSlot extends StatelessWidget {
                                 if (requiredEmpty) ...[
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Need',
+                                    'Add photo',
+                                    textAlign: TextAlign.center,
                                     style: TextStyle(
                                       color: accent,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w700,
+                                      height: 1.1,
                                     ),
                                   ),
                                 ],
@@ -341,20 +344,24 @@ class _PhotoSlot extends StatelessWidget {
             ),
             if (onRemove != null)
               Positioned(
-                top: -4,
-                right: -4,
-                child: Material(
-                  color: Colors.white,
-                  shape: const CircleBorder(),
-                  elevation: 1,
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onRemove,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(Icons.close, size: 16, color: accent),
-                    ),
+                top: -10,
+                right: -10,
+                child: IconButton(
+                  tooltip: 'Remove photo',
+                  onPressed: onRemove,
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 48,
+                    minHeight: 48,
                   ),
+                  style: IconButton.styleFrom(
+                    foregroundColor: accent,
+                    backgroundColor: Colors.white,
+                    elevation: 1,
+                    shadowColor: Colors.black26,
+                  ),
+                  icon: const Icon(Icons.close),
                 ),
               ),
           ],
@@ -433,6 +440,41 @@ class CityDropdown extends StatelessWidget {
       onChanged: (next) {
         if (next != null) onChanged(next);
       },
+    );
+  }
+}
+
+/// Same city list as [CityDropdown], plus an Any option for Browse filters.
+class CityFilterDropdown extends StatelessWidget {
+  const CityFilterDropdown({
+    required this.value,
+    required this.onChanged,
+    this.anyLabel = 'Any city',
+    super.key,
+  });
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+  final String anyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = value != null && cityLabels.containsKey(value)
+        ? value
+        : null;
+    return DropdownButtonFormField<String?>(
+      initialValue: selected,
+      decoration: const InputDecoration(labelText: 'City'),
+      items: [
+        DropdownMenuItem<String?>(value: null, child: Text(anyLabel)),
+        ...citiesAz.map(
+          (entry) => DropdownMenuItem<String?>(
+            value: entry.key,
+            child: Text(entry.value),
+          ),
+        ),
+      ],
+      onChanged: onChanged,
     );
   }
 }

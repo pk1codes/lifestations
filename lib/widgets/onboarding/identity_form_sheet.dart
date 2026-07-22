@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_domain.dart';
+import '../../models/domain_profiles.dart';
 import '../../services/form_media_controller.dart';
+import '../../services/phone_number.dart';
 import '../../state/app_stores.dart';
 import '../../theme/app_theme.dart';
+import '../forms/dial_code_phone_field.dart';
 import '../forms/form_fields.dart';
 import '../forms/photo_source_sheet.dart';
+import 'otp_sheet.dart';
 
 Future<void> showIdentityForm(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -29,17 +33,25 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
   late final TextEditingController _phone;
   late String _city;
   late String _language;
+  late PhoneDialCode _dial;
   final _formKey = GlobalKey<FormState>();
+
   /// Same upload stack as Marriage / Jobs / … — only Storage folder differs.
   late final FormMediaController _media;
   var _saving = false;
+  var _verifying = false;
 
   @override
   void initState() {
     super.initState();
     final current = context.read<IdentityStore>().identity;
     _name = TextEditingController(text: current.displayName);
-    _phone = TextEditingController(text: current.whatsappNumber);
+    final parts = splitStoredPhone(
+      current.whatsappNumber,
+      fallback: PhoneDialCode.fromDigits(current.dialCodePreference),
+    );
+    _dial = parts.dial;
+    _phone = TextEditingController(text: parts.national);
     _city = current.cityId.isEmpty ? 'mumbai' : current.cityId;
     _language = current.nativeLanguage.isEmpty
         ? 'Hindi'
@@ -74,22 +86,22 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
     if (!_formKey.currentState!.validate() || _saving) return;
     setState(() => _saving = true);
     try {
-      const labels = {
-        'mumbai': 'Mumbai & MMR',
-        'delhi': 'Delhi NCR',
-        'bengaluru': 'Bengaluru',
-      };
       final store = context.read<IdentityStore>();
+      final e164 = toE164Digits(_dial, _phone.text);
+      final phoneChanged = e164 != store.identity.whatsappNumber;
       await store.save(
         store.identity.copyWith(
           displayName: _name.text,
-          whatsappNumber: _phone.text,
+          whatsappNumber: e164,
+          dialCodePreference: _dial.digits,
           cityId: _city,
-          cityLabel: labels[_city],
+          cityLabel: cityLabels[_city] ?? _city,
           nativeLanguage: _language,
           photoUrls: List<String>.from(
             _media.urls.where((url) => url.trim().isNotEmpty),
           ),
+          // New number needs a fresh SMS check.
+          phoneVerified: phoneChanged ? false : store.identity.phoneVerified,
         ),
       );
       if (!mounted) return;
@@ -104,8 +116,49 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
     }
   }
 
+  Future<void> _verifyPhone() async {
+    if (_verifying) return;
+    // Persist number first so OTP + WhatsApp stay in sync.
+    if (_formKey.currentState?.validate() != true) return;
+    final store = context.read<IdentityStore>();
+    final e164 = toE164Digits(_dial, _phone.text);
+    if (e164.isEmpty) return;
+    setState(() => _verifying = true);
+    try {
+      final phoneChanged = e164 != store.identity.whatsappNumber;
+      await store.save(
+        store.identity.copyWith(
+          displayName: _name.text.trim().isEmpty
+              ? store.identity.displayName
+              : _name.text,
+          whatsappNumber: e164,
+          dialCodePreference: _dial.digits,
+          cityId: _city,
+          cityLabel: cityLabels[_city] ?? _city,
+          nativeLanguage: _language,
+          photoUrls: List<String>.from(
+            _media.urls.where((url) => url.trim().isNotEmpty),
+          ),
+          phoneVerified: phoneChanged ? false : store.identity.phoneVerified,
+        ),
+      );
+      if (!mounted) return;
+      final ok = await showOtpSheet(context, preferWhatsAppNumber: true);
+      if (!mounted) return;
+      setState(() {});
+      if (ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Phone verified — WhatsApp ready')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final verified = context.watch<IdentityStore>().identity.phoneVerified;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -121,7 +174,7 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'My details',
+                'Account',
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(height: 16),
@@ -150,59 +203,36 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
                     : null,
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              DialCodePhoneField(
+                dial: _dial,
                 controller: _phone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'WhatsApp number',
-                ),
-                validator: (value) {
-                  final digits =
-                      (value ?? '').replaceAll(RegExp(r'\D'), '');
-                  if (digits.length < 8) return 'Enter at least 8 digits';
-                  if (digits.length > 15) return 'Use at most 15 digits';
-                  return null;
-                },
+                label: 'WhatsApp number',
+                onDialChanged: (code) => setState(() => _dial = code),
+              ),
+              const SizedBox(height: 12),
+              _PhoneVerifyBlock(
+                verified: verified,
+                busy: _verifying,
+                onVerify: _verifyPhone,
+              ),
+              const SizedBox(height: 12),
+              CityDropdown(
+                value: _city,
+                onChanged: (value) => setState(() => _city = value),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _city,
-                decoration: const InputDecoration(labelText: 'City'),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'mumbai',
-                    child: Text('Mumbai & MMR'),
-                  ),
-                  DropdownMenuItem(value: 'delhi', child: Text('Delhi NCR')),
-                  DropdownMenuItem(
-                    value: 'bengaluru',
-                    child: Text('Bengaluru'),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _city = value!),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _language,
-                decoration: const InputDecoration(
-                  labelText: 'Native language',
-                ),
-                items:
-                    const [
-                          'Hindi',
-                          'English',
-                          'Marathi',
-                          'Tamil',
-                          'Telugu',
-                          'Kannada',
-                        ]
-                        .map(
-                          (value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value),
-                          ),
-                        )
-                        .toList(),
+                initialValue:
+                    MarriageProfile.nativeLanguages.contains(_language)
+                    ? _language
+                    : MarriageProfile.nativeLanguages.first,
+                decoration: const InputDecoration(labelText: 'Native language'),
+                items: MarriageProfile.nativeLanguages
+                    .map(
+                      (value) =>
+                          DropdownMenuItem(value: value, child: Text(value)),
+                    )
+                    .toList(growable: false),
                 onChanged: (value) => setState(() => _language = value!),
               ),
               const SizedBox(height: 18),
@@ -220,6 +250,75 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Google-simple verify status for low-literacy Account users.
+class _PhoneVerifyBlock extends StatelessWidget {
+  const _PhoneVerifyBlock({
+    required this.verified,
+    required this.busy,
+    required this.onVerify,
+  });
+
+  final bool verified;
+  final bool busy;
+  final VoidCallback onVerify;
+
+  @override
+  Widget build(BuildContext context) {
+    if (verified) {
+      return Material(
+        color: AppColors.darkCream,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.verified, color: AppColors.rose, size: 28),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Phone verified',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Verify once with an SMS code. Then WhatsApp opens without asking again.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          key: const Key('account_verify_phone'),
+          onPressed: busy ? null : onVerify,
+          icon: busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.sms_outlined),
+          label: Text(busy ? 'Opening…' : 'Verify phone'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            foregroundColor: AppColors.rose,
+            side: const BorderSide(color: AppColors.rose, width: 1.5),
+          ),
+        ),
+      ],
     );
   }
 }

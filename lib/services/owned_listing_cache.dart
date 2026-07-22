@@ -21,7 +21,8 @@ class OwnedListingCache extends ChangeNotifier {
       'owned_offer_id_${domain.name}_$index';
 
   List<String> photos(AppDomainId domain, [int? index]) {
-    final raw = _prefs.getStringList(_photosKey(domain, index)) ?? const <String>[];
+    final raw =
+        _prefs.getStringList(_photosKey(domain, index)) ?? const <String>[];
     return raw.where((url) => url.trim().isNotEmpty).toList(growable: false);
   }
 
@@ -58,11 +59,7 @@ class OwnedListingCache extends ChangeNotifier {
     return _prefs.getBool(_activeKey(domain, index)) ?? true;
   }
 
-  Future<void> setActive(
-    AppDomainId domain,
-    bool active, {
-    int? index,
-  }) async {
+  Future<void> setActive(AppDomainId domain, bool active, {int? index}) async {
     await _prefs.setBool(_activeKey(domain, index), active);
     notifyListeners();
   }

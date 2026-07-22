@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('photo slot strip shows Need on empty required slots', (
+  testWidgets('photo slot strip shows Add photo on empty required slots', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -24,9 +24,9 @@ void main() {
     );
 
     expect(find.text('Photos'), findsOneWidget);
-    expect(find.text('No photo → many people pass.'), findsOneWidget);
-    expect(find.text('At least 2 — camera or gallery'), findsOneWidget);
-    expect(find.text('Need'), findsNWidgets(2));
+    expect(find.text('Add 2 or more'), findsOneWidget);
+    expect(find.text('Add photo'), findsNWidgets(2));
+    expect(find.text('Need'), findsNothing);
     expect(find.byIcon(Icons.add_a_photo_outlined), findsWidgets);
   });
 
@@ -48,6 +48,21 @@ void main() {
     );
 
     expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(find.text('Add photo'), findsNothing);
     expect(find.text('Need'), findsNothing);
+
+    final removeSize = tester.getSize(find.byIcon(Icons.close).hitTestable());
+    // Prefer measuring the IconButton constraints via ancestor.
+    final button = find.byWidgetPredicate(
+      (w) =>
+          w is IconButton &&
+          (w.tooltip == 'Remove photo' ||
+              (w.icon is Icon && (w.icon as Icon).icon == Icons.close)),
+    );
+    expect(button, findsOneWidget);
+    final size = tester.getSize(button);
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+    expect(removeSize.width, greaterThan(0));
   });
 }
