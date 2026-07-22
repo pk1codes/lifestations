@@ -301,21 +301,24 @@ class _PhoneVerifyBlock extends StatelessWidget {
           ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
         ),
         const SizedBox(height: 10),
-        OutlinedButton.icon(
+        FilledButton.icon(
           key: const Key('account_verify_phone'),
           onPressed: busy ? null : onVerify,
           icon: busy
               ? const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Icon(Icons.sms_outlined),
-          label: Text(busy ? 'Opening…' : 'Verify phone'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(48, 48),
-            foregroundColor: AppColors.rose,
-            side: const BorderSide(color: AppColors.rose, width: 1.5),
+          label: Text(busy ? 'Opening…' : 'Verify phone (SMS)'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(48, 52),
+            backgroundColor: AppColors.rose,
+            foregroundColor: Colors.white,
           ),
         ),
       ],

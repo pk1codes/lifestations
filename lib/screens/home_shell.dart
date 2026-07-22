@@ -1652,6 +1652,21 @@ class _ContactActionButton extends StatelessWidget {
 class MeScreen extends StatelessWidget {
   const MeScreen({super.key});
 
+  Future<void> _verifyPhoneFromMe(BuildContext context) async {
+    final identity = context.read<IdentityStore>();
+    if (!hasWhatsAppNumber(identity.identity)) {
+      await showIdentityForm(context);
+      return;
+    }
+    final ok = await showOtpSheet(context, preferWhatsAppNumber: true);
+    if (!context.mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Phone verified — WhatsApp ready')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final identity = context.watch<IdentityStore>();
@@ -1698,6 +1713,25 @@ class MeScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (hasWhatsAppNumber(identity.identity) &&
+              !identity.identity.phoneVerified) ...[
+            const SizedBox(height: 8),
+            _MeHubRow(
+              key: const Key('me_verify_phone_row'),
+              onTap: () => _verifyPhoneFromMe(context),
+              leading: CircleAvatar(
+                radius: _IdentityAvatar.radius,
+                backgroundColor: AppColors.rose.withValues(alpha: .12),
+                child: const Icon(
+                  Icons.sms_outlined,
+                  color: AppColors.rose,
+                  size: 26,
+                ),
+              ),
+              title: 'Verify phone (SMS)',
+              subtitle: 'One code — then WhatsApp opens',
+            ),
+          ],
           const SizedBox(height: 16),
           _HubSectionHeader(
             title: 'Posts',

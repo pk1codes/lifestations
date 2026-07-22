@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('account_verify_phone')), findsOneWidget);
-    expect(find.text('Verify phone'), findsOneWidget);
+    expect(find.text('Verify phone (SMS)'), findsOneWidget);
     expect(find.text('Phone verified'), findsNothing);
   });
 

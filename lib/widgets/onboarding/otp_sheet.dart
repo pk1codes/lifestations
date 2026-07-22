@@ -77,8 +77,9 @@ class _OtpSheetState extends State<OtpSheet> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_throttle.remaining(DateTime.now()) > Duration.zero) {
-        _startCooldownTicker();
+      final left = _throttle.remaining(DateTime.now());
+      if (left > Duration.zero) {
+        _startCooldown(left);
       }
     });
   }
@@ -91,24 +92,28 @@ class _OtpSheetState extends State<OtpSheet> {
     super.dispose();
   }
 
-  void _startCooldownTicker() {
+  /// Live “Try again in Xs” — ticks every second (local + remote cooldown).
+  void _startCooldown(Duration duration) {
+    var seconds = duration.inSeconds;
+    if (seconds < 1) seconds = 60;
     _cooldownTicker?.cancel();
-    void tick() {
-      if (!mounted) return;
-      final left = _throttle.remaining(DateTime.now());
+    setState(() => _error = 'Try again in ${seconds}s.');
+    _cooldownTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      seconds -= 1;
       setState(() {
-        if (left <= Duration.zero) {
+        if (seconds <= 0) {
           _error = null;
-          _cooldownTicker?.cancel();
+          timer.cancel();
           _cooldownTicker = null;
         } else {
-          _error = 'Try again in ${left.inSeconds}s.';
+          _error = 'Try again in ${seconds}s.';
         }
       });
-    }
-
-    tick();
-    _cooldownTicker = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+    });
   }
 
   void _applySameAsWhatsApp(bool value) {
@@ -219,7 +224,7 @@ class _OtpSheetState extends State<OtpSheet> {
     );
     final now = DateTime.now();
     if (!_throttle.record(now)) {
-      _startCooldownTicker();
+      _startCooldown(_throttle.remaining(now));
       return;
     }
     if (!await _claimRemoteOtpWindow()) {
@@ -278,8 +283,9 @@ class _OtpSheetState extends State<OtpSheet> {
       }, SetOptions(merge: true));
       return true;
     } catch (_) {
+      // Same live countdown as local throttle (not a frozen "60s").
       if (mounted) {
-        setState(() => _error = 'Try again in 60s.');
+        _startCooldown(const Duration(seconds: 60));
       }
       return false;
     }
