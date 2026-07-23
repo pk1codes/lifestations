@@ -38,12 +38,10 @@ class FeedFetchThrottle {
     _hits.add(now);
     if (callRemote && FirebaseBootstrap.ready) {
       try {
-        if (_failClosed) {
-          final token = await FirebaseAppCheck.instance.getToken(true);
-          if (token == null || token.isEmpty) {
-            _hits.removeLast();
-            return false;
-          }
+        try {
+          await FirebaseAppCheck.instance.getToken(true);
+        } catch (error) {
+          if (kDebugMode) debugPrint('Feed App Check warm skipped: $error');
         }
         final result = await FirebaseFunctions.instance
             .httpsCallable('checkFeedThrottle')

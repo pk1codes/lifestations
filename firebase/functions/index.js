@@ -108,7 +108,9 @@ async function claimRateLimit(ref, {now, windowMs, maxHits}) {
 }
 
 /** Server-side feed throttle — pairs with client FeedFetchThrottle. */
-exports.checkFeedThrottle = onCall({enforceAppCheck: true}, async (request) => {
+// Auth + server caps only. App Check stays on unlock/delete; web/incognito
+// reCAPTCHA often fails while photo Storage uploads still succeed.
+exports.checkFeedThrottle = onCall(async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
@@ -119,7 +121,7 @@ exports.checkFeedThrottle = onCall({enforceAppCheck: true}, async (request) => {
   );
 });
 
-exports.claimActionThrottle = onCall({enforceAppCheck: true}, async (request) => {
+exports.claimActionThrottle = onCall(async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }

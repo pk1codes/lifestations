@@ -19,7 +19,9 @@ class ActionThrottleService {
   /// Claims a server rate-limit slot.
   ///
   /// Always hard-fails on true quota (`resource-exhausted`).
-  /// In release, App Check / network / auth failures also hard-fail.
+  /// In release, auth / network failures also hard-fail.
+  /// App Check is best-effort: web/incognito reCAPTCHA often fails even when
+  /// Storage uploads work; server throttles use auth + caps (not App Check).
   Future<void> claim(ThrottledAction action) async {
     if (!FirebaseBootstrap.ready) {
       if (_failClosed) {
@@ -39,15 +41,8 @@ class ActionThrottleService {
     }
     try {
       try {
-        final token = await FirebaseAppCheck.instance.getToken(true);
-        if (_failClosed && (token == null || token.isEmpty)) {
-          throw StateError('App verification failed. Install from Play or try again.');
-        }
+        await FirebaseAppCheck.instance.getToken(true);
       } catch (error) {
-        if (error is StateError) rethrow;
-        if (_failClosed) {
-          throw StateError('App verification failed. Install from Play or try again.');
-        }
         if (kDebugMode) debugPrint('App Check warm skipped: $error');
       }
       await FirebaseFunctions.instance
@@ -79,6 +74,9 @@ class ActionThrottleService {
     if (code == 'failed-precondition' ||
         message.contains('app check') ||
         message.contains('attestation')) {
+      if (kIsWeb) {
+        return 'Security check failed. Try a normal browser window.';
+      }
       return 'App verification failed. Install from Play or try again.';
     }
     return 'Could not verify action limit. Try again.';
