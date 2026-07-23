@@ -218,7 +218,10 @@ KuwaitJobsProfile _kuwaitJobsFromMap(Map<String, dynamic> map) {
   final salary = map['salaryBand'] as String? ?? bands.first;
   return KuwaitJobsProfile(
     role: map['role'] as String? ?? 'seek',
-    tradeId: map['tradeId'] as String? ?? KuwaitJobsProfile.trades.first,
+    tradeIds: KuwaitJobsProfile.normalizeTrades(
+      map['tradeIds'] is List ? map['tradeIds'] as List : null,
+      legacyTradeId: map['tradeId'] as String?,
+    ),
     countryId: country,
     salaryBand: bands.contains(salary) ? salary : bands.first,
     nationality:
@@ -234,6 +237,7 @@ KuwaitJobsProfile _kuwaitJobsFromMap(Map<String, dynamic> map) {
 Map<String, Object?> _kuwaitJobsToMap(KuwaitJobsProfile value) => {
   'role': value.role,
   'tradeId': value.tradeId,
+  'tradeIds': List<String>.of(value.tradeIds),
   'countryId': value.countryId,
   'salaryBand': value.salaryBand,
   'nationality': value.nationality,

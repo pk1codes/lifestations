@@ -72,10 +72,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(LikeDisplay.placeholderTitle).first);
+    await tester.tap(find.textContaining(LikeDisplay.likedByLabel).first);
     await tester.pumpAndSettle();
 
-    expect(find.text('No photos yet'), findsOneWidget);
+    expect(find.text(LikeDisplay.yourPostLabel), findsWidgets);
+    expect(find.text(LikeDisplay.likedByLabel), findsWidgets);
+    expect(find.text(LikeDisplay.noPhotoYet), findsWidgets);
     expect(find.text('Accept — chat'), findsOneWidget);
     expect(find.text('WhatsApp'), findsOneWidget);
     expect(find.text('Telegram'), findsOneWidget);

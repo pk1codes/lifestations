@@ -212,12 +212,18 @@ class DiscoveryStore extends ChangeNotifier {
             card.attributes['gender'] != gender) {
           return false;
         }
-        if (tradeId != null &&
-            tradeId.isNotEmpty &&
-            !card.categoryTags.any(
-              (tag) => tag.toLowerCase() == tradeId.toLowerCase(),
-            )) {
-          return false;
+        if (tradeId != null && tradeId.isNotEmpty) {
+          final needle = tradeId.toLowerCase();
+          final tagsHit = card.categoryTags.any(
+            (tag) => tag.toLowerCase() == needle,
+          );
+          final attrIds = card.attributes['tradeIds'];
+          final attrsHit =
+              attrIds is List &&
+              attrIds.any((item) => '$item'.toLowerCase() == needle);
+          final primaryHit =
+              (card.attributes['tradeId'] as String?)?.toLowerCase() == needle;
+          if (!tagsHit && !attrsHit && !primaryHit) return false;
         }
         if (nationality != null &&
             nationality.isNotEmpty &&
@@ -436,6 +442,7 @@ class LikesStore extends ChangeNotifier {
     AppDomainId domain,
     String targetId, {
     DiscoveryCardModel? snapshot,
+    DiscoveryCardModel? fromCard,
   }) async {
     if (_outbound[domain]?.contains(targetId) ?? false) {
       return isMutual(domain, targetId);
@@ -444,6 +451,7 @@ class LikesStore extends ChangeNotifier {
       domain: domain,
       targetUid: targetId,
       snapshot: snapshot,
+      fromCard: fromCard,
     );
     (_outbound[domain] ??= <String>{}).add(targetId);
     final entries = _outboundEntries[domain] ??= <LikeEntry>[];
@@ -538,6 +546,7 @@ class LikesStore extends ChangeNotifier {
     AppDomainId domain,
     String fromUid, {
     DiscoveryCardModel? card,
+    DiscoveryCardModel? targetCard,
     bool peerOpenedChat = false,
   }) {
     (_inbound[domain] ??= <String>{}).add(fromUid);
@@ -550,6 +559,7 @@ class LikesStore extends ChangeNotifier {
         otherUid: fromUid,
         direction: LikeDirection.inbound,
         card: card,
+        targetCard: targetCard,
         createdAt: DateTime.now(),
         peerOpenedChat: peerOpenedChat,
       ),
@@ -589,6 +599,10 @@ class LikesStore extends ChangeNotifier {
       imageUrls: photos,
     );
     receiveLike(domain, fromUid, card: card, peerOpenedChat: chatReady);
+    // Like-back: unlock WhatsApp on our matching "I liked" row immediately.
+    if (chatReady || isMutual(domain, fromUid)) {
+      markChatReady(domain, fromUid);
+    }
   }
 
   static AppDomainId? _domainFromSlug(String slug) {
@@ -625,17 +639,32 @@ class LikesStore extends ChangeNotifier {
     stopRealtimeSync();
     for (final domain in AppDomainId.values) {
       _inboundSubs.add(
-        _repository.watchInbound(domain).listen((entries) {
-          _inboundEntries[domain] = List<LikeEntry>.from(entries);
-          _inbound[domain] = {for (final entry in entries) entry.otherUid};
-          for (final entry in entries) {
-            if (isInboundDismissed(domain, entry.otherUid)) continue;
-            if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
-              (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
+        _repository.watchInbound(domain).listen(
+          (entries) {
+            _inboundEntries[domain] = List<LikeEntry>.from(entries);
+            _inbound[domain] = {for (final entry in entries) entry.otherUid};
+            for (final entry in entries) {
+              if (isInboundDismissed(domain, entry.otherUid)) continue;
+              if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
+                (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
+              }
             }
-          }
-          notifyListeners();
-        }),
+            for (final other in _outbound[domain] ?? const <String>{}) {
+              if (isMutual(domain, other)) {
+                (_chatReady[domain] ??= <String>{}).add(other);
+              }
+            }
+            notifyListeners();
+          },
+          onError: (Object error, StackTrace stack) {
+            debugPrint('Likes inbound watch failed for $domain: $error');
+            // Soft restart this domain watch on the next frame.
+            Future<void>.delayed(const Duration(seconds: 2), () {
+              if (_inboundSubs.isEmpty) return;
+              unawaited(hydrate(domain));
+            });
+          },
+        ),
       );
     }
   }
@@ -654,6 +683,8 @@ class LikesStore extends ChangeNotifier {
   }
 
   Future<void> _loadDomain(AppDomainId domain) async {
+    // Never wipe in-memory likes when offline / before Firebase is ready.
+    if (!FirebaseBootstrap.ready) return;
     try {
       final outbound = await _repository.loadOutbound(domain);
       final inbound = await _repository.loadInbound(domain);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_domain.dart';
 import 'discovery_card.dart';
+import 'domain_profiles.dart';
 
 /// Visual marketplace side for Browse cards.
 enum MarketplaceSide { supply, demand, match }
@@ -133,8 +134,20 @@ String cardTitleLine(DiscoveryCardModel card, {bool allowFallback = true}) {
       }
       if (age.isNotEmpty) return age;
       return allowFallback ? _fallbackTitle(card) : '';
-    case AppDomainId.jobs:
     case AppDomainId.kuwaitJobs:
+      final fromAttrs = attrs['tradeIds'];
+      final trades = <String>[
+        if (fromAttrs is List)
+          for (final item in fromAttrs)
+            if ('$item'.trim().isNotEmpty) '$item'.trim(),
+        if (card.categoryTags.isNotEmpty) ...card.categoryTags,
+        if ((attrs['tradeId'] as String?)?.trim().isNotEmpty == true)
+          (attrs['tradeId'] as String).trim(),
+      ];
+      final line = KuwaitJobsProfile.titleLine(trades);
+      if (line.isNotEmpty) return line;
+      return allowFallback ? _fallbackTitle(card) : '';
+    case AppDomainId.jobs:
       final trade = _firstNonEmpty([
         attrs['tradeId'] as String?,
         if (card.categoryTags.isNotEmpty) card.categoryTags.first,

@@ -43,7 +43,7 @@ class KuwaitJobsForm extends StatefulWidget {
 
 class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
   late String _role;
-  late String _trade;
+  late Set<String> _trades;
   late String _country;
   late String _salary;
   late String _nationality;
@@ -57,7 +57,9 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
     super.initState();
     final initial = widget.initial;
     _role = initial?.role ?? 'seek';
-    _trade = initial?.tradeId ?? KuwaitJobsProfile.trades.first;
+    _trades = Set<String>.of(
+      KuwaitJobsProfile.normalizeTrades(initial?.tradeIds),
+    );
     _country = initial?.countryId ?? 'kuwait';
     _salary =
         initial?.salaryBand ?? KuwaitJobsProfile.salaryBandsFor(_country).first;
@@ -105,11 +107,16 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
         text: (id) => KuwaitJobsProfile.countryLabels[id] ?? id,
         onSelected: _onCountryChanged,
       ),
-      SingleChoiceChips(
+      MultiChoiceChips(
         label: 'Position',
+        helperText: 'Pick 1–${KuwaitJobsProfile.maxTrades}',
         values: KuwaitJobsProfile.trades,
-        selected: _trade,
-        onSelected: (v) => setState(() => _trade = v),
+        selected: _trades,
+        maxSelected: KuwaitJobsProfile.maxTrades,
+        onChanged: (next) {
+          if (next.isEmpty) return;
+          setState(() => _trades = next);
+        },
       ),
       if (_isDemand)
         SingleChoiceChips(
@@ -137,7 +144,10 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
         onSelected: (v) => setState(() => _salary = v),
       ),
       const SizedBox(height: 12),
-      Text(_trade, style: Theme.of(context).textTheme.titleMedium),
+      Text(
+        KuwaitJobsProfile.titleLine(_trades.toList(growable: false)),
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       const SizedBox(height: 8),
       PhotoSlotStrip(
         urls: widget.photoUrls,
@@ -156,6 +166,7 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
       const SizedBox(height: 12),
       SaveGateButton(
         missing: [
+          if (_trades.isEmpty) 'Pick at least 1 position',
           if (!_isDemand)
             photosNeededLabel(have: widget.photoUrls.length, need: _minPhotos),
         ].where((s) => s.isNotEmpty).toList(growable: false),
@@ -165,7 +176,7 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
           final navigator = Navigator.of(context);
           final profile = KuwaitJobsProfile(
             role: _role,
-            tradeId: _trade,
+            tradeIds: KuwaitJobsProfile.normalizeTrades(_trades),
             countryId: _country,
             salaryBand: _salary,
             nationality: _nationality,

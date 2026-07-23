@@ -442,6 +442,19 @@ exports.onInboundLikeCreated = onDocumentCreated(
       .get();
     const chatReady = alreadyLiked.exists;
 
+    const payload = {
+      type: "inbound_like",
+      domain: String(domainId),
+      fromUid: String(fromUid),
+      listingId,
+      title,
+      subtitle,
+      cityLabel,
+      photoUrl,
+      targetTitle,
+      chatReady: chatReady ? "true" : "false",
+    };
+
     try {
       await getMessaging().send({
         token,
@@ -458,21 +471,23 @@ exports.onInboundLikeCreated = onDocumentCreated(
             priority: "high",
           },
         },
-        data: {
-          type: "inbound_like",
-          domain: String(domainId),
-          fromUid: String(fromUid),
-          listingId,
-          title,
-          subtitle,
-          cityLabel,
-          photoUrl,
-          targetTitle,
-          chatReady: chatReady ? "true" : "false",
-        },
+        data: payload,
       });
     } catch (e) {
       logger.error("FCM send failed", e);
+    }
+
+    // Mutual accept: also ping the accepter so both devices refresh Likes.
+    if (chatReady) {
+      try {
+        await notifyPeerChatReady({
+          domainId,
+          fromUid: ownerUid,
+          toUid: fromUid,
+        });
+      } catch (e) {
+        logger.warn("mutual chat_ready ping skipped", e);
+      }
     }
   },
 );

@@ -52,17 +52,18 @@ void main() {
     expect(find.byType(ExpansionTile), findsNothing);
     expect(find.byType(ExpandableDomainSection), findsOneWidget);
     expect(find.byKey(const Key('likes_domain_jobs')), findsOneWidget);
-    expect(find.text(LikeDisplay.placeholderTitle), findsOneWidget);
+    expect(find.textContaining(LikeDisplay.likedByLabel), findsOneWidget);
+    expect(find.textContaining(LikeDisplay.yourPostLabel), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('domain_section_header_jobs')));
     await tester.pumpAndSettle();
-    expect(find.text(LikeDisplay.placeholderTitle), findsNothing);
+    expect(find.textContaining(LikeDisplay.likedByLabel), findsNothing);
     expect(find.text('Jobs'), findsOneWidget);
     expect(find.text('1'), findsWidgets);
 
     await tester.tap(find.byKey(const Key('domain_section_header_jobs')));
     await tester.pumpAndSettle();
-    expect(find.text(LikeDisplay.placeholderTitle), findsOneWidget);
+    expect(find.textContaining(LikeDisplay.likedByLabel), findsOneWidget);
   });
 
   testWidgets('Remove clears Liked me row and Undo restores it', (

@@ -248,7 +248,12 @@ KuwaitJobsProfile? kuwaitJobsFromCard(DiscoveryCardModel card) {
   if (card.domain != AppDomainId.kuwaitJobs) return null;
   final attrs = card.attributes;
   final role = card.role ?? attrs['role'] as String? ?? 'seek';
-  final trade = attrs['tradeId'] as String? ?? KuwaitJobsProfile.trades.first;
+  final tradeIds = KuwaitJobsProfile.normalizeTrades(
+    attrs['tradeIds'] is List
+        ? attrs['tradeIds'] as List
+        : card.categoryTags,
+    legacyTradeId: attrs['tradeId'] as String?,
+  );
   final country =
       attrs['countryId'] as String? ??
       (card.cityId.isNotEmpty ? card.cityId : 'kuwait');
@@ -265,9 +270,7 @@ KuwaitJobsProfile? kuwaitJobsFromCard(DiscoveryCardModel card) {
   final howMany = attrs['howMany'] as String?;
   return KuwaitJobsProfile(
     role: const {'seek', 'offer'}.contains(role) ? role : 'seek',
-    tradeId: KuwaitJobsProfile.trades.contains(trade)
-        ? trade
-        : KuwaitJobsProfile.trades.first,
+    tradeIds: tradeIds,
     countryId: countryId,
     salaryBand: bands.contains(salary) ? salary : bands.first,
     nationality: KuwaitJobsProfile.nationalities.contains(nationality)

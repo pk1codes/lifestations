@@ -121,8 +121,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed || !mounted) return;
-    // Pull latest listings without requiring force-quit.
+    // Pull latest listings + likes without requiring force-quit.
     unawaited(context.read<DiscoveryStore>().retryRemoteSync());
+    unawaited(context.read<LikesStore>().hydrateAll());
   }
 
   Future<void> _hydrateSession() async {
@@ -490,6 +491,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           domain.id,
                           card.ownerId,
                           snapshot: card,
+                          fromCard: _ownCardForDomain(context, domain.id),
                         );
                         store.action(card.id);
                         if (mutual && context.mounted) {
@@ -900,8 +902,22 @@ class ComingSoonView extends StatelessWidget {
   );
 }
 
-class LikesScreen extends StatelessWidget {
+class LikesScreen extends StatefulWidget {
   const LikesScreen({super.key});
+
+  @override
+  State<LikesScreen> createState() => _LikesScreenState();
+}
+
+class _LikesScreenState extends State<LikesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(context.read<LikesStore>().hydrateAll());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -970,10 +986,15 @@ class _LikesSection extends StatelessWidget {
             final entries = entriesFor(policy.id);
             ImagePrefetch.warmAll(
               context,
-              entries.map((e) {
-                final urls = e.card?.imageUrls;
-                if (urls == null || urls.isEmpty) return null;
-                return urls.first;
+              entries.expand((e) {
+                return <String?>[
+                  e.targetCard?.imageUrls.isNotEmpty == true
+                      ? e.targetCard!.imageUrls.first
+                      : null,
+                  e.card?.imageUrls.isNotEmpty == true
+                      ? e.card!.imageUrls.first
+                      : null,
+                ];
               }).whereType<String>(),
               role: FastImageRole.thumb,
             );
@@ -1069,69 +1090,45 @@ class _LikeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = entry.card;
-    final blank = LikeDisplay.isPlaceholderCard(card);
-    final title = LikeDisplay.rowTitle(card);
-    final photo = card?.imageUrls.isNotEmpty == true
-        ? card!.imageUrls.first
-        : null;
+    final inbound = entry.direction == LikeDirection.inbound;
     final policy = AppDomains.byId(entry.domain);
     return AppInkWell(
       color: policy.softColor.withValues(alpha: .35),
       onTap: onOpen,
       padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              width: 72,
-              height: 72,
-              child: photo == null
-                  ? const _BlankLikeThumb()
-                  : Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _LikePhoto(
-                          url: photo,
-                          label: title,
-                          seed: entry.otherUid.hashCode,
-                        ),
-                        if ((card?.imageUrls.length ?? 0) > 1)
-                          Positioned(
-                            right: 4,
-                            bottom: 4,
-                            child: PhotoExtraBadge(
-                              extraCount: card!.imageUrls.length - 1,
-                            ),
-                          ),
-                      ],
-                    ),
+          if (inbound)
+            _DualLikeThumbs(entry: entry)
+          else
+            _LikeThumb(
+              card: entry.card,
+              seed: entry.otherUid.hashCode,
             ),
-          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (blank)
+                if (inbound) ...[
                   Text(
-                    title,
-                    maxLines: 2,
+                    '${LikeDisplay.yourPostLabel} · ${LikeDisplay.rowTitle(entry.targetCard ?? entry.card)}',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  )
-                else if (card != null)
-                  ListingMeta(card: card, compact: true),
-                if (blank) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    LikeDisplay.missingListing,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
-                ],
+                  const SizedBox(height: 2),
+                  Text(
+                    '${LikeDisplay.likedByLabel} · ${LikeDisplay.rowTitle(entry.card)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ] else
+                  _LikeTitleBlock(card: entry.card),
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -1173,28 +1170,148 @@ class _LikeRow extends StatelessWidget {
   }
 }
 
-class _BlankLikeThumb extends StatelessWidget {
-  const _BlankLikeThumb();
+class _LikeTitleBlock extends StatelessWidget {
+  const _LikeTitleBlock({required this.card});
+
+  final DiscoveryCardModel? card;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.darkCream,
-        border: Border.all(color: AppColors.muted.withValues(alpha: .35)),
+    final resolved = card;
+    final blank = LikeDisplay.isPlaceholderCard(resolved);
+    final title = LikeDisplay.rowTitle(resolved);
+    if (blank) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          Text(
+            LikeDisplay.missingListing,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+          ),
+        ],
+      );
+    }
+    if (resolved == null) {
+      return Text(title, style: Theme.of(context).textTheme.titleSmall);
+    }
+    return ListingMeta(card: resolved, compact: true);
+  }
+}
+
+class _DualLikeThumbs extends StatelessWidget {
+  const _DualLikeThumbs({required this.entry});
+
+  final LikeEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            child: _LikeThumb(
+              card: entry.targetCard,
+              seed: (entry.targetCard?.id ?? entry.otherUid).hashCode,
+              size: 48,
+            ),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: _LikeThumb(
+                card: entry.card,
+                seed: entry.otherUid.hashCode,
+                size: 48,
+              ),
+            ),
+          ),
+        ],
       ),
-      child: const Center(
-        child: Icon(Icons.person_outline, color: AppColors.muted, size: 28),
+    );
+  }
+}
+
+class _LikeThumb extends StatelessWidget {
+  const _LikeThumb({
+    required this.card,
+    required this.seed,
+    this.size = 72,
+  });
+
+  final DiscoveryCardModel? card;
+  final int seed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = card?.imageUrls.isNotEmpty == true
+        ? card!.imageUrls.first
+        : null;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _LikePhoto(
+              url: photo ?? '',
+              label: LikeDisplay.rowTitle(card),
+              seed: seed,
+              blankWhenMissing: true,
+            ),
+            if ((card?.imageUrls.length ?? 0) > 1)
+              Positioned(
+                right: 4,
+                bottom: 4,
+                child: PhotoExtraBadge(extraCount: card!.imageUrls.length - 1),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _BlankLikeHero extends StatelessWidget {
-  const _BlankLikeHero();
+  const _BlankLikeHero({this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    if (compact) {
+      return ColoredBox(
+        color: AppColors.darkCream,
+        child: CustomPaint(
+          painter: _DashedRectPainter(
+            color: AppColors.muted.withValues(alpha: .45),
+            radius: 12,
+          ),
+          child: const Center(
+            child: Icon(Icons.image_outlined, color: AppColors.muted, size: 22),
+          ),
+        ),
+      );
+    }
     return CustomPaint(
       painter: _DashedRectPainter(
         color: AppColors.muted.withValues(alpha: .45),
@@ -1205,10 +1322,10 @@ class _BlankLikeHero extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.person_outline, color: AppColors.muted, size: 40),
+              Icon(Icons.image_outlined, color: AppColors.muted, size: 40),
               SizedBox(height: 8),
               Text(
-                'No photos yet',
+                LikeDisplay.noPhotoYet,
                 style: TextStyle(
                   color: AppColors.muted,
                   fontWeight: FontWeight.w600,
@@ -1223,9 +1340,10 @@ class _BlankLikeHero extends StatelessWidget {
 }
 
 class _DashedRectPainter extends CustomPainter {
-  _DashedRectPainter({required this.color});
+  _DashedRectPainter({required this.color, this.radius = 16});
 
   final Color color;
+  final double radius;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1239,7 +1357,7 @@ class _DashedRectPainter extends CustomPainter {
       ..addRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(1, 1, size.width - 2, size.height - 2),
-          const Radius.circular(16),
+          Radius.circular(radius),
         ),
       );
     for (final metric in path.computeMetrics()) {
@@ -1257,7 +1375,7 @@ class _DashedRectPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashedRectPainter oldDelegate) =>
-      oldDelegate.color != color;
+      oldDelegate.color != color || oldDelegate.radius != radius;
 }
 
 class _LikePhoto extends StatelessWidget {
@@ -1266,18 +1384,28 @@ class _LikePhoto extends StatelessWidget {
     required this.label,
     required this.seed,
     this.role = FastImageRole.thumb,
+    this.blankWhenMissing = false,
   });
 
   final String url;
   final String label;
   final int seed;
   final FastImageRole role;
+  final bool blankWhenMissing;
 
   @override
   Widget build(BuildContext context) {
-    final fallback = _SyntheticArtwork(label: label, seed: seed);
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      return blankWhenMissing
+          ? const _BlankLikeHero(compact: true)
+          : _SyntheticArtwork(label: label, seed: seed);
+    }
+    final fallback = blankWhenMissing
+        ? const _BlankLikeHero(compact: true)
+        : _SyntheticArtwork(label: label, seed: seed);
     return FastNetworkImage(
-      url: url,
+      url: trimmed,
       role: role,
       fit: BoxFit.cover,
       fallback: fallback,
@@ -1287,7 +1415,10 @@ class _LikePhoto extends StatelessWidget {
 }
 
 Future<void> _showLikeDetail(BuildContext context, LikeEntry entry) {
-  final photos = entry.card?.imageUrls ?? const <String>[];
+  final photos = <String>[
+    ...?entry.targetCard?.imageUrls,
+    ...?entry.card?.imageUrls,
+  ];
   ImagePrefetch.warmAll(context, photos, role: FastImageRole.detail);
   return showModalBottomSheet<void>(
     context: context,
@@ -1339,6 +1470,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
         entry.domain,
         entry.otherUid,
         snapshot: card,
+        fromCard: _ownCardForDomain(context, entry.domain),
       );
       if (!mounted) return;
       if (mutual) {
@@ -1464,10 +1596,8 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     final chatActive = likes.chatIconsActive(entry.domain, entry.otherUid);
     final alreadyLiked = likes.outbound(entry.domain).contains(entry.otherUid);
     final inbound = entry.direction == LikeDirection.inbound;
-    final card = entry.card;
-    final placeholder = LikeDisplay.isPlaceholderCard(card);
-    final title = LikeDisplay.rowTitle(card);
-    final photos = card?.imageUrls ?? const <String>[];
+    final likerCard = entry.card;
+    final yourPost = inbound ? (entry.targetCard ?? entry.card) : entry.card;
     final statusText = mutual || chatActive
         ? LikeConsent.mutualDetail
         : inbound
@@ -1524,58 +1654,24 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  AspectRatio(
-                    aspectRatio: 4 / 3,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: photos.isEmpty
-                          ? const _BlankLikeHero()
-                          : PhotoGalleryPager(
-                              children: photos
-                                  .map(
-                                    (url) => _LikePhoto(
-                                      url: url,
-                                      label: title,
-                                      seed: entry.otherUid.hashCode,
-                                      role: FastImageRole.detail,
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                            ),
+                  if (inbound) ...[
+                    _LikeDetailBlock(
+                      label: LikeDisplay.yourPostLabel,
+                      card: yourPost,
+                      seed: (yourPost?.id ?? entry.otherUid).hashCode,
                     ),
-                  ),
-                  if (placeholder) ...[
-                    const SizedBox(height: 12),
-                    Text(title, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${LikeDisplay.missingListing} · ${policy.label}',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                    const SizedBox(height: 16),
+                    _LikeDetailBlock(
+                      label: LikeDisplay.likedByLabel,
+                      card: likerCard,
+                      seed: entry.otherUid.hashCode,
                     ),
-                    if (card?.cityLabel.isNotEmpty ?? false) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 18,
-                            color: AppColors.muted,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            card!.cityLabel,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: AppColors.muted),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ] else if (card != null) ...[
-                    const SizedBox(height: 12),
-                    ListingMeta(card: card),
-                  ],
+                  ] else
+                    _LikeDetailBlock(
+                      label: null,
+                      card: entry.card,
+                      seed: entry.otherUid.hashCode,
+                    ),
                   const SizedBox(height: 12),
                   Text(
                     statusText,
@@ -1589,6 +1685,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                   if (inbound && !alreadyLiked) ...[
                     const SizedBox(height: 14),
                     FilledButton.icon(
+                      key: const Key('like_accept_button'),
                       onPressed: _likingBack ? null : _likeBack,
                       icon: _likingBack
                           ? const SizedBox(
@@ -1612,8 +1709,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                           label: 'WhatsApp',
                           icon: Icons.chat,
                           color: const Color(0xFF25D366),
-                          enabled:
-                              chatActive && _opening == null,
+                          enabled: chatActive && _opening == null,
                           locked: !chatActive,
                           busy: _opening == _ContactChannel.whatsapp,
                           onPressed: _openWhatsApp,
@@ -1625,8 +1721,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                           label: 'Telegram',
                           icon: Icons.send,
                           color: const Color(0xFF229ED9),
-                          enabled:
-                              chatActive && _opening == null,
+                          enabled: chatActive && _opening == null,
                           locked: !chatActive,
                           busy: _opening == _ContactChannel.telegram,
                           onPressed: _openTelegram,
@@ -1640,6 +1735,92 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LikeDetailBlock extends StatelessWidget {
+  const _LikeDetailBlock({
+    required this.label,
+    required this.card,
+    required this.seed,
+  });
+
+  final String? label;
+  final DiscoveryCardModel? card;
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = card?.imageUrls ?? const <String>[];
+    final placeholder = LikeDisplay.isPlaceholderCard(card);
+    final title = LikeDisplay.rowTitle(card);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (label != null) ...[
+          Text(
+            label!,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        AspectRatio(
+          aspectRatio: 4 / 3,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: photos.isEmpty
+                ? const _BlankLikeHero()
+                : PhotoGalleryPager(
+                    children: photos
+                        .map(
+                          (url) => _LikePhoto(
+                            url: url,
+                            label: title,
+                            seed: seed,
+                            role: FastImageRole.detail,
+                            blankWhenMissing: true,
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (placeholder) ...[
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(
+            LikeDisplay.missingListing,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+          ),
+          if (card?.cityLabel.isNotEmpty ?? false) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 18,
+                  color: AppColors.muted,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  card!.cityLabel,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ],
+        ] else if (card != null)
+          ListingMeta(card: card!),
+      ],
     );
   }
 }
@@ -2051,6 +2232,18 @@ List<OwnedPost> _ownedPosts(BuildContext context) {
     media: context.read<OwnedListingCache>(),
     publisher: context.read<ListingPublisher>(),
   );
+}
+
+/// Best local listing for inbound "who liked you" snapshots (prefer photos).
+DiscoveryCardModel? _ownCardForDomain(BuildContext context, AppDomainId domain) {
+  final posts = _ownedPosts(context)
+      .where((p) => p.domain == domain && p.card.active)
+      .toList(growable: false);
+  if (posts.isEmpty) return null;
+  for (final post in posts) {
+    if (post.card.imageUrls.isNotEmpty) return post.card;
+  }
+  return posts.first.card;
 }
 
 int _domainPostCount(BuildContext context, AppDomainId id) {

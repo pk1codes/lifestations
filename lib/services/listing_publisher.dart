@@ -86,17 +86,18 @@ class ListingPublisher {
     id: offerId,
     domain: AppDomainId.kuwaitJobs,
     ownerId: ownerId,
-    title: profile.tradeId,
+    title: KuwaitJobsProfile.titleLine(profile.tradeIds),
     subtitle: profile.salaryBand,
     cityId: profile.countryId,
     cityLabel:
         KuwaitJobsProfile.countryLabels[profile.countryId] ??
         profile.countryId,
-    categoryTags: [profile.tradeId],
+    categoryTags: List<String>.of(profile.tradeIds),
     imageUrls: photoUrls,
     role: profile.role,
     attributes: {
       'tradeId': profile.tradeId,
+      'tradeIds': List<String>.of(profile.tradeIds),
       'salaryBand': profile.salaryBand,
       'countryId': profile.countryId,
       'nationality': profile.nationality,

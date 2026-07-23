@@ -54,6 +54,8 @@ class MultiChoiceChips<T> extends StatelessWidget {
     required this.values,
     required this.selected,
     required this.onChanged,
+    this.maxSelected,
+    this.helperText,
     super.key,
   });
 
@@ -61,12 +63,23 @@ class MultiChoiceChips<T> extends StatelessWidget {
   final List<T> values;
   final Set<T> selected;
   final ValueChanged<Set<T>> onChanged;
+  final int? maxSelected;
+  final String? helperText;
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(label, style: Theme.of(context).textTheme.titleSmall),
+      if (helperText != null) ...[
+        const SizedBox(height: 2),
+        Text(
+          helperText!,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+        ),
+      ],
       const SizedBox(height: 6),
       Wrap(
         spacing: 8,
@@ -78,7 +91,13 @@ class MultiChoiceChips<T> extends StatelessWidget {
                 selected: selected.contains(value),
                 onSelected: (checked) {
                   final next = Set<T>.of(selected);
-                  checked ? next.add(value) : next.remove(value);
+                  if (checked) {
+                    final max = maxSelected;
+                    if (max != null && next.length >= max) return;
+                    next.add(value);
+                  } else {
+                    next.remove(value);
+                  }
                   onChanged(next);
                 },
               ),

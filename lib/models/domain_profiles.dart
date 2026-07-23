@@ -190,7 +190,7 @@ class JobsProfile {
 class KuwaitJobsProfile {
   const KuwaitJobsProfile({
     required this.role,
-    required this.tradeId,
+    required this.tradeIds,
     required this.countryId,
     required this.salaryBand,
     required this.nationality,
@@ -200,7 +200,9 @@ class KuwaitJobsProfile {
   });
 
   final String role;
-  final String tradeId;
+
+  /// 1–5 positions (primary first). Prefer [tradeIds]; [tradeId] is convenience.
+  final List<String> tradeIds;
   final String countryId;
   final String salaryBand;
   final String nationality;
@@ -208,10 +210,14 @@ class KuwaitJobsProfile {
   final int photoCount;
   final String? howMany;
 
+  String get tradeId => tradeIds.isEmpty ? trades.first : tradeIds.first;
+
   bool get isDemand => role == 'offer';
   bool get isValid =>
       roles.contains(role) &&
-      trades.contains(tradeId) &&
+      tradeIds.isNotEmpty &&
+      tradeIds.length <= maxTrades &&
+      tradeIds.every(trades.contains) &&
       countryIds.contains(countryId) &&
       salaryBandsFor(countryId).contains(salaryBand) &&
       nationalities.contains(nationality) &&
@@ -238,6 +244,7 @@ class KuwaitJobsProfile {
     'Car Mechanic',
     'Cashier',
     'Cementer',
+    'Cementing Engineer',
     'Construction Worker',
     'Cook',
     'DD',
@@ -251,6 +258,7 @@ class KuwaitJobsProfile {
     'Driver Tanker',
     'Driver-Pickup',
     'Electrician',
+    'Field Helper',
     'Fishing Engineer',
     'Floorman',
     'Heavy Driver',
@@ -284,6 +292,39 @@ class KuwaitJobsProfile {
     'Storekeeper',
     'Tool Pusher',
   ];
+
+  static const maxTrades = 5;
+
+  /// Browse / Likes title: first job, or `Cook +2` when multiple.
+  static String titleLine(List<String> selected) {
+    final clean = normalizeTrades(selected);
+    if (clean.isEmpty) return '';
+    if (clean.length == 1) return clean.first;
+    return '${clean.first} +${clean.length - 1}';
+  }
+
+  /// Keep 1–[maxTrades] valid trades; migrate legacy single [tradeId].
+  static List<String> normalizeTrades(
+    Iterable<Object?>? raw, {
+    String? legacyTradeId,
+  }) {
+    final out = <String>[];
+    void add(String? value) {
+      final v = value?.trim() ?? '';
+      if (v.isEmpty || !trades.contains(v) || out.contains(v)) return;
+      if (out.length >= maxTrades) return;
+      out.add(v);
+    }
+
+    if (raw != null) {
+      for (final item in raw) {
+        add('$item');
+      }
+    }
+    add(legacyTradeId);
+    if (out.isEmpty) out.add(trades.first);
+    return List<String>.unmodifiable(out);
+  }
 
   static const countryIds = <String>[
     'kuwait',

@@ -1,10 +1,13 @@
 import 'card_side.dart';
 import 'discovery_card.dart';
 
-/// Honest copy for like rows when the peer listing is missing or identity-only.
+  /// Honest copy for like rows when the peer listing is missing or identity-only.
 abstract final class LikeDisplay {
   static const placeholderTitle = 'Liked';
   static const missingListing = 'Listing not ready';
+  static const yourPostLabel = 'Your post';
+  static const likedByLabel = 'Liked by';
+  static const noPhotoYet = 'No photo';
 
   static bool isPlaceholderTitle(String title) {
     final t = title.trim();

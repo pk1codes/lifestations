@@ -14,6 +14,7 @@ class LikeEntry {
     required this.otherUid,
     required this.direction,
     this.card,
+    this.targetCard,
     this.createdAt,
     this.peerOpenedChat = false,
   });
@@ -21,7 +22,13 @@ class LikeEntry {
   final AppDomainId domain;
   final String otherUid;
   final LikeDirection direction;
+
+  /// Peer-facing card: outbound = their post; inbound = who liked you.
   final DiscoveryCardModel? card;
+
+  /// Inbound only: the owner's post that was liked (two-block Liked me UI).
+  final DiscoveryCardModel? targetCard;
+
   final DateTime? createdAt;
 
   /// Other party opened WhatsApp/Telegram after mutual interest.
@@ -70,8 +77,10 @@ class LikesRepository {
     final targetSnap = _publicSnapshot(card);
     // Inbound must show the liker's public card so the owner can like back.
     var fromSnap = _publicSnapshot(fromCard);
-    if (fromSnap.isEmpty) {
-      fromSnap = _publicSnapshot(await _fetchPublicListing(domain, uid));
+    if (!_snapshotHasPhotos(fromSnap)) {
+      final own = await _bestPublicListing(domain, uid);
+      final ownSnap = _publicSnapshot(own);
+      if (ownSnap.isNotEmpty) fromSnap = ownSnap;
     }
     if (fromSnap.isEmpty) {
       fromSnap = await _identityFallbackSnapshot(uid);
@@ -138,10 +147,21 @@ class LikesRepository {
         .limit(100)
         .snapshots()
         .asyncMap((snap) async {
-          final entries = snap.docs
-              .map((doc) => _entryFromDoc(domain, LikeDirection.inbound, doc))
-              .toList(growable: false);
-          return _enrichAll(entries);
+          try {
+            final entries = snap.docs
+                .map(
+                  (doc) => _entryFromDoc(domain, LikeDirection.inbound, doc),
+                )
+                .toList(growable: false);
+            return _enrichAll(entries);
+          } catch (_) {
+            // Never kill the realtime subscription on a bad photo enrich.
+            return snap.docs
+                .map(
+                  (doc) => _entryFromDoc(domain, LikeDirection.inbound, doc),
+                )
+                .toList(growable: false);
+          }
         });
   }
 
@@ -190,62 +210,142 @@ class LikesRepository {
           .toList(growable: false);
       return _enrichAll(entries);
     } catch (_) {
-      final snap = await _db.collection(collection).limit(100).get();
-      final entries = snap.docs
-          .map((doc) => _entryFromDoc(domain, direction, doc))
-          .toList(growable: false);
-      return _enrichAll(entries);
+      try {
+        final snap = await _db.collection(collection).limit(100).get();
+        final entries = snap.docs
+            .map((doc) => _entryFromDoc(domain, direction, doc))
+            .toList(growable: false);
+        return _enrichAll(entries);
+      } catch (_) {
+        return const <LikeEntry>[];
+      }
     }
   }
 
   Future<List<LikeEntry>> _enrichAll(List<LikeEntry> entries) async {
     if (entries.isEmpty) return entries;
-    return Future.wait(entries.map(_enrichIdentityPhoto));
+    return Future.wait(entries.map(_enrichMissingPhotos));
   }
 
-  /// Fill missing photos from the peer's universal identity image.
-  Future<LikeEntry> _enrichIdentityPhoto(LikeEntry entry) async {
+  /// Fill missing photos from the peer listing, then identity.
+  Future<LikeEntry> _enrichMissingPhotos(LikeEntry entry) async {
+    var next = entry;
+    next = await _enrichPeerCard(next);
+    if (next.direction == LikeDirection.inbound) {
+      next = await _enrichTargetCard(next);
+    }
+    return next;
+  }
+
+  Future<LikeEntry> _enrichPeerCard(LikeEntry entry) async {
     final card = entry.card;
     if (card != null && card.imageUrls.isNotEmpty) return entry;
+
+    // Prefer the exact listing id when present on the liker snapshot.
+    final listingId = card?.id;
+    if (listingId != null &&
+        listingId.isNotEmpty &&
+        listingId != entry.otherUid &&
+        card?.attributes['identityOnly'] != true) {
+      final exact = await _fetchListingById(entry.domain, listingId);
+      if (exact != null && exact.imageUrls.isNotEmpty) {
+        return _withPeerPhotos(entry, exact.imageUrls, titleHint: exact.title);
+      }
+    }
+
+    final listing = await _bestPublicListing(entry.domain, entry.otherUid);
+    if (listing != null && listing.imageUrls.isNotEmpty) {
+      return _withPeerPhotos(
+        entry,
+        listing.imageUrls,
+        titleHint: listing.title,
+        subtitleHint: listing.subtitle,
+        cityId: listing.cityId,
+        cityLabel: listing.cityLabel,
+      );
+    }
+
     final public = await _fetchIdentityPublic(entry.otherUid);
     if (public == null) return entry;
-    final photos = List<String>.from(
-      public['photoUrls'] as List? ?? const <dynamic>[],
-    ).where((url) => url.trim().isNotEmpty).toList(growable: false);
+    final photos = _stringList(public['photoUrls']);
     if (photos.isEmpty) return entry;
     final name = (public['displayName'] as String?)?.trim() ?? '';
-    final fallbackTitle = name.length >= 2 ? name : 'Liked';
+    return _withPeerPhotos(
+      entry,
+      photos,
+      titleHint: name.length >= 2 ? name : null,
+      cityId: public['cityId'] as String?,
+      cityLabel: public['cityLabel'] as String?,
+      identityOnly: true,
+    );
+  }
+
+  Future<LikeEntry> _enrichTargetCard(LikeEntry entry) async {
+    final target = entry.targetCard;
+    if (target != null && target.imageUrls.isNotEmpty) return entry;
+    final listingId = target?.id;
+    if (listingId == null || listingId.isEmpty) return entry;
+    final exact = await _fetchListingById(entry.domain, listingId);
+    if (exact == null) return entry;
+    return LikeEntry(
+      domain: entry.domain,
+      otherUid: entry.otherUid,
+      direction: entry.direction,
+      card: entry.card,
+      targetCard: exact,
+      createdAt: entry.createdAt,
+      peerOpenedChat: entry.peerOpenedChat,
+    );
+  }
+
+  LikeEntry _withPeerPhotos(
+    LikeEntry entry,
+    List<String> photos, {
+    String? titleHint,
+    String? subtitleHint,
+    String? cityId,
+    String? cityLabel,
+    bool identityOnly = false,
+  }) {
+    final card = entry.card;
     final existingTitle = card?.title.trim() ?? '';
     final title =
         (existingTitle.isEmpty ||
             existingTitle == 'Someone' ||
             existingTitle == 'Liked' ||
             existingTitle == 'Liked post')
-        ? fallbackTitle
+        ? (titleHint?.trim().isNotEmpty == true ? titleHint!.trim() : 'Liked')
         : existingTitle;
+    final attrs = Map<String, Object?>.from(
+      card?.attributes ?? const <String, Object?>{},
+    );
+    if (identityOnly) attrs['identityOnly'] = true;
     return LikeEntry(
       domain: entry.domain,
       otherUid: entry.otherUid,
       direction: entry.direction,
       createdAt: entry.createdAt,
       peerOpenedChat: entry.peerOpenedChat,
+      targetCard: entry.targetCard,
       card: DiscoveryCardModel(
         id: card?.id ?? entry.otherUid,
         domain: entry.domain,
         ownerId: entry.otherUid,
         title: title,
-        subtitle: card?.subtitle ?? '',
+        subtitle: (card?.subtitle.isNotEmpty ?? false)
+            ? card!.subtitle
+            : (subtitleHint ?? ''),
         cityId: (card?.cityId.isNotEmpty ?? false)
             ? card!.cityId
-            : (public['cityId'] as String? ?? ''),
+            : (cityId ?? ''),
         cityLabel: (card?.cityLabel.isNotEmpty ?? false)
             ? card!.cityLabel
-            : (public['cityLabel'] as String? ?? ''),
+            : (cityLabel ?? ''),
         categoryTags: card?.categoryTags ?? const <String>[],
         imageUrls: photos,
         role: card?.role,
         ageBand: card?.ageBand,
-        attributes: card?.attributes ?? const <String, Object?>{},
+        attributes: attrs,
         verified: card?.verified ?? false,
       ),
     );
@@ -260,7 +360,12 @@ class LikesRepository {
     final snapshot = Map<String, Object?>.from(
       data['snapshot'] as Map? ?? const {},
     );
+    final targetSnap = Map<String, Object?>.from(
+      data['targetSnapshot'] as Map? ?? const {},
+    );
     final created = data['createdAt'];
+    // Inbound otherUid is the liker; targetSnapshot is the owner's own post.
+    final ownerUidHint = (data['toUserId'] as String?) ?? '';
     return LikeEntry(
       domain: domain,
       otherUid: doc.id,
@@ -270,6 +375,13 @@ class LikesRepository {
         otherUid: doc.id,
         snapshot: snapshot,
       ),
+      targetCard: direction == LikeDirection.inbound && targetSnap.isNotEmpty
+          ? _cardFromSnapshot(
+              domain: domain,
+              otherUid: ownerUidHint.isNotEmpty ? ownerUidHint : doc.id,
+              snapshot: targetSnap,
+            )
+          : null,
       createdAt: created is Timestamp ? created.toDate() : null,
       peerOpenedChat: data['peerOpenedChat'] == true,
     );
@@ -279,9 +391,7 @@ class LikesRepository {
     final public = await _fetchIdentityPublic(uid);
     final name = (public?['displayName'] as String?)?.trim() ?? '';
     final title = name.length >= 2 ? name : 'Liked';
-    final photos = List<String>.from(
-      public?['photoUrls'] as List? ?? const <dynamic>[],
-    ).where((url) => url.trim().isNotEmpty).toList(growable: false);
+    final photos = _stringList(public?['photoUrls']);
     return <String, Object?>{
       'listingId': uid,
       'headline': title,
@@ -305,7 +415,22 @@ class LikesRepository {
     }
   }
 
-  Future<DiscoveryCardModel?> _fetchPublicListing(
+  Future<DiscoveryCardModel?> _fetchListingById(
+    AppDomainId domain,
+    String listingId,
+  ) async {
+    final policy = AppDomains.byId(domain);
+    try {
+      final doc = await _db.doc('${policy.collection}/$listingId').get();
+      if (!doc.exists) return null;
+      return _listingFromJson(domain, doc.id, doc.data() ?? const {});
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Prefer an active listing that still has photos (fromSnap / enrich).
+  Future<DiscoveryCardModel?> _bestPublicListing(
     AppDomainId domain,
     String ownerUid,
   ) async {
@@ -320,11 +445,16 @@ class LikesRepository {
           .collection(policy.collection)
           .where('ownerId', isEqualTo: ownerUid)
           .where('active', isEqualTo: true)
-          .limit(1)
+          .limit(5)
           .get();
       if (snap.docs.isEmpty) return null;
-      final doc = snap.docs.first;
-      return _listingFromJson(domain, doc.id, doc.data());
+      DiscoveryCardModel? fallback;
+      for (final doc in snap.docs) {
+        final card = _listingFromJson(domain, doc.id, doc.data());
+        if (card.imageUrls.isNotEmpty) return card;
+        fallback ??= card;
+      }
+      return fallback;
     } catch (_) {
       return null;
     }
@@ -342,8 +472,8 @@ class LikesRepository {
     subtitle: json['subtitle'] as String? ?? '',
     cityId: json['cityId'] as String? ?? '',
     cityLabel: json['cityLabel'] as String? ?? '',
-    categoryTags: List<String>.from(json['categoryTags'] as List? ?? const []),
-    imageUrls: List<String>.from(json['photoUrls'] as List? ?? const []),
+    categoryTags: _stringList(json['categoryTags']),
+    imageUrls: _stringList(json['photoUrls']),
     role: json['role'] as String?,
     ageBand: json['ageBand'] as String?,
     attributes: Map<String, Object?>.from(
@@ -359,6 +489,21 @@ class LikesRepository {
     } catch (_) {
       throw StateError('Sign-in needed before liking.');
     }
+  }
+
+  bool _snapshotHasPhotos(Map<String, Object?> snap) {
+    if (snap.isEmpty) return false;
+    if (_stringList(snap['photoUrls']).isNotEmpty) return true;
+    final single = (snap['photoUrl'] as String?)?.trim() ?? '';
+    return single.isNotEmpty;
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! List) return const <String>[];
+    return value
+        .map((e) => '$e'.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
   }
 
   Map<String, Object?> _publicSnapshot(DiscoveryCardModel? card) {
@@ -391,19 +536,21 @@ class LikesRepository {
     required Map<String, Object?> snapshot,
   }) {
     if (snapshot.isEmpty) return null;
-    final photos = <String>[
-      ...List<String>.from(snapshot['photoUrls'] as List? ?? const []),
-      if ((snapshot['photoUrl'] as String?)?.isNotEmpty ?? false)
-        snapshot['photoUrl'] as String,
-    ];
-    final uniquePhotos = <String>{
-      for (final url in photos)
-        if (url.isNotEmpty) url,
+    final photos = <String>{
+      ..._stringList(snapshot['photoUrls']),
+      if ((snapshot['photoUrl'] as String?)?.trim().isNotEmpty ?? false)
+        (snapshot['photoUrl'] as String).trim(),
     }.toList(growable: false);
     final title =
         (snapshot['title'] as String?) ??
         (snapshot['headline'] as String?) ??
         'Liked';
+    final attrs = Map<String, Object?>.from(
+      snapshot['attributes'] as Map? ?? const {},
+    );
+    if (snapshot['identityOnly'] == true) {
+      attrs['identityOnly'] = true;
+    }
     return DiscoveryCardModel(
       id: (snapshot['listingId'] as String?) ?? otherUid,
       domain: domain,
@@ -412,15 +559,11 @@ class LikesRepository {
       subtitle: (snapshot['subtitle'] as String?) ?? '',
       cityId: (snapshot['cityId'] as String?) ?? '',
       cityLabel: (snapshot['cityLabel'] as String?) ?? '',
-      categoryTags: List<String>.from(
-        snapshot['categoryTags'] as List? ?? const [],
-      ),
-      imageUrls: uniquePhotos,
+      categoryTags: _stringList(snapshot['categoryTags']),
+      imageUrls: photos,
       role: snapshot['role'] as String?,
       ageBand: snapshot['ageBand'] as String?,
-      attributes: Map<String, Object?>.from(
-        snapshot['attributes'] as Map? ?? const {},
-      ),
+      attributes: attrs,
       verified: snapshot['verified'] as bool? ?? false,
     );
   }
