@@ -14,6 +14,7 @@ void main() {
   test('phoneVerified gate requires Firebase Auth phoneNumber', () {
     expect(canMarkPhoneVerified(null), isFalse);
     expect(canMarkPhoneVerified('+919869610903'), isTrue);
+    expect(canMarkPhoneVerified(''), isFalse);
   });
 
   test('credential-already-in-use is treated as sign-in path', () {

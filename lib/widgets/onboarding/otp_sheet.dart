@@ -29,13 +29,34 @@ Future<bool> showOtpSheet(BuildContext context) async {
 }
 
 /// Like / Accept / publish: same verify path as Me → Account updates too.
+///
+/// Local `phoneVerified` alone is not enough — Firebase Auth must still have a
+/// live phone session (multi-tab / second OTP can replace the signed-in user).
 Future<bool> ensurePhoneVerifiedForAction(BuildContext context) async {
   final store = context.read<IdentityStore>();
-  if (store.identity.phoneVerified) return true;
+  if (store.identity.phoneVerified && hasLivePhoneAuth()) {
+    return true;
+  }
+  if (store.identity.phoneVerified && !hasLivePhoneAuth()) {
+    // Stale UX flag after Auth was replaced or cleared (common with 2 tabs).
+    await store.save(store.identity.copyWith(phoneVerified: false));
+  }
   if (!context.mounted) return false;
   final ok = await showOtpSheet(context);
   if (!ok || !context.mounted) return false;
-  return context.read<IdentityStore>().identity.phoneVerified;
+  return context.read<IdentityStore>().identity.phoneVerified &&
+      hasLivePhoneAuth();
+}
+
+/// True when Firebase Auth currently has a phone-linked user.
+bool hasLivePhoneAuth([FirebaseAuth? auth]) {
+  try {
+    final phone = (auth ?? FirebaseAuth.instance).currentUser?.phoneNumber
+        ?.trim();
+    return phone != null && phone.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
 }
 
 bool phoneBelongsToOtherAccount(FirebaseAuthException error) {

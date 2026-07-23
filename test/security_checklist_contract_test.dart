@@ -40,14 +40,14 @@ void main() {
       );
     });
 
-    test('unlock and delete enforce App Check; throttles auth-capped', () {
+    test('unlock, delete, and throttle callables enforce App Check', () {
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);
       expect(functionsSrc.contains('exports.deleteAccount'), isTrue);
       expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
       expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
       expect(
         RegExp(r'enforceAppCheck:\s*true').allMatches(functionsSrc).length,
-        greaterThanOrEqualTo(2),
+        greaterThanOrEqualTo(4),
       );
     });
   });

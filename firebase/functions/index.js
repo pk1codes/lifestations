@@ -108,7 +108,7 @@ async function claimRateLimit(ref, {now, windowMs, maxHits}) {
 }
 
 /** Server-side feed throttle — pairs with client FeedFetchThrottle. */
-exports.checkFeedThrottle = onCall(async (request) => {
+exports.checkFeedThrottle = onCall({enforceAppCheck: true}, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
@@ -119,9 +119,7 @@ exports.checkFeedThrottle = onCall(async (request) => {
   );
 });
 
-// Auth + server caps only (closed testing). Re-enable enforceAppCheck when
-// Play Integrity is proven for internal/sideload installs; unlock/delete keep it.
-exports.claimActionThrottle = onCall(async (request) => {
+exports.claimActionThrottle = onCall({enforceAppCheck: true}, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }

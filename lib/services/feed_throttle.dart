@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 
 import 'firebase_bootstrap.dart';
@@ -37,6 +38,13 @@ class FeedFetchThrottle {
     _hits.add(now);
     if (callRemote && FirebaseBootstrap.ready) {
       try {
+        if (_failClosed) {
+          final token = await FirebaseAppCheck.instance.getToken(true);
+          if (token == null || token.isEmpty) {
+            _hits.removeLast();
+            return false;
+          }
+        }
         final result = await FirebaseFunctions.instance
             .httpsCallable('checkFeedThrottle')
             .call();

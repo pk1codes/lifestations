@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'firebase_bootstrap.dart';
@@ -10,7 +11,7 @@ class ActionThrottleService {
   const ActionThrottleService({this.failClosed});
 
   /// When true, non-quota callable failures block the action.
-  /// Defaults to [kReleaseMode] so debug/closed testing can still proceed.
+  /// Defaults to [kReleaseMode] so debug can still proceed locally.
   final bool? failClosed;
 
   bool get _failClosed => failClosed ?? kReleaseMode;
@@ -18,7 +19,7 @@ class ActionThrottleService {
   /// Claims a server rate-limit slot.
   ///
   /// Always hard-fails on true quota (`resource-exhausted`).
-  /// In release, other callable failures also hard-fail (no bot bypass).
+  /// In release, App Check / network / auth failures also hard-fail.
   Future<void> claim(ThrottledAction action) async {
     if (!FirebaseBootstrap.ready) {
       if (_failClosed) {
@@ -28,6 +29,8 @@ class ActionThrottleService {
     }
     try {
       await FirebaseBootstrap.ensureSignedIn();
+      // Keep callable auth fresh (multi-tab phone switches can leave a stale token).
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
     } catch (_) {
       if (_failClosed) {
         throw StateError('Sign in required. Try again.');
@@ -35,13 +38,18 @@ class ActionThrottleService {
       return;
     }
     try {
-      // Attestation must exist before enforceAppCheck callables.
       try {
-        await FirebaseAppCheck.instance.getToken(true);
+        final token = await FirebaseAppCheck.instance.getToken(true);
+        if (_failClosed && (token == null || token.isEmpty)) {
+          throw StateError('App verification failed. Install from Play or try again.');
+        }
       } catch (error) {
+        if (error is StateError) rethrow;
+        if (_failClosed) {
+          throw StateError('App verification failed. Install from Play or try again.');
+        }
         if (kDebugMode) debugPrint('App Check warm skipped: $error');
       }
-      // Avoid typed Map cast — Functions may return Map<Object?, Object?>.
       await FirebaseFunctions.instance
           .httpsCallable('claimActionThrottle')
           .call(<String, dynamic>{'action': _name(action)});
@@ -54,6 +62,7 @@ class ActionThrottleService {
       }
       debugPrint('Action throttle skipped (${error.code}): ${error.message}');
     } catch (error) {
+      if (error is StateError) rethrow;
       if (_failClosed) {
         throw StateError('Could not verify action limit. Try again.');
       }
@@ -69,8 +78,7 @@ class ActionThrottleService {
     }
     if (code == 'failed-precondition' ||
         message.contains('app check') ||
-        message.contains('attestation') ||
-        message.contains('unauthenticated')) {
+        message.contains('attestation')) {
       return 'App verification failed. Install from Play or try again.';
     }
     return 'Could not verify action limit. Try again.';
