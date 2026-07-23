@@ -183,10 +183,20 @@ assert(
   'claimActionThrottle is auth-capped (no enforceAppCheck)',
 );
 assert(
-  functionsSrc.includes(
+  functionsSrc.includes('exports.unlockContact = onCall(async'),
+  'unlockContact is auth + mutual + phone (no enforceAppCheck)',
+);
+assert(
+  !functionsSrc.includes(
     'exports.unlockContact = onCall({enforceAppCheck: true}',
   ),
-  'unlockContact enforces App Check',
+  'unlockContact must not enforce App Check',
+);
+assert(
+  functionsSrc.includes(
+    'exports.deleteAccount = onCall({enforceAppCheck: true}',
+  ),
+  'deleteAccount enforces App Check',
 );
 assert(functionsSrc.includes('SLACK_WEBHOOK_URL'), 'slack webhook optional');
 assert(functionsSrc.includes('maxHits: 10'), 'throttle max 10');

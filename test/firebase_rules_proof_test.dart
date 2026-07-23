@@ -151,11 +151,17 @@ void main() {
         expect(functionsSrc.contains('exports.deleteAccount'), isTrue);
         expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
         expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
+        // unlockContact: auth + mutual + phone (no App Check — Play Integrity
+        // often surfaces as unauthenticated and blocks verified Alpha testers).
+        expect(
+          functionsSrc.contains('exports.unlockContact = onCall(async'),
+          isTrue,
+        );
         expect(
           functionsSrc.contains(
             'exports.unlockContact = onCall({enforceAppCheck: true}',
           ),
-          isTrue,
+          isFalse,
         );
         expect(
           functionsSrc.contains(

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -120,13 +121,32 @@ class ContactService {
     required AppDomainId domain,
     required String targetUid,
   }) async {
-    final user = _auth.currentUser;
+    await FirebaseBootstrap.waitUntilReady();
+    var user = _auth.currentUser;
     if (user == null || user.isAnonymous || user.phoneNumber == null) {
       throw StateError('Phone verification is required');
     }
+    // Attach a fresh ID token + App Check attestation. Without these, Cloud
+    // Functions often returns `unauthenticated` even when Me shows verified
+    // (Play Integrity / App Check gate looks like "Sign in required").
+    try {
+      await user.getIdToken(true);
+    } catch (error) {
+      if (kDebugMode) debugPrint('unlock idToken refresh failed: $error');
+    }
+    try {
+      await FirebaseAppCheck.instance.getToken(true);
+    } catch (error) {
+      if (kDebugMode) debugPrint('unlock App Check warm failed: $error');
+    }
+    user = _auth.currentUser;
+    if (user == null || user.isAnonymous || user.phoneNumber == null) {
+      throw StateError('Phone verification is required');
+    }
+
     final slug = AppDomains.byId(domain).slug;
     if (FirebaseBootstrap.ready) {
-      try {
+      Future<PrivateContact?> invoke() async {
         final result = await _functions.httpsCallable('unlockContact').call({
           'domainId': slug,
           'targetUid': targetUid,
@@ -140,21 +160,34 @@ class ContactService {
           whatsappNumber: number,
           telegramHandle: handleRaw.isEmpty ? null : handleRaw,
         );
+      }
+
+      try {
+        return await invoke();
       } on FirebaseFunctionsException catch (error) {
         if (kDebugMode) {
           debugPrint('unlockContact failed (${error.code}): ${error.message}');
         }
-        if (error.code == 'permission-denied') {
-          throw StateError(error.message ?? 'Mutual interest required');
+        // One retry after refreshing attestation — covers cold App Check races.
+        if (error.code == 'unauthenticated' ||
+            _isAppCheckCallableFailure(error)) {
+          try {
+            await user.getIdToken(true);
+            await FirebaseAppCheck.instance.getToken(true);
+            return await invoke();
+          } on FirebaseFunctionsException catch (retryError) {
+            if (kDebugMode) {
+              debugPrint(
+                'unlockContact retry failed (${retryError.code}): '
+                '${retryError.message}',
+              );
+            }
+            throw StateError(_friendlyUnlockError(retryError, user: user));
+          } catch (_) {
+            throw StateError(_friendlyUnlockError(error, user: user));
+          }
         }
-        if (error.code == 'unauthenticated') {
-          throw StateError('Sign in required');
-        }
-        if (error.code == 'failed-precondition' ||
-            error.message?.toLowerCase().contains('app check') == true) {
-          throw StateError('App Check blocked unlock. Update the app.');
-        }
-        throw StateError(error.message ?? 'Could not unlock contact');
+        throw StateError(_friendlyUnlockError(error, user: user));
       } catch (error) {
         if (kDebugMode) debugPrint('unlockContact callable failed: $error');
         rethrow;
@@ -172,6 +205,44 @@ class ContactService {
       throw StateError('Mutual interest is required');
     }
     return null;
+  }
+
+  /// Maps callable failures to honest copy (App Check ≠ missing phone OTP).
+  @visibleForTesting
+  static String friendlyUnlockError(
+    FirebaseFunctionsException error, {
+    User? user,
+  }) => _friendlyUnlockError(error, user: user);
+
+  static String _friendlyUnlockError(
+    FirebaseFunctionsException error, {
+    User? user,
+  }) {
+    if (error.code == 'permission-denied') {
+      return error.message ?? 'Mutual interest required';
+    }
+    final phoneLive =
+        user != null && !user.isAnonymous && (user.phoneNumber?.isNotEmpty ?? false);
+    if (_isAppCheckCallableFailure(error) ||
+        (error.code == 'unauthenticated' && phoneLive)) {
+      return 'Chat unlock needs Play app verification. '
+          'Stay on the Play Store build and try again in a minute.';
+    }
+    if (error.code == 'unauthenticated') {
+      return 'Sign in required';
+    }
+    return error.message ?? 'Could not unlock contact';
+  }
+
+  static bool _isAppCheckCallableFailure(FirebaseFunctionsException error) {
+    final blob = '${error.code} ${error.message ?? ''}'.toLowerCase();
+    if (blob.contains('app check') ||
+        blob.contains('app-check') ||
+        blob.contains('attestation') ||
+        blob.contains('firebase-app-check')) {
+      return true;
+    }
+    return error.code == 'failed-precondition';
   }
 
   /// Opens the phone WhatsApp app (or web) to [digits] with a ready-to-send message.

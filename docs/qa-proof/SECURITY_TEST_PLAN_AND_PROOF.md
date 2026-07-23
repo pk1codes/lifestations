@@ -30,7 +30,7 @@
 |-------|---------|----------|-----------|
 | Auth | Anonymous → phone link / sign-in | `otp_sheet.dart`, `firebase_bootstrap.dart` | Yes (Auth) |
 | Auth | Phone required for unlock | `unlockContact` checks `phone_number`, non-anonymous | Yes |
-| App Check | Play Integrity / reCAPTCHA v3 | `firebase_bootstrap.dart` | Client on; callables: **unlock + delete** enforce App Check. Feed/action **throttles are auth + server caps only** (web/incognito / sideload). |
+| App Check | Play Integrity / reCAPTCHA v3 | `firebase_bootstrap.dart` | Client on; callables: **delete** enforces App Check. **unlock + feed/action throttles** are auth (+ mutual/phone for unlock) without `enforceAppCheck` — Alpha/Play Integrity often returns `unauthenticated` and blocked verified testers. |
 | Firestore | Domain allowlist, listing schema bans contact | `firestore.rules` | Yes |
 | Firestore | Contact vault owner-read only | `users/{uid}/private/{docId}` | Yes |
 | Firestore | OTP tracker 60s update gate | `otp_trackers` | Best-effort (client fail-open) |
@@ -38,7 +38,7 @@
 | Storage | Auth write, 5 MiB, MIME, path slots | `storage.rules` | Yes |
 | Storage | Public read for listing photos | intentional CDN | Accept risk |
 | Functions | `claimActionThrottle`, `checkFeedThrottle` | `functions/index.js` | Auth + server caps; client bypasses App Check infrastructure failures |
-| Functions | `unlockContact` mutual + App Check | callable | Yes |
+| Functions | `unlockContact` mutual + phone | callable | Yes (App Check off — ACCEPTED) |
 | Client | Share allowlist / blur CTA | `public_share_card.dart`, share screen | Yes |
 | Client | No demo feed in release | `feature_flags.dart` | Yes |
 | Client | TextSafety / Vision optional | moderation + Vision key | Partial |
@@ -136,7 +136,7 @@ Use Firebase Emulator Suite **or** a throwaway project. Prefer Admin + unauthent
 | P0 | Action/Feed throttle fail-open | Offline/patched client skips caps | Release: fail closed on throttle errors for like/post/report | **DONE** (`failClosed` defaults to `kReleaseMode`) |
 | P1 | `validIdentity` allows public `whatsappNumber` | Peer can read `users/{id}` if client regresses | Force empty contact fields in rules (`noPublicContact`) | OPEN |
 | P1 | OTP tracker vs `serverTimestamp` mismatch | Server 60s gate may never apply | Align client write with `request.time` or loosen rules | OPEN |
-| P1 | Throttles without App Check | Scripts call `claimActionThrottle` with stolen ID tokens | Auth + server caps (accepted for web/sideload); unlock/delete keep App Check | **ACCEPTED** (3.0.65+) — not `enforceAppCheck` on throttles |
+| P1 | Throttles / unlock without App Check | Scripts call with stolen ID tokens | Auth + caps; unlock still needs phone + mutual; delete keeps App Check | **ACCEPTED** (throttles 3.0.65+; unlock 3.0.68+) |
 | P2 | World-readable Storage + `serveMedia` | Path leak = scrape | Signed URLs or auth-gated CDN for sensitive domains | OPEN |
 | P2 | Weak TextSafety / optional Vision | NSFW/spam posts | Server moderation queue; require Vision in release | OPEN |
 | P2 | No admin review API | Reports only Slack | Privileged review console + custom claims | OPEN |
@@ -150,7 +150,7 @@ Use Firebase Emulator Suite **or** a throwaway project. Prefer Admin + unauthent
 2. **SMS burner:** rotate numbers through OTP.  
    *Expect:* Firebase quota + 60s UI; monitor Auth usage charts.
 3. **Like-graph farming:** script mutual likes then `unlockContact`.  
-   *Expect:* App Check + phone + mutual same-domain; without Integrity token → fail.
+   *Expect:* phone + mutual same-domain; App Check not required on unlock (accepted).
 4. **Rules probe:** fuzz forbidden fields on every collection from §2 inventory.  
    *Expect:* `PERMISSION_DENIED` everywhere contact/PII is banned.
 5. **Callable abuse:** replay / omit App Check / wrong args on `unlockContact`, `deleteAccount`, throttles.  
@@ -277,7 +277,7 @@ Never commit Admin SDK JSON, keystores, or live phone numbers in proofs.
 | C1–C10 bot flood against production callables | **NOT RUN** — use staging |
 | D1–D10 device UX security | **NOT RUN** — QA checklist |
 | E4–E6 GCP console restrictions | **OWNER** — screenshots needed |
-| P0 hardening items | **Partial** — rate_limits + fail-closed + unlock/delete App Check **DONE**; throttle App Check **intentionally off**; Firestore/Storage App Check still OPEN |
+| P0 hardening items | **Partial** — rate_limits + fail-closed **DONE**; throttle + unlock App Check **intentionally off**; delete keeps App Check; Firestore/Storage App Check still OPEN |
 
 ### Bot top-3 patch proof (this session)
 

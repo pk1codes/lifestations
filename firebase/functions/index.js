@@ -155,7 +155,7 @@ exports.claimActionThrottle = onCall(async (request) => {
  * Requires non-anonymous auth with phone, plus same-domain mutual likes.
  * Returns only whatsapp/telegram — never logs them.
  */
-exports.unlockContact = onCall({enforceAppCheck: true}, async (request) => {
+exports.unlockContact = onCall(async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }

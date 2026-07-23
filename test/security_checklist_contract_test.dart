@@ -40,16 +40,21 @@ void main() {
       );
     });
 
-    test('unlock and delete enforce App Check; throttles are auth-capped', () {
+    test('delete enforces App Check; unlock + throttles are auth-capped', () {
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);
       expect(functionsSrc.contains('exports.deleteAccount'), isTrue);
       expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
       expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
+      // unlockContact: auth + mutual + phone (App Check off — same Alpha tradeoff as throttles).
+      expect(
+        functionsSrc.contains('exports.unlockContact = onCall(async'),
+        isTrue,
+      );
       expect(
         functionsSrc.contains(
           'exports.unlockContact = onCall({enforceAppCheck: true}',
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         functionsSrc.contains(

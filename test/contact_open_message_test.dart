@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flut_marriage/services/contact_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -58,5 +59,35 @@ void main() {
   test('openWhatsApp digit gate (≥8)', () {
     expect(cleanWhatsAppDigits('1234567').length >= 8, isFalse);
     expect(cleanWhatsAppDigits('+91 98765 43210').length >= 8, isTrue);
+  });
+
+  test('unlock error maps App Check / unauthenticated honestly', () {
+    expect(
+      ContactService.friendlyUnlockError(
+        FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: 'App Check token missing',
+        ),
+      ),
+      contains('Play app verification'),
+    );
+    expect(
+      ContactService.friendlyUnlockError(
+        FirebaseFunctionsException(
+          code: 'unauthenticated',
+          message: 'Sign in required.',
+        ),
+      ),
+      'Sign in required',
+    );
+    expect(
+      ContactService.friendlyUnlockError(
+        FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'Mutual interest required.',
+        ),
+      ),
+      'Mutual interest required.',
+    );
   });
 }
