@@ -72,6 +72,54 @@ void main() {
     },
   );
 
+  test('phone verify does not wipe name/city prefs', () async {
+    SharedPreferences.setMockInitialValues({
+      'identity_name': 'Ravi',
+      'identity_phone': '919876543210',
+      'identity_city_id': 'mumbai',
+      'identity_city_label': 'Mumbai',
+      'identity_language': 'Hindi',
+      'identity_phone_verified': false,
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final repo = _RecordingIdentityRepo(prefs);
+    final store = IdentityStore(prefs, repository: repo);
+
+    await store.savePhoneVerification(
+      phoneVerified: true,
+      whatsappNumber: '96590977001',
+      dialCodePreference: '965',
+    );
+
+    expect(store.identity.displayName, 'Ravi');
+    expect(store.identity.cityId, 'mumbai');
+    expect(store.identity.nativeLanguage, 'Hindi');
+    expect(store.identity.phoneVerified, isTrue);
+    expect(store.identity.whatsappNumber, '96590977001');
+    expect(prefs.getString('identity_name'), 'Ravi');
+    expect(prefs.getString('identity_city_label'), 'Mumbai');
+    expect(prefs.getBool('identity_phone_verified'), isTrue);
+  });
+
+  test('partial save with empty name keeps existing profile fields', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final store = IdentityStore(prefs, repository: _RecordingIdentityRepo(prefs));
+    await store.save(
+      const Identity(
+        displayName: 'Ravi',
+        whatsappNumber: '919876543210',
+        cityId: 'mumbai',
+        cityLabel: 'Mumbai',
+        nativeLanguage: 'Hindi',
+      ),
+    );
+    await store.save(store.identity.copyWith(phoneVerified: true));
+    expect(prefs.getString('identity_name'), 'Ravi');
+    expect(store.identity.displayName, 'Ravi');
+    expect(store.identity.phoneVerified, isTrue);
+  });
+
   test('Identity CDN path uses profile_photos/{uid}/identity/{slot}', () {
     expect(
       mediaCdnUrl('profile_photos/u1/identity/0/medium.webp'),

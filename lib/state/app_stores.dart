@@ -9,6 +9,7 @@ import '../models/discovery_card.dart';
 import '../services/discovery_feed_cache.dart';
 import '../services/domain_repository.dart';
 import '../services/firebase_bootstrap.dart';
+import '../services/identity_merge.dart';
 import '../services/identity_repository.dart';
 import '../services/likes_repository.dart';
 import '../services/listing_image_cache.dart';
@@ -105,12 +106,22 @@ class IdentityStore extends ChangeNotifier {
           .doc('users/${identity.userId}')
           .get();
       if (!doc.exists) return;
-      final remotePhotos = List<String>.from(
-        doc.data()?['photoUrls'] as List? ?? const <dynamic>[],
-      );
-      if (listEquals(remotePhotos, identity.photoUrls)) return;
-      identity = identity.copyWith(photoUrls: remotePhotos);
-      await _prefs.setStringList('identity_photo_urls', identity.photoUrls);
+      final next = mergeRemoteIdentity(identity, doc.data());
+      if (next.displayName == identity.displayName &&
+          next.cityId == identity.cityId &&
+          next.cityLabel == identity.cityLabel &&
+          next.nativeLanguage == identity.nativeLanguage &&
+          listEquals(next.photoUrls, identity.photoUrls)) {
+        return;
+      }
+      identity = next;
+      await Future.wait(<Future<bool>>[
+        _prefs.setString('identity_name', identity.displayName),
+        _prefs.setString('identity_city_id', identity.cityId),
+        _prefs.setString('identity_city_label', identity.cityLabel),
+        _prefs.setString('identity_language', identity.nativeLanguage),
+        _prefs.setStringList('identity_photo_urls', identity.photoUrls),
+      ]);
       notifyListeners();
     } catch (_) {
       // Local identity stays authoritative when remote is unavailable.
@@ -118,10 +129,22 @@ class IdentityStore extends ChangeNotifier {
   }
 
   Future<void> save(Identity value) async {
+    // Partial updates (OTP / gates) must not wipe name/city/language already
+    // stored in memory — empty incoming strings keep the previous values.
+    final nextPhone = value.whatsappNumber.replaceAll(RegExp(r'\D'), '');
     identity = value.copyWith(
       userId: value.userId.isEmpty ? identity.userId : value.userId,
-      displayName: value.displayName.trim(),
-      whatsappNumber: value.whatsappNumber.replaceAll(RegExp(r'\D'), ''),
+      displayName: coalesceIdentityField(
+        value.displayName,
+        identity.displayName,
+      ),
+      cityId: coalesceIdentityField(value.cityId, identity.cityId),
+      cityLabel: coalesceIdentityField(value.cityLabel, identity.cityLabel),
+      nativeLanguage: coalesceIdentityField(
+        value.nativeLanguage,
+        identity.nativeLanguage,
+      ),
+      whatsappNumber: nextPhone.isNotEmpty ? nextPhone : identity.whatsappNumber,
     );
     await Future.wait(<Future<bool>>[
       _prefs.setString('identity_name', identity.displayName),
@@ -141,6 +164,35 @@ class IdentityStore extends ChangeNotifier {
       await _repository.save(identity);
     } catch (_) {
       // Local persistence is authoritative while remote sync is unavailable.
+    }
+    notifyListeners();
+  }
+
+  /// Phone OTP / stale-flag clears — touches only phone-related prefs keys so a
+  /// verify cannot blank `identity_name` / city / language in localStorage.
+  Future<void> savePhoneVerification({
+    required bool phoneVerified,
+    String? whatsappNumber,
+    String? dialCodePreference,
+  }) async {
+    final digits = (whatsappNumber ?? identity.whatsappNumber).replaceAll(
+      RegExp(r'\D'),
+      '',
+    );
+    identity = identity.copyWith(
+      phoneVerified: phoneVerified,
+      whatsappNumber: digits.isNotEmpty ? digits : identity.whatsappNumber,
+      dialCodePreference: dialCodePreference ?? identity.dialCodePreference,
+    );
+    await Future.wait(<Future<bool>>[
+      _prefs.setBool('identity_phone_verified', identity.phoneVerified),
+      _prefs.setString('identity_phone', identity.whatsappNumber),
+      _prefs.setString('identity_dial_code', identity.dialCodePreference),
+    ]);
+    try {
+      await _repository.sync(identity);
+    } catch (_) {
+      // Local phone flags stay authoritative when remote sync is unavailable.
     }
     notifyListeners();
   }
@@ -734,6 +786,17 @@ class LikesStore extends ChangeNotifier {
       unawaited(sub.cancel());
     }
     _inboundSubs.clear();
+  }
+
+  /// Clears in-memory likes for sign-out (remote data stays on the phone UID).
+  void resetLocal() {
+    stopRealtimeSync();
+    _outbound.clear();
+    _inbound.clear();
+    _outboundEntries.clear();
+    _inboundEntries.clear();
+    _chatReady.clear();
+    notifyListeners();
   }
 
   @override

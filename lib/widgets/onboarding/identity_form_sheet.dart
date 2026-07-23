@@ -143,12 +143,26 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
                   onTap: () async {
                     final ok = await showOtpSheet(context);
                     if (!context.mounted) return;
-                    if (ok) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Phone verified')),
-                      );
-                      Navigator.of(context).pop();
-                    }
+                    if (!ok) return;
+                    // Verify used to pop Account and discard typed name/city.
+                    // Flush draft fields now so refresh still shows them.
+                    final store = context.read<IdentityStore>();
+                    await store.save(
+                      store.identity.copyWith(
+                        displayName: _name.text.trim(),
+                        cityId: _city,
+                        cityLabel: cityLabels[_city] ?? _city,
+                        nativeLanguage: _language,
+                        photoUrls: List<String>.from(
+                          _media.urls.where((url) => url.trim().isNotEmpty),
+                        ),
+                      ),
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Phone verified')),
+                    );
+                    setState(() {});
                   },
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),

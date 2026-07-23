@@ -292,6 +292,14 @@ abstract class MultiOfferStore<T> extends ChangeNotifier {
     persistOffers();
   }
 
+  /// Drop all local offers (sign-out). Remote docs stay with the phone account.
+  void clearAllOffers() {
+    if (_offers.isEmpty) return;
+    _offers.clear();
+    notifyListeners();
+    persistOffers();
+  }
+
   @protected
   void setOffersForLoad(List<T> values) {
     _offers

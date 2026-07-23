@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/discovery_card.dart';
 import 'firebase_bootstrap.dart';
+import 'identity_merge.dart';
 
 class IdentityRepository {
   IdentityRepository({this.preferences, this.firestore, this.auth});
@@ -16,17 +17,39 @@ class IdentityRepository {
   Future<void> save(Identity identity) async {
     final prefs = preferences;
     if (prefs != null) {
+      // Never blank durable profile prefs with an incomplete partial payload
+      // (OTP / gate sync used to rewrite identity_name to '').
+      final name = coalesceIdentityField(
+        identity.displayName,
+        prefs.getString('identity_name') ?? '',
+      );
+      final phone = coalesceIdentityField(
+        identity.whatsappNumber.replaceAll(RegExp(r'\D'), ''),
+        prefs.getString('identity_phone') ?? '',
+      );
+      final cityId = coalesceIdentityField(
+        identity.cityId,
+        prefs.getString('identity_city_id') ?? '',
+      );
+      final cityLabel = coalesceIdentityField(
+        identity.cityLabel,
+        prefs.getString('identity_city_label') ?? '',
+      );
+      final language = coalesceIdentityField(
+        identity.nativeLanguage,
+        prefs.getString('identity_language') ?? '',
+      );
+      final photos = identity.photoUrls.isNotEmpty
+          ? identity.photoUrls
+          : (prefs.getStringList('identity_photo_urls') ?? const <String>[]);
       await Future.wait(<Future<bool>>[
-        prefs.setString('identity_name', identity.displayName.trim()),
-        prefs.setString(
-          'identity_phone',
-          identity.whatsappNumber.replaceAll(RegExp(r'\D'), ''),
-        ),
-        prefs.setString('identity_city_id', identity.cityId),
-        prefs.setString('identity_city_label', identity.cityLabel),
-        prefs.setString('identity_language', identity.nativeLanguage),
+        prefs.setString('identity_name', name),
+        prefs.setString('identity_phone', phone),
+        prefs.setString('identity_city_id', cityId),
+        prefs.setString('identity_city_label', cityLabel),
+        prefs.setString('identity_language', language),
         prefs.setBool('identity_phone_verified', identity.phoneVerified),
-        prefs.setStringList('identity_photo_urls', identity.photoUrls),
+        prefs.setStringList('identity_photo_urls', photos),
       ]);
     }
     await sync(identity);

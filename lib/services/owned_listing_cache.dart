@@ -105,4 +105,21 @@ class OwnedListingCache extends ChangeNotifier {
     await _prefs.remove(_activeKey(domain));
     notifyListeners();
   }
+
+  /// Clears every owned photo / offer-id / active flag (sign-out).
+  Future<void> clearAll() async {
+    final keys = _prefs
+        .getKeys()
+        .where(
+          (key) =>
+              key.startsWith('owned_photos_') ||
+              key.startsWith('owned_offer_id_') ||
+              key.startsWith('owned_active_'),
+        )
+        .toList(growable: false);
+    for (final key in keys) {
+      await _prefs.remove(key);
+    }
+    notifyListeners();
+  }
 }

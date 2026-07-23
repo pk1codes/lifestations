@@ -39,7 +39,7 @@ Future<bool> ensurePhoneVerifiedForAction(BuildContext context) async {
   }
   if (store.identity.phoneVerified && !hasLivePhoneAuth()) {
     // Stale UX flag after Auth was replaced or cleared (common with 2 tabs).
-    await store.save(store.identity.copyWith(phoneVerified: false));
+    await store.savePhoneVerification(phoneVerified: false);
   }
   if (!context.mounted) return false;
   final ok = await showOtpSheet(context);
@@ -473,14 +473,12 @@ class _OtpSheetState extends State<OtpSheet> {
     if (!mounted) return;
     final identity = context.read<IdentityStore>();
     final e164 = toE164Digits(_dial, _phone.text);
-    await identity.save(
-      identity.identity.copyWith(
-        phoneVerified: true,
-        dialCodePreference: _dial.digits,
-        whatsappNumber: e164.isNotEmpty
-            ? e164
-            : identity.identity.whatsappNumber,
-      ),
+    await identity.savePhoneVerification(
+      phoneVerified: true,
+      dialCodePreference: _dial.digits,
+      whatsappNumber: e164.isNotEmpty
+          ? e164
+          : identity.identity.whatsappNumber,
     );
     if (mounted) Navigator.pop(context, true);
   }

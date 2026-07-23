@@ -26,8 +26,10 @@ import '../services/listing_publisher.dart';
 import '../services/owned_hydrate.dart';
 import '../services/owned_listing_cache.dart';
 import '../services/owned_posts.dart';
+import '../services/phone_number.dart';
 import '../services/push_service.dart';
 import '../services/refresh_boost_service.dart';
+import '../services/session_service.dart';
 import '../services/share_service.dart';
 import '../state/app_stores.dart';
 import '../widgets/listing_meta.dart';
@@ -2444,7 +2446,7 @@ class MeScreen extends StatelessWidget {
       actions: [
         IconButton(
           tooltip: 'Settings',
-          onPressed: () => _showSettings(context),
+          onPressed: () => showSettingsSheet(context),
           icon: const Icon(Icons.settings_outlined),
         ),
       ],
@@ -3777,12 +3779,22 @@ Future<void> showMatchDialog(BuildContext context) => showDialog<void>(
 Future<void> _showMatch(BuildContext context, DiscoveryCardModel card) =>
     showMatchDialog(context);
 
-Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
+Future<void> showSettingsSheet(BuildContext context) => showModalBottomSheet<void>(
   context: context,
   showDragHandle: true,
   isScrollControlled: true,
-  builder: (context) {
-    final locale = context.watch<LocaleController>();
+  builder: (sheetContext) {
+    final locale = sheetContext.watch<LocaleController>();
+    final identity = sheetContext.watch<IdentityStore>().identity;
+    final photoUrl = identity.photoUrls.isNotEmpty
+        ? identity.photoUrls.first
+        : null;
+    final name = identity.displayName.trim();
+    final phone = identity.whatsappNumber.trim();
+    final phoneParts = phone.isEmpty ? null : splitStoredPhone(phone);
+    final phoneLabel = phoneParts == null
+        ? (identity.phoneVerified ? 'Phone verified' : 'Not signed in')
+        : '${phoneParts.dial.label} ${phoneParts.national}';
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -3791,9 +3803,51 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Settings', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text('Language', style: Theme.of(context).textTheme.titleMedium),
+              Text('Settings', style: Theme.of(sheetContext).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              Material(
+                key: const Key('settings_account_card'),
+                color: AppColors.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: AppColors.muted.withValues(alpha: .18),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                  child: Row(
+                    children: [
+                      _IdentityAvatar(photoUrl: photoUrl),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name.isNotEmpty ? name : 'Account',
+                              style: Theme.of(sheetContext)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              phoneLabel,
+                              style: Theme.of(sheetContext)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(color: AppColors.muted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('Language', style: Theme.of(sheetContext).textTheme.titleMedium),
               RadioGroup<String?>(
                 groupValue: locale.localeCode,
                 onChanged: locale.setLocale,
@@ -3809,7 +3863,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                 leading: const Icon(Icons.gavel_outlined),
                 title: const Text('Terms'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
+                onTap: () => Navigator.of(sheetContext).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const LegalPageScreen.terms(),
                   ),
@@ -3819,7 +3873,7 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                 leading: const Icon(Icons.privacy_tip_outlined),
                 title: const Text('Privacy'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
+                onTap: () => Navigator.of(sheetContext).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const LegalPageScreen.privacy(),
                   ),
@@ -3829,11 +3883,54 @@ Future<void> _showSettings(BuildContext context) => showModalBottomSheet<void>(
                 leading: const Icon(Icons.delete_outline),
                 title: const Text('Delete account'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
+                onTap: () => Navigator.of(sheetContext).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const LegalPageScreen.dataDeletion(),
                   ),
                 ),
+              ),
+              const Divider(height: 28),
+              ListTile(
+                key: const Key('settings_sign_out'),
+                leading: const Icon(Icons.logout),
+                title: const Text('Sign out'),
+                subtitle: const Text(
+                  'Posts stay with your phone. Verify again to restore.',
+                ),
+                onTap: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: sheetContext,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Sign out?'),
+                      content: const Text(
+                        'You will need to verify your phone again on this '
+                        'device. Your posts are not deleted.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.pop(dialogContext, false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          key: const Key('settings_sign_out_confirm'),
+                          onPressed: () =>
+                              Navigator.pop(dialogContext, true),
+                          child: const Text('Sign out'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true || !sheetContext.mounted) return;
+                  await signOutLocalSession(sheetContext);
+                  if (!sheetContext.mounted) return;
+                  Navigator.pop(sheetContext);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Signed out')),
+                    );
+                  }
+                },
               ),
             ],
           ),
