@@ -8,6 +8,7 @@ abstract final class LikeDisplay {
   static const yourPostLabel = 'Your post';
   static const likedByLabel = 'Liked by';
   static const noPhotoYet = 'No photo';
+  static const matchSectionTitle = 'Match';
 
   static bool isPlaceholderTitle(String title) {
     final t = title.trim();
@@ -48,7 +49,9 @@ abstract final class LikeConsent {
   static const listWaiting = 'Waiting';
 
   static const removeTooltip = 'Remove';
+  static const deleteMatchTooltip = 'Delete';
   static const removedSnack = 'Removed';
+  static const matchRemovedSnack = 'Match removed';
   static const undo = 'Undo';
 
   static const acceptFirst = 'Accept first to unlock chat';

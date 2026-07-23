@@ -44,8 +44,10 @@ void main() {
     await tester.tap(find.text('Open account'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Optional. Phone verify is separate.'), findsOneWidget);
-    expect(find.text('Name (optional)'), findsOneWidget);
+    expect(find.text('Optional. Phone verify is separate.'), findsNothing);
+    expect(find.text('Name (optional)'), findsNothing);
+    expect(find.text('Name'), findsOneWidget);
+    expect(find.text('Photo'), findsOneWidget);
     expect(find.byKey(const Key('account_open_phone_verify')), findsOneWidget);
     expect(find.text('Verify'), findsOneWidget);
     // No second editable phone dial on Account (OTP owns that).

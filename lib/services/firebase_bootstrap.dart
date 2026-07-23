@@ -48,10 +48,20 @@ class FirebaseBootstrap {
         }
       } else {
         await FirebaseAppCheck.instance.activate(
-          providerAndroid: kDebugMode
+          providerAndroid:
+              kDebugMode ||
+                  const bool.fromEnvironment(
+                    'APP_CHECK_DEBUG',
+                    defaultValue: false,
+                  )
               ? const AndroidDebugProvider()
               : const AndroidPlayIntegrityProvider(),
-          providerApple: kDebugMode
+          providerApple:
+              kDebugMode ||
+                  const bool.fromEnvironment(
+                    'APP_CHECK_DEBUG',
+                    defaultValue: false,
+                  )
               ? const AppleDebugProvider()
               : const AppleAppAttestProvider(),
         );

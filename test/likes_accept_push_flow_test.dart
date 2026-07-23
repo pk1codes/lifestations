@@ -111,8 +111,10 @@ void main() {
 
     expect(likes.isMutual(AppDomainId.jobs, 'peer'), isTrue);
     expect(likes.chatIconsActive(AppDomainId.jobs, 'peer'), isTrue);
+    expect(likes.matchCount, 1);
+    expect(likes.inboundCount, 0);
     expect(
-      likes.inboundEntries(AppDomainId.jobs).single.card?.imageUrls.single,
+      likes.matchEntries(AppDomainId.jobs).single.card?.imageUrls.single,
       'https://cdn.example/peer2.webp',
     );
   });

@@ -412,16 +412,69 @@ class LikesStore extends ChangeNotifier {
       if (!isInboundDismissed(domain, id)) id,
   });
 
-  List<LikeEntry> outboundEntries(AppDomainId domain) =>
-      List.unmodifiable(_outboundEntries[domain] ?? const <LikeEntry>[]);
-  List<LikeEntry> inboundEntries(AppDomainId domain) =>
-      List.unmodifiable(_visibleInbound(domain));
+  /// Waiting outbound only — mutuals live under [matchEntries].
+  List<LikeEntry> outboundEntries(AppDomainId domain) => List.unmodifiable(
+    (_outboundEntries[domain] ?? const <LikeEntry>[]).where(
+      (entry) => !isMutual(domain, entry.otherUid),
+    ),
+  );
 
-  int get outboundCount =>
-      _outbound.values.fold<int>(0, (total, ids) => total + ids.length);
+  /// Waiting inbound only — mutuals live under [matchEntries].
+  List<LikeEntry> inboundEntries(AppDomainId domain) => List.unmodifiable(
+    _visibleInbound(domain).where(
+      (entry) => !isMutual(domain, entry.otherUid),
+    ),
+  );
+
+  /// Mutual pairs for the Match section (two-block: your post + liked by).
+  List<LikeEntry> matchEntries(AppDomainId domain) {
+    final mutualIds = <String>{
+      for (final id in _outbound[domain] ?? const <String>{})
+        if (isMutual(domain, id)) id,
+    };
+    if (mutualIds.isEmpty) return const <LikeEntry>[];
+
+    final inboundMap = <String, LikeEntry>{
+      for (final entry in _inboundEntries[domain] ?? const <LikeEntry>[])
+        entry.otherUid: entry,
+    };
+    final outboundMap = <String, LikeEntry>{
+      for (final entry in _outboundEntries[domain] ?? const <LikeEntry>[])
+        entry.otherUid: entry,
+    };
+
+    final matches = <LikeEntry>[
+      for (final id in mutualIds)
+        LikeEntry(
+          domain: domain,
+          otherUid: id,
+          direction: LikeDirection.inbound,
+          card: inboundMap[id]?.card ?? outboundMap[id]?.card,
+          targetCard: inboundMap[id]?.targetCard,
+          createdAt:
+              inboundMap[id]?.createdAt ?? outboundMap[id]?.createdAt,
+          peerOpenedChat: inboundMap[id]?.peerOpenedChat ?? false,
+        ),
+    ];
+    matches.sort((a, b) {
+      final aAt = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bAt.compareTo(aAt);
+    });
+    return List.unmodifiable(matches);
+  }
+
+  int get outboundCount => AppDomainId.values.fold<int>(
+    0,
+    (total, domain) => total + outboundEntries(domain).length,
+  );
   int get inboundCount => AppDomainId.values.fold<int>(
     0,
-    (total, domain) => total + _visibleInbound(domain).length,
+    (total, domain) => total + inboundEntries(domain).length,
+  );
+  int get matchCount => AppDomainId.values.fold<int>(
+    0,
+    (total, domain) => total + matchEntries(domain).length,
   );
 
   /// WhatsApp / Telegram icons unlock for mutual pairs (or peer already opened chat).
@@ -499,6 +552,13 @@ class LikesStore extends ChangeNotifier {
     await _persistDismissedInbound();
     _chatReady[domain]?.remove(fromUid);
     notifyListeners();
+  }
+
+  /// Remove a Match: drop our like + hide their inbound so it leaves all sections.
+  Future<void> deleteMatch(AppDomainId domain, String otherUid) async {
+    if (otherUid.isEmpty) return;
+    await unlike(domain, otherUid);
+    await dismissInbound(domain, otherUid);
   }
 
   /// Restore a dismissed inbound row (Undo).

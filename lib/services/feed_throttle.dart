@@ -39,10 +39,13 @@ class FeedFetchThrottle {
       try {
         final result = await FirebaseFunctions.instance
             .httpsCallable('checkFeedThrottle')
-            .call<Map<String, dynamic>>();
+            .call();
         final data = result.data;
-        final allowed = data['allowed'] == true;
-        final lockedMs = data['lockedUntilMs'];
+        final map = data is Map
+            ? data.map((key, value) => MapEntry('$key', value))
+            : const <String, dynamic>{};
+        final allowed = map['allowed'] == true;
+        final lockedMs = map['lockedUntilMs'];
         if (lockedMs is num && lockedMs > 0) {
           lockedUntil = DateTime.fromMillisecondsSinceEpoch(lockedMs.toInt());
         }

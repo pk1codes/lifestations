@@ -257,10 +257,9 @@ class ListingPublisher {
 
   Future<DiscoveryCardModel> _persist(DiscoveryCardModel card) async {
     _assertTextSafe(card);
-    await _throttle.claim(ThrottledAction.post);
     var toWrite = card;
     if (FirebaseBootstrap.ready) {
-      // Align owner with the live auth session (same uid photo upload used).
+      // Auth + App Check must be ready before claimActionThrottle (enforceAppCheck).
       final user = await FirebaseBootstrap.ensureSignedIn();
       final policy = AppDomains.byId(card.domain);
       if (card.ownerId != user.uid) {
@@ -271,6 +270,10 @@ class ListingPublisher {
               : card.id,
         );
       }
+    }
+    await _throttle.claim(ThrottledAction.post);
+    if (FirebaseBootstrap.ready) {
+      final policy = AppDomains.byId(toWrite.domain);
       if (policy.storageKind == DomainStorageKind.profiles) {
         await _repository.saveProfile(toWrite);
       } else {

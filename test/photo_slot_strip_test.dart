@@ -30,7 +30,7 @@ void main() {
     expect(find.byIcon(Icons.add_a_photo_outlined), findsWidgets);
   });
 
-  testWidgets('filled slot shows remove control', (tester) async {
+  testWidgets('filled slot shows compact remove control', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -47,22 +47,14 @@ void main() {
       ),
     );
 
-    expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
     expect(find.text('Add photo'), findsNothing);
     expect(find.text('Need'), findsNothing);
 
-    final removeSize = tester.getSize(find.byIcon(Icons.close).hitTestable());
-    // Prefer measuring the IconButton constraints via ancestor.
-    final button = find.byWidgetPredicate(
-      (w) =>
-          w is IconButton &&
-          (w.tooltip == 'Remove photo' ||
-              (w.icon is Icon && (w.icon as Icon).icon == Icons.close)),
-    );
-    expect(button, findsOneWidget);
-    final size = tester.getSize(button);
-    expect(size.width, greaterThanOrEqualTo(48));
-    expect(size.height, greaterThanOrEqualTo(48));
-    expect(removeSize.width, greaterThan(0));
+    final remove = find.byKey(const Key('photo_slot_remove'));
+    expect(remove, findsOneWidget);
+    final size = tester.getSize(remove);
+    expect(size.width, 22);
+    expect(size.height, 22);
   });
 }

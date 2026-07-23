@@ -363,24 +363,31 @@ class _PhotoSlot extends StatelessWidget {
             ),
             if (onRemove != null)
               Positioned(
-                top: -10,
-                right: -10,
-                child: IconButton(
-                  tooltip: 'Remove photo',
-                  onPressed: onRemove,
-                  iconSize: 18,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 48,
-                    minHeight: 48,
-                  ),
-                  style: IconButton.styleFrom(
-                    foregroundColor: accent,
-                    backgroundColor: Colors.white,
+                top: 4,
+                right: 4,
+                child: Tooltip(
+                  message: 'Remove photo',
+                  child: Material(
+                    color: Colors.white,
                     elevation: 1,
                     shadowColor: Colors.black26,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      key: const Key('photo_slot_remove'),
+                      onTap: onRemove,
+                      customBorder: const CircleBorder(),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: accent,
+                        ),
+                      ),
+                    ),
                   ),
-                  icon: const Icon(Icons.close),
                 ),
               ),
           ],

@@ -144,15 +144,18 @@ void main() {
       },
     );
 
-    test('callable unlock/delete/throttles enforce App Check', () {
+    test('callable unlock/delete enforce App Check; throttles are auth-capped', () {
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);
       expect(functionsSrc.contains('exports.deleteAccount'), isTrue);
       expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
       expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
       expect(
         RegExp(r'enforceAppCheck:\s*true').allMatches(functionsSrc).length,
-        greaterThanOrEqualTo(4),
+        greaterThanOrEqualTo(2),
       );
+      final throttleBlock = functionsSrc.split('exports.claimActionThrottle')[1]
+          .split('exports.unlockContact')[0];
+      expect(throttleBlock.contains('enforceAppCheck: true'), isFalse);
     });
 
     test('exports and throttle constants present', () {

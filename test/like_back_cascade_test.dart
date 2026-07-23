@@ -60,8 +60,9 @@ void main() {
     expect(likes.isMutual(AppDomainId.jobs, 'user1'), isTrue);
     expect(likes.chatIconsActive(AppDomainId.jobs, 'user1'), isTrue);
     expect(likes.outbound(AppDomainId.jobs), contains('user1'));
+    expect(likes.matchCount, 1);
     expect(
-      likes.outboundEntries(AppDomainId.jobs).single.card?.title,
+      likes.matchEntries(AppDomainId.jobs).single.card?.title,
       'Driver',
     );
     expect(

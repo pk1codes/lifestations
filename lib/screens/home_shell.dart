@@ -944,6 +944,8 @@ class _LikesScreenState extends State<LikesScreen> {
             entriesFor: likes.inboundEntries,
             likes: likes,
           ),
+          const SizedBox(height: 16),
+          _MatchSection(likes: likes),
         ],
       ),
     );
@@ -1073,6 +1075,536 @@ Future<void> _removeLikeRow(
       ),
     ),
   );
+}
+
+Future<void> _deleteMatchRow(
+  BuildContext context, {
+  required LikesStore likes,
+  required LikeEntry entry,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  await likes.deleteMatch(entry.domain, entry.otherUid);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(
+    const SnackBar(content: Text(LikeConsent.matchRemovedSnack)),
+  );
+}
+
+class _MatchSection extends StatelessWidget {
+  const _MatchSection({required this.likes});
+
+  final LikesStore likes;
+
+  @override
+  Widget build(BuildContext context) {
+    final domainsWithMatches = AppDomains.all
+        .where((policy) => likes.matchEntries(policy.id).isNotEmpty)
+        .toList(growable: false);
+    return Column(
+      key: const Key('likes_match_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _HubSectionHeader(
+          title: LikeDisplay.matchSectionTitle,
+          icon: Icons.handshake_outlined,
+          count: likes.matchCount,
+        ),
+        if (domainsWithMatches.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('None yet'),
+          )
+        else
+          ...domainsWithMatches.map((policy) {
+            final entries = likes.matchEntries(policy.id);
+            ImagePrefetch.warmAll(
+              context,
+              entries.expand((e) {
+                return <String?>[
+                  e.targetCard?.imageUrls.isNotEmpty == true
+                      ? e.targetCard!.imageUrls.first
+                      : null,
+                  e.card?.imageUrls.isNotEmpty == true
+                      ? e.card!.imageUrls.first
+                      : null,
+                ];
+              }).whereType<String>(),
+              role: FastImageRole.thumb,
+            );
+            return ExpandableDomainSection(
+              sectionKey: Key('match_domain_${policy.id.name}'),
+              domain: policy,
+              count: entries.length,
+              icon: _domainIcons[policy.id] ?? Icons.circle,
+              children: [
+                for (final entry in entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _MatchRow(
+                      entry: entry,
+                      onOpen: () => _showMatchDetail(context, entry),
+                      onDelete: () => _deleteMatchRow(
+                        context,
+                        likes: likes,
+                        entry: entry,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _MatchRow extends StatefulWidget {
+  const _MatchRow({
+    required this.entry,
+    required this.onOpen,
+    required this.onDelete,
+  });
+
+  final LikeEntry entry;
+  final VoidCallback onOpen;
+  final VoidCallback onDelete;
+
+  @override
+  State<_MatchRow> createState() => _MatchRowState();
+}
+
+class _MatchRowState extends State<_MatchRow> {
+  _ContactChannel? _opening;
+
+  LikeEntry get entry => widget.entry;
+
+  Future<PrivateContact?> _ensureContact() async {
+    final shareReady = await ensureContactShareForChat(context);
+    if (!shareReady || !mounted) return null;
+    try {
+      final contact = await ContactService().unlock(
+        domain: entry.domain,
+        targetUid: entry.otherUid,
+      );
+      if (!mounted) return null;
+      if (contact == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Their WhatsApp is not saved yet. Ask them to open the app once.',
+            ),
+          ),
+        );
+        return null;
+      }
+      return contact;
+    } catch (error) {
+      if (!mounted) return null;
+      final message = error is StateError
+          ? error.message
+          : 'Could not unlock chat. Check phone verification.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return null;
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    if (_opening != null) return;
+    setState(() => _opening = _ContactChannel.whatsapp);
+    try {
+      final contact = await _ensureContact();
+      if (contact == null || !mounted) return;
+      await context.read<LikesStore>().signalChatOpened(
+        entry.domain,
+        entry.otherUid,
+      );
+      final label = AppDomains.byId(entry.domain).label;
+      final opened = await ContactService().openWhatsApp(
+        contact.whatsappNumber,
+        domainLabel: label,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open WhatsApp — number & message copied'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = null);
+    }
+  }
+
+  Future<void> _openTelegram() async {
+    if (_opening != null) return;
+    setState(() => _opening = _ContactChannel.telegram);
+    try {
+      final contact = await _ensureContact();
+      if (contact == null || !mounted) return;
+      final handle = contact.telegramHandle?.trim() ?? '';
+      final phone = contact.whatsappNumber;
+      if (handle.isEmpty && cleanWhatsAppDigits(phone).length < 8) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No Telegram number yet')),
+        );
+        return;
+      }
+      await context.read<LikesStore>().signalChatOpened(
+        entry.domain,
+        entry.otherUid,
+      );
+      final label = AppDomains.byId(entry.domain).label;
+      final opened = await ContactService().openTelegram(
+        handle: handle.isEmpty ? null : handle,
+        phoneDigits: phone,
+        domainLabel: label,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open Telegram — message copied to paste'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final yourTitle = LikeDisplay.rowTitle(entry.targetCard);
+    final theirTitle = LikeDisplay.rowTitle(entry.card);
+    return Material(
+      key: Key('match_row_${entry.domain.name}_${entry.otherUid}'),
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.muted.withValues(alpha: .22)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: widget.onOpen,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DualLikeThumbs(entry: entry),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          LikeDisplay.yourPostLabel,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          yourTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          LikeDisplay.likedByLabel,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          theirTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    key: Key(
+                      'match_delete_${entry.domain.name}_${entry.otherUid}',
+                    ),
+                    tooltip: LikeConsent.deleteMatchTooltip,
+                    onPressed: widget.onDelete,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    color: AppColors.muted,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ContactActionButton(
+                      label: 'WhatsApp',
+                      icon: Icons.chat,
+                      color: const Color(0xFF25D366),
+                      enabled: _opening == null,
+                      locked: false,
+                      busy: _opening == _ContactChannel.whatsapp,
+                      onPressed: _openWhatsApp,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _ContactActionButton(
+                      label: 'Telegram',
+                      icon: Icons.send,
+                      color: const Color(0xFF229ED9),
+                      enabled: _opening == null,
+                      locked: false,
+                      busy: _opening == _ContactChannel.telegram,
+                      onPressed: _openTelegram,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showMatchDetail(BuildContext context, LikeEntry entry) {
+  final photos = <String>[
+    ...?entry.targetCard?.imageUrls,
+    ...?entry.card?.imageUrls,
+  ];
+  ImagePrefetch.warmAll(context, photos, role: FastImageRole.detail);
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => _MatchDetailSheet(entry: entry),
+  );
+}
+
+class _MatchDetailSheet extends StatefulWidget {
+  const _MatchDetailSheet({required this.entry});
+
+  final LikeEntry entry;
+
+  @override
+  State<_MatchDetailSheet> createState() => _MatchDetailSheetState();
+}
+
+class _MatchDetailSheetState extends State<_MatchDetailSheet> {
+  PrivateContact? _contact;
+  _ContactChannel? _opening;
+
+  LikeEntry get entry => widget.entry;
+
+  Future<PrivateContact?> _ensureContact() async {
+    if (_contact != null) return _contact;
+    final shareReady = await ensureContactShareForChat(context);
+    if (!shareReady || !mounted) return null;
+    try {
+      final contact = await ContactService().unlock(
+        domain: entry.domain,
+        targetUid: entry.otherUid,
+      );
+      if (!mounted) return null;
+      if (contact == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Their WhatsApp is not saved yet. Ask them to open the app once.',
+            ),
+          ),
+        );
+        return null;
+      }
+      setState(() => _contact = contact);
+      return contact;
+    } catch (error) {
+      if (!mounted) return null;
+      final message = error is StateError
+          ? error.message
+          : 'Could not unlock chat. Check phone verification.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return null;
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    if (_opening != null) return;
+    setState(() => _opening = _ContactChannel.whatsapp);
+    try {
+      final contact = await _ensureContact();
+      if (contact == null || !mounted) return;
+      await context.read<LikesStore>().signalChatOpened(
+        entry.domain,
+        entry.otherUid,
+      );
+      final label = AppDomains.byId(entry.domain).label;
+      final opened = await ContactService().openWhatsApp(
+        contact.whatsappNumber,
+        domainLabel: label,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open WhatsApp — number & message copied'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = null);
+    }
+  }
+
+  Future<void> _openTelegram() async {
+    if (_opening != null) return;
+    setState(() => _opening = _ContactChannel.telegram);
+    try {
+      final contact = await _ensureContact();
+      if (contact == null || !mounted) return;
+      final handle = contact.telegramHandle?.trim() ?? '';
+      final phone = contact.whatsappNumber;
+      if (handle.isEmpty && cleanWhatsAppDigits(phone).length < 8) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No Telegram number yet')),
+        );
+        return;
+      }
+      await context.read<LikesStore>().signalChatOpened(
+        entry.domain,
+        entry.otherUid,
+      );
+      final label = AppDomains.byId(entry.domain).label;
+      final opened = await ContactService().openTelegram(
+        handle: handle.isEmpty ? null : handle,
+        phoneDigits: phone,
+        domainLabel: label,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open Telegram — message copied to paste'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final policy = AppDomains.byId(entry.domain);
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    LikeDisplay.matchSectionTitle,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    policy.label,
+                    style: TextStyle(
+                      color: policy.color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _LikeDetailBlock(
+                label: LikeDisplay.yourPostLabel,
+                card: entry.targetCard,
+                seed: (entry.targetCard?.id ?? entry.otherUid).hashCode,
+              ),
+              const SizedBox(height: 16),
+              _LikeDetailBlock(
+                label: LikeDisplay.likedByLabel,
+                card: entry.card,
+                seed: entry.otherUid.hashCode,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ContactActionButton(
+                      label: 'WhatsApp',
+                      icon: Icons.chat,
+                      color: const Color(0xFF25D366),
+                      enabled: _opening == null,
+                      locked: false,
+                      busy: _opening == _ContactChannel.whatsapp,
+                      onPressed: _openWhatsApp,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ContactActionButton(
+                      label: 'Telegram',
+                      icon: Icons.send,
+                      color: const Color(0xFF229ED9),
+                      enabled: _opening == null,
+                      locked: false,
+                      busy: _opening == _ContactChannel.telegram,
+                      onPressed: _openTelegram,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: Key(
+                  'match_detail_delete_${entry.domain.name}_${entry.otherUid}',
+                ),
+                onPressed: () async {
+                  final likes = context.read<LikesStore>();
+                  Navigator.of(context).pop();
+                  await _deleteMatchRow(context, likes: likes, entry: entry);
+                },
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text(LikeConsent.deleteMatchTooltip),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _LikeRow extends StatelessWidget {
@@ -1936,11 +2468,12 @@ class MeScreen extends StatelessWidget {
               if (identity.identity.phoneVerified) return 'Phone verified';
               return 'Account';
             }(),
-            subtitle: identity.identity.cityLabel.isNotEmpty
-                ? identity.identity.cityLabel
-                : (identity.identity.phoneVerified
-                      ? 'Add a name anytime'
-                      : 'Optional profile'),
+            subtitle: () {
+              final city = identity.identity.cityLabel.trim();
+              if (city.isNotEmpty) return city;
+              if (identity.identity.phoneVerified) return 'Add name';
+              return 'Photo · name · phone';
+            }(),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1969,7 +2502,7 @@ class MeScreen extends StatelessWidget {
                 ),
               ),
               title: 'Verify phone',
-              subtitle: 'One code — then chat can open',
+              subtitle: 'Get a code by SMS',
             ),
           ],
           const SizedBox(height: 16),

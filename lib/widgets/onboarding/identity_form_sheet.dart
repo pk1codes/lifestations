@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_domain.dart';
+import '../../models/card_side.dart';
 import '../../models/domain_profiles.dart';
 import '../../services/form_media_controller.dart';
 import '../../services/phone_number.dart';
@@ -11,7 +12,7 @@ import '../forms/form_fields.dart';
 import '../forms/photo_source_sheet.dart';
 import 'otp_sheet.dart';
 
-/// Optional profile only — phone verify lives in [showOtpSheet], not here.
+/// Profile + phone status. Verify opens [showOtpSheet], not an editable dial here.
 Future<void> showIdentityForm(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -100,10 +101,11 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final identity = context.watch<IdentityStore>().identity;
     final phone = splitStoredPhone(identity.whatsappNumber);
     final phoneLabel = identity.whatsappNumber.isEmpty
-        ? 'Not set'
+        ? 'Add phone'
         : '${phone.dial.label} ${phone.national}';
 
     return Padding(
@@ -122,73 +124,90 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
             children: [
               Text(
                 'Account',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Optional. Phone verify is separate.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-              ),
-              const SizedBox(height: 16),
-              Material(
-                color: AppColors.darkCream,
-                borderRadius: BorderRadius.circular(14),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        identity.phoneVerified
-                            ? Icons.verified
-                            : Icons.phone_outlined,
-                        color: AppColors.rose,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              identity.phoneVerified
-                                  ? 'Phone verified'
-                                  : 'Phone not verified',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            Text(
-                              phoneLabel,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: AppColors.muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        key: const Key('account_open_phone_verify'),
-                        onPressed: () async {
-                          final ok = await showOtpSheet(context);
-                          if (!context.mounted) return;
-                          if (ok) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Phone verified')),
-                            );
-                            Navigator.of(context).pop();
-                          }
-                        },
-                        child: Text(
-                          identity.phoneVerified ? 'Change' : 'Verify',
-                        ),
-                      ),
-                    ],
-                  ),
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 20),
+              Material(
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: AppColors.muted.withValues(alpha: .22),
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const Key('account_open_phone_verify'),
+                  onTap: () async {
+                    final ok = await showOtpSheet(context);
+                    if (!context.mounted) return;
+                    if (ok) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Phone verified')),
+                      );
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
+                    child: Row(
+                      children: [
+                        Icon(
+                          identity.phoneVerified
+                              ? Icons.verified
+                              : Icons.phone_outlined,
+                          color: identity.phoneVerified
+                              ? CardSideMark.supplyColor
+                              : AppColors.muted,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                identity.phoneVerified
+                                    ? 'Phone verified'
+                                    : 'Phone',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                phoneLabel,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          identity.phoneVerified ? 'Change' : 'Verify',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: AppColors.rose,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Photo',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
               PhotoSlotStrip(
                 urls: _media.urls,
                 previews: _media.previews,
@@ -205,12 +224,11 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
                 onPick: _pickPhoto,
                 onRemove: _removePhoto,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               TextFormField(
                 controller: _name,
-                decoration: const InputDecoration(
-                  labelText: 'Name (optional)',
-                ),
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Name'),
               ),
               const SizedBox(height: 12),
               CityDropdown(
@@ -223,9 +241,7 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
                     MarriageProfile.nativeLanguages.contains(_language)
                     ? _language
                     : MarriageProfile.nativeLanguages.first,
-                decoration: const InputDecoration(
-                  labelText: 'Language (optional)',
-                ),
+                decoration: const InputDecoration(labelText: 'Language'),
                 items: MarriageProfile.nativeLanguages
                     .map(
                       (value) =>
@@ -234,7 +250,7 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
                     .toList(growable: false),
                 onChanged: (value) => setState(() => _language = value!),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 28),
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
                 onPressed: _saving ? null : _save,

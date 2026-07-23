@@ -102,6 +102,9 @@ void main() {
     );
     expect(mutual, isTrue);
     expect(likes.chatIconsActive(AppDomainId.rooms, 'peer'), isTrue);
+    expect(likes.matchCount, 1);
+    expect(likes.inboundCount, 0);
+    expect(likes.outboundCount, 0);
   });
 
   test('kuwait_jobs inbound carries dual snapshots', () {
