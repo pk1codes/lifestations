@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Me shows Verify phone row when WA saved but not verified', (
+  testWidgets('Me Account row is the only verify path when not verified', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
@@ -41,7 +41,14 @@ void main() {
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('me_verify_phone_row')), findsOneWidget);
+    expect(find.byKey(const Key('me_account_row')), findsOneWidget);
     expect(find.text('Verify phone'), findsOneWidget);
+    expect(find.byKey(const Key('me_verify_phone_row')), findsNothing);
+    expect(find.byKey(const Key('me_whatsapp_needed_pill')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('me_account_row')));
+    await tester.pumpAndSettle();
+    expect(find.text('Account'), findsWidgets);
+    expect(find.byKey(const Key('account_open_phone_verify')), findsOneWidget);
   });
 }

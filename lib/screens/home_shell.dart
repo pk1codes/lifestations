@@ -2426,16 +2426,6 @@ class _ContactActionButton extends StatelessWidget {
 class MeScreen extends StatelessWidget {
   const MeScreen({super.key});
 
-  Future<void> _verifyPhoneFromMe(BuildContext context) async {
-    final ok = await showOtpSheet(context);
-    if (!context.mounted) return;
-    if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone verified')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final identity = context.watch<IdentityStore>();
@@ -2446,6 +2436,9 @@ class MeScreen extends StatelessWidget {
     final canPostMore = AppDomains.all.any(
       (domain) => domain.enabled && _domainCanAddPost(context, domain.id),
     );
+    final name = identity.identity.displayName.trim();
+    final city = identity.identity.cityLabel.trim();
+    final verified = identity.identity.phoneVerified;
     return _Page(
       title: 'Me',
       actions: [
@@ -2460,51 +2453,21 @@ class MeScreen extends StatelessWidget {
         children: [
           _HubSectionHeader(title: 'Account', icon: Icons.person_outline),
           _MeHubRow(
+            key: const Key('me_account_row'),
             onTap: () => showIdentityForm(context),
             leading: _IdentityAvatar(photoUrl: photoUrl),
-            title: () {
-              final name = identity.identity.displayName.trim();
-              if (name.isNotEmpty) return name;
-              if (identity.identity.phoneVerified) return 'Phone verified';
-              return 'Account';
-            }(),
-            subtitle: () {
-              final city = identity.identity.cityLabel.trim();
-              if (city.isNotEmpty) return city;
-              if (identity.identity.phoneVerified) return 'Add name';
-              return 'Photo · name · phone';
-            }(),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (identity.identity.phoneVerified)
-                  const Icon(Icons.verified, color: AppColors.rose, size: 22)
-                else
-                  const Padding(
-                    padding: EdgeInsets.only(right: 8),
-                    child: _WhatsAppNeededPill(),
-                  ),
-              ],
-            ),
+            title: name.isNotEmpty ? name : 'Account',
+            subtitle: verified
+                ? (city.isNotEmpty ? city : 'Phone verified')
+                : 'Verify phone',
+            trailing: verified
+                ? const Icon(
+                    Icons.verified,
+                    color: Color(0xFF059669),
+                    size: 22,
+                  )
+                : null,
           ),
-          if (!identity.identity.phoneVerified) ...[
-            const SizedBox(height: 8),
-            _MeHubRow(
-              key: const Key('me_verify_phone_row'),
-              onTap: () => _verifyPhoneFromMe(context),
-              leading: CircleAvatar(
-                radius: _IdentityAvatar.radius,
-                backgroundColor: AppColors.rose.withValues(alpha: .12),
-                child: const Icon(
-                  Icons.sms_outlined,
-                  color: AppColors.rose,
-                  size: 26,
-                ),
-              ),
-              title: 'Verify phone',
-              subtitle: 'Get a code by SMS',
-            ),
-          ],
           const SizedBox(height: 16),
           _HubSectionHeader(
             title: 'Posts',
@@ -2566,31 +2529,6 @@ class MeScreen extends StatelessWidget {
               ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _WhatsAppNeededPill extends StatelessWidget {
-  const _WhatsAppNeededPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('me_whatsapp_needed_pill'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.whatsapp.withValues(alpha: .14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.whatsapp.withValues(alpha: .45)),
-      ),
-      child: const Text(
-        'Verify phone to like',
-        style: TextStyle(
-          color: Color(0xFF128C7E),
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-        ),
       ),
     );
   }

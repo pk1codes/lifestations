@@ -12,7 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Me shows verify pill when phone not verified', (
+  testWidgets('Me Account subtitle prompts Verify phone when unverified', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({'domain_coach_seen': true});
@@ -34,7 +34,9 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('me_whatsapp_needed_pill')), findsOneWidget);
+    expect(find.byKey(const Key('me_account_row')), findsOneWidget);
+    expect(find.text('Verify phone'), findsOneWidget);
+    expect(find.byKey(const Key('me_whatsapp_needed_pill')), findsNothing);
   });
 
   testWidgets('blank like detail keeps WhatsApp and Telegram actions', (
