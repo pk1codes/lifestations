@@ -6,14 +6,25 @@ import 'firebase_bootstrap.dart';
 enum ThrottledAction { like, report, imageFlag, post }
 
 class ActionThrottleService {
-  const ActionThrottleService();
+  const ActionThrottleService({this.failClosed});
+
+  /// When true, non-quota callable failures block the action.
+  /// Defaults to [kReleaseMode] so debug/closed testing can still proceed.
+  final bool? failClosed;
+
+  bool get _failClosed => failClosed ?? kReleaseMode;
 
   /// Claims a server rate-limit slot.
   ///
-  /// Hard-fails only on true quota (`resource-exhausted`). App Check / network
-  /// / config failures fail open so Save still publishes during closed testing.
+  /// Always hard-fails on true quota (`resource-exhausted`).
+  /// In release, other callable failures also hard-fail (no bot bypass).
   Future<void> claim(ThrottledAction action) async {
-    if (!FirebaseBootstrap.ready) return;
+    if (!FirebaseBootstrap.ready) {
+      if (_failClosed) {
+        throw StateError('Not connected. Try again.');
+      }
+      return;
+    }
     try {
       await FirebaseFunctions.instance
           .httpsCallable('claimActionThrottle')
@@ -22,8 +33,14 @@ class ActionThrottleService {
       if (error.code == 'resource-exhausted') {
         throw StateError('Too many attempts. Try again later.');
       }
+      if (_failClosed) {
+        throw StateError('Could not verify action limit. Try again.');
+      }
       debugPrint('Action throttle skipped (${error.code}): ${error.message}');
     } catch (error) {
+      if (_failClosed) {
+        throw StateError('Could not verify action limit. Try again.');
+      }
       debugPrint('Action throttle skipped: $error');
     }
   }

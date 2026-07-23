@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../models/app_domain.dart';
 import '../../models/domain_profiles.dart';
 import '../../state/domain_profile_stores.dart';
+import '../../theme/app_theme.dart';
 import 'form_fields.dart';
 import 'save_gate.dart';
 
@@ -82,8 +83,19 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
     });
   }
 
+  Future<void> _openPositionPicker() async {
+    final picked = await showKuwaitJobsPositionPicker(
+      context,
+      selected: _trades,
+      accent: _domain.color,
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+    setState(() => _trades = Set<String>.of(picked));
+  }
+
   @override
   Widget build(BuildContext context) => ListView(
+    primary: true,
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
     children: [
       Text(
@@ -107,16 +119,37 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
         text: (id) => KuwaitJobsProfile.countryLabels[id] ?? id,
         onSelected: _onCountryChanged,
       ),
-      MultiChoiceChips(
-        label: 'Position',
-        helperText: 'Pick 1–${KuwaitJobsProfile.maxTrades}',
-        values: KuwaitJobsProfile.trades,
-        selected: _trades,
-        maxSelected: KuwaitJobsProfile.maxTrades,
-        onChanged: (next) {
-          if (next.isEmpty) return;
-          setState(() => _trades = next);
-        },
+      Text('Position', style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 2),
+      Text(
+        'Pick 1–${KuwaitJobsProfile.maxTrades} · '
+        '${KuwaitJobsProfile.trades.length} jobs A–Z',
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          for (final trade in _trades)
+            InputChip(
+              label: Text(trade),
+              onDeleted: _trades.length <= 1
+                  ? null
+                  : () => setState(() {
+                      _trades = Set<String>.of(_trades)..remove(trade);
+                    }),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        key: const Key('kuwait_jobs_pick_positions'),
+        onPressed: _openPositionPicker,
+        icon: const Icon(Icons.work_outline),
+        label: const Text('Choose positions'),
       ),
       if (_isDemand)
         SingleChoiceChips(
@@ -208,5 +241,103 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
         },
       ),
     ],
+  );
+}
+
+/// Full A–Z position list in its own scroll sheet (avoids form Wrap clipping).
+Future<Set<String>?> showKuwaitJobsPositionPicker(
+  BuildContext context, {
+  required Set<String> selected,
+  required Color accent,
+}) {
+  return showModalBottomSheet<Set<String>>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    useRootNavigator: true,
+    builder: (sheetContext) {
+      var draft = Set<String>.of(
+        KuwaitJobsProfile.normalizeTrades(selected),
+      );
+      return StatefulBuilder(
+        builder: (context, setSheetState) {
+          final max = KuwaitJobsProfile.maxTrades;
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.88,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Positions',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(color: accent),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Pick 1–$max · ${KuwaitJobsProfile.trades.length} jobs A–Z · '
+                          '${draft.length} selected',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      key: const Key('kuwait_jobs_position_list'),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      children: [
+                        for (final trade in KuwaitJobsProfile.trades)
+                          CheckboxListTile(
+                            key: Key('kuwait_job_$trade'),
+                            dense: true,
+                            value: draft.contains(trade),
+                            title: Text(trade),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            onChanged:
+                                (draft.length >= max &&
+                                    !draft.contains(trade))
+                                ? null
+                                : (value) {
+                                    setSheetState(() {
+                                      final next = Set<String>.of(draft);
+                                      if (value == true) {
+                                        if (next.length >= max) return;
+                                        next.add(trade);
+                                      } else if (next.length > 1) {
+                                        next.remove(trade);
+                                      }
+                                      draft = next;
+                                    });
+                                  },
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: FilledButton(
+                      onPressed: draft.isEmpty
+                          ? null
+                          : () => Navigator.pop(
+                              sheetContext,
+                              Set<String>.of(draft),
+                            ),
+                      child: Text('Use ${draft.length} position${draft.length == 1 ? '' : 's'}'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
   );
 }

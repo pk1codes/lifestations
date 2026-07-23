@@ -1,6 +1,7 @@
 import 'package:flut_marriage/config/feature_flags.dart';
 import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flut_marriage/services/account_services.dart';
+import 'package:flut_marriage/services/action_throttle.dart';
 import 'package:flut_marriage/services/feed_throttle.dart';
 import 'package:flut_marriage/services/image_pipeline/image_pipeline.dart';
 import 'package:flut_marriage/services/media_upload_service.dart';
@@ -70,6 +71,30 @@ void main() {
     }
     expect(await throttle.allow(callRemote: false), isFalse);
     expect(throttle.isLocked, isTrue);
+  });
+
+  test('feed throttle fail-closed denies when Firebase is not ready', () async {
+    final throttle = FeedFetchThrottle(failClosed: true);
+    expect(await throttle.allow(callRemote: true), isFalse);
+  });
+
+  test('action throttle fail-closed throws when Firebase is not ready', () async {
+    const throttle = ActionThrottleService(failClosed: true);
+    await expectLater(
+      throttle.claim(ThrottledAction.like),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Not connected'),
+        ),
+      ),
+    );
+  });
+
+  test('action throttle fail-open skips when Firebase is not ready', () async {
+    const throttle = ActionThrottleService(failClosed: false);
+    await expectLater(throttle.claim(ThrottledAction.like), completes);
   });
 
   test('seed feature flag: debug may use demos; release never does', () {

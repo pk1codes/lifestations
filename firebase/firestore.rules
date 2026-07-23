@@ -466,19 +466,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Client-reported feed fetch budget (pairs with FeedFetchThrottle).
+    // Feed fetch budget — Functions Admin only (checkFeedThrottle).
+    // Client writes were a bot reset path; owners may still read their doc.
     match /rate_limits/{userId} {
       allow read: if isOwner(userId);
-      allow create, update: if isOwner(userId)
-        && request.resource.data.keys().hasOnly([
-            'hits', 'windowStartMs', 'lockedUntilMs', 'updatedAt'
-          ])
-        && request.resource.data.hits is int
-        && request.resource.data.hits >= 0
-        && request.resource.data.hits <= 10
-        && request.resource.data.windowStartMs is int
-        && request.resource.data.lockedUntilMs is int;
-      allow delete: if isOwner(userId);
+      allow create, update, delete: if false;
     }
 
     match /image_flags/{flagId} {

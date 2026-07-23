@@ -226,8 +226,7 @@ class FormMediaController extends ChangeNotifier {
     }
   }
 
-  /// Best-effort App Check warm-up. Token failures are logged; Storage rules
-  /// currently require Auth (App Check is optional during closed testing).
+  /// Best-effort App Check warm-up before Storage upload.
   Future<void> _warmAppCheck() async {
     if (!FirebaseBootstrap.ready) return;
     try {

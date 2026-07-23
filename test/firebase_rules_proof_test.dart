@@ -35,12 +35,14 @@ void main() {
       expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
     });
 
-    test('rate_limits collection caps hits at 10', () {
+    test('rate_limits are Functions-only writes', () {
       expect(firestoreRules.contains('match /rate_limits/{userId}'), isTrue);
-      expect(
-        firestoreRules.contains('request.resource.data.hits <= 10'),
-        isTrue,
-      );
+      final block = firestoreRules
+          .split('match /rate_limits/{userId}')[1]
+          .split('match /image_flags')[0];
+      expect(block.contains('allow read: if isOwner(userId);'), isTrue);
+      expect(block.contains('allow create, update, delete: if false;'), isTrue);
+      expect(block.contains('request.resource.data.hits <= 10'), isFalse);
     });
 
     test('image_flags are create-only / unreadable', () {
@@ -142,12 +144,15 @@ void main() {
       },
     );
 
-    test('callable unlock/delete enforce App Check; throttle is auth-only', () {
+    test('callable unlock/delete/throttles enforce App Check', () {
       expect(functionsSrc.contains('exports.unlockContact'), isTrue);
       expect(functionsSrc.contains('exports.deleteAccount'), isTrue);
-      expect(functionsSrc.contains('enforceAppCheck: true'), isTrue);
       expect(functionsSrc.contains('exports.claimActionThrottle'), isTrue);
       expect(functionsSrc.contains('exports.checkFeedThrottle'), isTrue);
+      expect(
+        RegExp(r'enforceAppCheck:\s*true').allMatches(functionsSrc).length,
+        greaterThanOrEqualTo(4),
+      );
     });
 
     test('exports and throttle constants present', () {

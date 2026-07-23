@@ -32,13 +32,30 @@ void main() {
     expect(native.queryParameters['text'], msg);
   });
 
-  test('Telegram URI opens handle in app or t.me', () {
-    final native = buildTelegramNativeUri('@some_user');
+  test('Telegram username URI can prefill draft text', () {
+    final msg = contactOpenMessage(domainLabel: 'Jobs');
+    final native = buildTelegramNativeUri('@some_user', message: msg);
     expect(native.scheme, 'tg');
     expect(native.queryParameters['domain'], 'some_user');
+    expect(native.queryParameters['text'], msg);
 
-    final https = buildTelegramHttpsUri('@some_user');
-    expect(https.toString(), 'https://t.me/some_user');
+    final https = buildTelegramHttpsUri('@some_user', message: msg);
+    expect(https.host, 't.me');
+    expect(https.path, '/some_user');
+    expect(https.queryParameters['text'], msg);
+  });
+
+  test('Telegram phone URI opens chat with draft text', () {
+    final msg = contactOpenMessage(domainLabel: 'Kuwait Jobs');
+    final native = buildTelegramPhoneNativeUri('+965 1234 5678', message: msg);
+    expect(native.scheme, 'tg');
+    expect(native.queryParameters['phone'], '96512345678');
+    expect(native.queryParameters['text'], msg);
+
+    final https = buildTelegramPhoneHttpsUri('96512345678', message: msg);
+    expect(https.host, 't.me');
+    expect(https.path, '/+96512345678');
+    expect(https.queryParameters['text'], msg);
   });
 
   test('openWhatsApp digit gate (≥8)', () {

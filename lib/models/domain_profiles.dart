@@ -293,6 +293,28 @@ class KuwaitJobsProfile {
     'Tool Pusher',
   ];
 
+  /// Roles that must always appear on the Position picker (A–Z with the rest).
+  static const requiredTrades = <String>[
+    'Cementer',
+    'Cementing Engineer',
+    'DD',
+    'DD Planner',
+    'DD/Mwd Coordinator',
+    'Drilling Er',
+    'Field Helper',
+    'Fishing Engineer',
+    'IT / Computer Engineer',
+    'Logging Engineer',
+    'Material Dispatcher',
+    'MWD',
+    'Office Jobs',
+    'Office Secretary',
+    'Office Service Coordinator',
+    'Others',
+    'Safety Er',
+    'Storekeeper',
+  ];
+
   static const maxTrades = 5;
 
   /// Browse / Likes title: first job, or `Cook +2` when multiple.

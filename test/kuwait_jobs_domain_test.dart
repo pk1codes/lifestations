@@ -54,6 +54,9 @@ void main() {
     expect(KuwaitJobsProfile.trades, contains('Storekeeper'));
     expect(KuwaitJobsProfile.trades, contains('Cementing Engineer'));
     expect(KuwaitJobsProfile.trades, contains('Field Helper'));
+    for (final trade in KuwaitJobsProfile.requiredTrades) {
+      expect(KuwaitJobsProfile.trades, contains(trade), reason: trade);
+    }
     expect(KuwaitJobsProfile.trades, isNot(contains('AD')));
     expect(
       KuwaitJobsProfile.trades,
@@ -63,6 +66,7 @@ void main() {
         ),
       ),
     );
+    expect(KuwaitJobsProfile.trades.length, greaterThanOrEqualTo(55));
   });
 
   test('Kuwait Jobs allows 1–5 trades and title shows first +N', () {

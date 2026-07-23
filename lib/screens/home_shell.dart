@@ -1509,18 +1509,25 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       );
       if (!mounted) return null;
       if (contact == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Phone not ready yet')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Their WhatsApp is not saved yet. Ask them to open the app once.',
+            ),
+          ),
+        );
         return null;
       }
       setState(() => _contact = contact);
       return contact;
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return null;
+      final message = error is StateError
+          ? error.message
+          : 'Could not unlock chat. Check phone verification.';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Check phone first')));
+      ).showSnackBar(SnackBar(content: Text(message)));
       return null;
     }
   }
@@ -1542,7 +1549,9 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       if (!opened) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('WhatsApp number copied — paste in WhatsApp'),
+            content: Text(
+              'Could not open WhatsApp — number & message copied',
+            ),
           ),
         );
       }
@@ -1558,31 +1567,32 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       final contact = await _ensureContact();
       if (contact == null || !mounted) return;
       final handle = contact.telegramHandle?.trim() ?? '';
-      if (handle.isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('No Telegram yet')));
+      final phone = contact.whatsappNumber;
+      if (handle.isEmpty && cleanWhatsAppDigits(phone).length < 8) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No Telegram number yet')),
+        );
         return;
       }
       final likes = context.read<LikesStore>();
       await likes.signalChatOpened(entry.domain, entry.otherUid);
       final label = AppDomains.byId(entry.domain).label;
       final opened = await ContactService().openTelegram(
-        handle,
+        handle: handle.isEmpty ? null : handle,
+        phoneDigits: phone,
         domainLabel: label,
       );
       if (!mounted) return;
       if (!opened) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open Telegram')),
+          const SnackBar(
+            content: Text(
+              'Could not open Telegram — message copied to paste',
+            ),
+          ),
         );
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Message copied — paste in Telegram, then Send'),
-        ),
-      );
     } finally {
       if (mounted) setState(() => _opening = null);
     }

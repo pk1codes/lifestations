@@ -8,12 +8,20 @@ class FeedFetchThrottle {
   FeedFetchThrottle({
     this.maxHits = 10,
     this.window = const Duration(seconds: 30),
+    this.failClosed,
   });
 
   final int maxHits;
   final Duration window;
+
+  /// When true, remote callable failures deny the fetch.
+  /// Defaults to [kReleaseMode].
+  final bool? failClosed;
+
   final List<DateTime> _hits = <DateTime>[];
   DateTime? lockedUntil;
+
+  bool get _failClosed => failClosed ?? kReleaseMode;
 
   bool get isLocked =>
       lockedUntil != null && lockedUntil!.isAfter(DateTime.now());
@@ -38,10 +46,20 @@ class FeedFetchThrottle {
         if (lockedMs is num && lockedMs > 0) {
           lockedUntil = DateTime.fromMillisecondsSinceEpoch(lockedMs.toInt());
         }
+        if (!allowed) {
+          _hits.removeLast();
+        }
         return allowed;
       } catch (error) {
         if (kDebugMode) debugPrint('Feed throttle remote skipped: $error');
+        if (_failClosed) {
+          _hits.removeLast();
+          return false;
+        }
       }
+    } else if (callRemote && !FirebaseBootstrap.ready && _failClosed) {
+      _hits.removeLast();
+      return false;
     }
     return true;
   }

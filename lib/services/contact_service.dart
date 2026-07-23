@@ -54,18 +54,52 @@ Uri buildWhatsAppApiUri(String digits, {required String message}) {
   });
 }
 
-Uri buildTelegramNativeUri(String handle) {
+Uri buildTelegramNativeUri(String handle, {String? message}) {
   final cleaned = cleanTelegramHandle(handle);
   return Uri(
     scheme: 'tg',
     host: 'resolve',
-    queryParameters: {'domain': cleaned},
+    queryParameters: {
+      'domain': cleaned,
+      if (message != null && message.trim().isNotEmpty) 'text': message.trim(),
+    },
   );
 }
 
-Uri buildTelegramHttpsUri(String handle) {
+Uri buildTelegramHttpsUri(String handle, {String? message}) {
   final cleaned = cleanTelegramHandle(handle);
-  return Uri.https('t.me', '/$cleaned');
+  return Uri.https('t.me', '/$cleaned', {
+    if (message != null && message.trim().isNotEmpty) 'text': message.trim(),
+  });
+}
+
+/// Official phone deep link: `tg://resolve?phone=&text=` (draft prefill).
+Uri buildTelegramPhoneNativeUri(String digits, {String? message}) {
+  final cleaned = cleanWhatsAppDigits(digits);
+  return Uri(
+    scheme: 'tg',
+    host: 'resolve',
+    queryParameters: {
+      'phone': cleaned,
+      if (message != null && message.trim().isNotEmpty) 'text': message.trim(),
+    },
+  );
+}
+
+/// Universal phone link. Prefill via `text` is best-effort on clients.
+Uri buildTelegramPhoneHttpsUri(String digits, {String? message}) {
+  final cleaned = cleanWhatsAppDigits(digits);
+  return Uri.https('t.me', '/+$cleaned', {
+    if (message != null && message.trim().isNotEmpty) 'text': message.trim(),
+  });
+}
+
+Map<String, dynamic> _asStringKeyedMap(Object? raw) {
+  if (raw is Map<String, dynamic>) return raw;
+  if (raw is Map) {
+    return raw.map((key, value) => MapEntry('$key', value));
+  }
+  return const <String, dynamic>{};
 }
 
 class ContactService {
@@ -93,23 +127,36 @@ class ContactService {
     final slug = AppDomains.byId(domain).slug;
     if (FirebaseBootstrap.ready) {
       try {
-        final result = await _functions
-            .httpsCallable('unlockContact')
-            .call<Map<String, dynamic>>({
-              'domainId': slug,
-              'targetUid': targetUid,
-            });
-        final data = result.data;
+        final result = await _functions.httpsCallable('unlockContact').call({
+          'domainId': slug,
+          'targetUid': targetUid,
+        });
+        final data = _asStringKeyedMap(result.data);
         if (data['found'] != true) return null;
-        final number = (data['whatsappNumber'] as String? ?? '').replaceAll(
-          RegExp(r'\D'),
-          '',
-        );
+        final number = cleanWhatsAppDigits('${data['whatsappNumber'] ?? ''}');
         if (number.length < 8) return null;
+        final handleRaw = '${data['telegramHandle'] ?? ''}'.trim();
         return PrivateContact(
           whatsappNumber: number,
-          telegramHandle: data['telegramHandle'] as String?,
+          telegramHandle: handleRaw.isEmpty ? null : handleRaw,
         );
+      } on FirebaseFunctionsException catch (error) {
+        if (kDebugMode) {
+          debugPrint(
+            'unlockContact failed (${error.code}): ${error.message}',
+          );
+        }
+        if (error.code == 'permission-denied') {
+          throw StateError(error.message ?? 'Mutual interest required');
+        }
+        if (error.code == 'unauthenticated') {
+          throw StateError('Sign in required');
+        }
+        if (error.code == 'failed-precondition' ||
+            error.message?.toLowerCase().contains('app check') == true) {
+          throw StateError('App Check blocked unlock. Update the app.');
+        }
+        throw StateError(error.message ?? 'Could not unlock contact');
       } catch (error) {
         if (kDebugMode) debugPrint('unlockContact callable failed: $error');
         rethrow;
@@ -139,39 +186,59 @@ class ContactService {
     if (cleaned.length < 8) return false;
     final text = (message ?? contactOpenMessage(domainLabel: domainLabel))
         .trim();
+    // HTTPS first — more reliable on Android 11+ than whatsapp:// alone.
     final uris = <Uri>[
-      if (!kIsWeb) buildWhatsAppNativeUri(cleaned, message: text),
       buildWhatsAppApiUri(cleaned, message: text),
       buildWhatsAppHttpsUri(cleaned, message: text),
+      if (!kIsWeb) buildWhatsAppNativeUri(cleaned, message: text),
     ];
     for (final uri in uris) {
       if (await _launchExternal(uri)) return true;
     }
     // Last resort so the user can still start the chat manually.
     try {
-      await Clipboard.setData(ClipboardData(text: '+$cleaned'));
+      await Clipboard.setData(
+        ClipboardData(text: '+$cleaned\n$text'),
+      );
     } catch (_) {}
     return false;
   }
 
-  /// Opens Telegram to [handle]. Message is copied so the user can paste & send
-  /// (Telegram user chats do not support WhatsApp-style URL prefills).
-  Future<bool> openTelegram(
-    String handle, {
+  /// Opens Telegram to [handle] or [phoneDigits] with a draft message when possible.
+  ///
+  /// Vault currently stores the shared phone (same as WhatsApp). Username is
+  /// optional; phone deep links use official `tg://resolve?phone=&text=`.
+  Future<bool> openTelegram({
+    String? handle,
+    String? phoneDigits,
     String? domainLabel,
     String? message,
   }) async {
-    final cleaned = cleanTelegramHandle(handle);
-    if (cleaned.length < 3) return false;
     final text = (message ?? contactOpenMessage(domainLabel: domainLabel))
         .trim();
+    final cleanedHandle = cleanTelegramHandle(handle ?? '');
+    final cleanedPhone = cleanWhatsAppDigits(phoneDigits ?? '');
+
+    final uris = <Uri>[];
+    if (cleanedHandle.length >= 3) {
+      if (!kIsWeb) {
+        uris.add(buildTelegramNativeUri(cleanedHandle, message: text));
+      }
+      uris.add(buildTelegramHttpsUri(cleanedHandle, message: text));
+    }
+    if (cleanedPhone.length >= 8) {
+      if (!kIsWeb) {
+        uris.add(buildTelegramPhoneNativeUri(cleanedPhone, message: text));
+      }
+      uris.add(buildTelegramPhoneHttpsUri(cleanedPhone, message: text));
+    }
+    if (uris.isEmpty) return false;
+
+    // Clipboard fallback for clients that open chat but ignore `text`.
     try {
       await Clipboard.setData(ClipboardData(text: text));
     } catch (_) {}
-    final uris = <Uri>[
-      if (!kIsWeb) buildTelegramNativeUri(cleaned),
-      buildTelegramHttpsUri(cleaned),
-    ];
+
     for (final uri in uris) {
       if (await _launchExternal(uri)) return true;
     }
@@ -194,12 +261,17 @@ class ContactService {
     }
     // Prefer non-browser so Android opens WhatsApp/Telegram, not Chrome.
     for (final mode in <LaunchMode>[
-      LaunchMode.externalNonBrowserApplication,
       LaunchMode.externalApplication,
+      LaunchMode.externalNonBrowserApplication,
+      LaunchMode.platformDefault,
     ]) {
       try {
         if (await launchUrl(uri, mode: mode)) return true;
-      } catch (_) {}
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('launchUrl failed ($mode) $uri: $error');
+        }
+      }
     }
     return false;
   }
