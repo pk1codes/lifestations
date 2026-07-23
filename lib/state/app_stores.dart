@@ -540,7 +540,11 @@ class LikesStore extends ChangeNotifier {
   }
 
   /// Persists the like online first, then updates local state.
-  /// Returns whether the pair is mutual after a successful write.
+  ///
+  /// Returns `true` only when this like **newly** creates a mutual pair
+  /// (so Browse can show the match dialog once). Likes are keyed by peer
+  /// **UID**, not listing id — liking another post from the same matched
+  /// person returns `false` and does not add a second Match card.
   /// Throws if the remote write fails (caller should show an error).
   Future<bool> like(
     AppDomainId domain,
@@ -549,7 +553,24 @@ class LikesStore extends ChangeNotifier {
     DiscoveryCardModel? fromCard,
   }) async {
     if (_outbound[domain]?.contains(targetId) ?? false) {
-      return isMutual(domain, targetId);
+      // Already liked this person — refresh snapshot for Match UI if mutual.
+      if (snapshot != null && isMutual(domain, targetId)) {
+        final entries = _outboundEntries[domain];
+        if (entries != null) {
+          final i = entries.indexWhere((e) => e.otherUid == targetId);
+          if (i >= 0) {
+            entries[i] = LikeEntry(
+              domain: domain,
+              otherUid: targetId,
+              direction: LikeDirection.outbound,
+              card: snapshot,
+              createdAt: entries[i].createdAt ?? DateTime.now(),
+            );
+            notifyListeners();
+          }
+        }
+      }
+      return false;
     }
     await _repository.like(
       domain: domain,
@@ -570,11 +591,12 @@ class LikesStore extends ChangeNotifier {
         createdAt: DateTime.now(),
       ),
     );
-    if (isMutual(domain, targetId)) {
+    final newlyMutual = isMutual(domain, targetId);
+    if (newlyMutual) {
       markChatReady(domain, targetId);
     }
     notifyListeners();
-    return isMutual(domain, targetId);
+    return newlyMutual;
   }
 
   /// Remove an "I liked" row — deletes both like docs when online.
@@ -754,11 +776,14 @@ class LikesStore extends ChangeNotifier {
             .watchInbound(domain)
             .listen(
               (entries) {
-                _inboundEntries[domain] = List<LikeEntry>.from(entries);
-                _inbound[domain] = {
-                  for (final entry in entries) entry.otherUid,
+                final prior = _inboundEntries[domain] ?? const <LikeEntry>[];
+                final byUid = <String, LikeEntry>{
+                  for (final entry in prior) entry.otherUid: entry,
+                  for (final entry in entries) entry.otherUid: entry,
                 };
-                for (final entry in entries) {
+                _inboundEntries[domain] = byUid.values.toList(growable: false);
+                _inbound[domain] = byUid.keys.toSet();
+                for (final entry in _inboundEntries[domain]!) {
                   if (isInboundDismissed(domain, entry.otherUid)) continue;
                   if (entry.peerOpenedChat ||
                       isMutual(domain, entry.otherUid)) {
@@ -815,11 +840,25 @@ class LikesStore extends ChangeNotifier {
     try {
       final outbound = await _repository.loadOutbound(domain);
       final inbound = await _repository.loadInbound(domain);
-      _outboundEntries[domain] = List<LikeEntry>.from(outbound);
-      _inboundEntries[domain] = List<LikeEntry>.from(inbound);
-      _outbound[domain] = {for (final entry in outbound) entry.otherUid};
-      _inbound[domain] = {for (final entry in inbound) entry.otherUid};
-      for (final entry in inbound) {
+
+      // Union with in-memory state so a just-written mutual is not dropped when
+      // Continue → Likes triggers hydrate before the read sees the new docs.
+      final priorOutbound = _outboundEntries[domain] ?? const <LikeEntry>[];
+      final priorInbound = _inboundEntries[domain] ?? const <LikeEntry>[];
+      final outboundByUid = <String, LikeEntry>{
+        for (final entry in priorOutbound) entry.otherUid: entry,
+        for (final entry in outbound) entry.otherUid: entry,
+      };
+      final inboundByUid = <String, LikeEntry>{
+        for (final entry in priorInbound) entry.otherUid: entry,
+        for (final entry in inbound) entry.otherUid: entry,
+      };
+
+      _outboundEntries[domain] = outboundByUid.values.toList(growable: false);
+      _inboundEntries[domain] = inboundByUid.values.toList(growable: false);
+      _outbound[domain] = outboundByUid.keys.toSet();
+      _inbound[domain] = inboundByUid.keys.toSet();
+      for (final entry in _inboundEntries[domain]!) {
         if (isInboundDismissed(domain, entry.otherUid)) continue;
         if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
           (_chatReady[domain] ??= <String>{}).add(entry.otherUid);

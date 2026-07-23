@@ -1,7 +1,7 @@
 name: flut_marriage
 description: Low-friction multi-domain discovery for India.
 publish_to: none
-version: 3.0.68+72
+version: 3.0.69+73
 
 environment:
   sdk: ^3.12.2

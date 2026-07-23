@@ -510,15 +510,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           context,
                         );
                         if (!ready || !context.mounted) return false;
-                        final mutual = await likes.like(
+                        final newlyMutual = await likes.like(
                           domain.id,
                           card.ownerId,
                           snapshot: card,
                           fromCard: _ownCardForDomain(context, domain.id),
                         );
                         store.action(card.id);
-                        if (mutual && context.mounted) {
+                        if (newlyMutual && context.mounted) {
                           _showMatch(context, card);
+                        } else if (context.mounted &&
+                            likes.isMutual(domain.id, card.ownerId)) {
+                          // Same person, another listing — Match is per UID.
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Already matched — open WhatsApp from Match',
+                              ),
+                            ),
+                          );
                         }
                         return true;
                       } catch (error) {
