@@ -104,7 +104,10 @@ void main() {
   test('partial save with empty name keeps existing profile fields', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    final store = IdentityStore(prefs, repository: _RecordingIdentityRepo(prefs));
+    final store = IdentityStore(
+      prefs,
+      repository: _RecordingIdentityRepo(prefs),
+    );
     await store.save(
       const Identity(
         displayName: 'Ravi',

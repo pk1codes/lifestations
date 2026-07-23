@@ -134,7 +134,8 @@ Future<void> main() async {
   final shareRepo = ShareCardRepository();
   final initialRoute = await shareLinkRouter.resolveInitialRoute(
     prefs: prefs,
-    defaultRouteName: WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+    defaultRouteName:
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName,
   );
   runApp(
     FlutMarriageApp(
@@ -215,9 +216,12 @@ class FlutMarriageApp extends StatelessWidget {
         Provider<ListingPublisher>(
           create: (_) => ListingPublisher(shareRepository: repository),
         ),
-        ChangeNotifierProxyProvider<DomainController, DiscoveryStore>(
+        ListenableProxyProvider<DomainController, DiscoveryStore>(
           create: (_) => discoveryStores[domainController.selected]!,
           update: (_, domain, previous) => discoveryStores[domain.selected]!,
+          // Shared per-domain stores live for the app lifetime — do not dispose
+          // when the proxy swaps the active domain.
+          dispose: (context, value) {},
         ),
       ],
       child: Consumer<LocaleController>(

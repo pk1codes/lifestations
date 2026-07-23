@@ -64,8 +64,7 @@ Future<bool> ensureContactShareForChat(BuildContext context) async {
   if (!verified || !context.mounted) return false;
 
   final store = context.read<IdentityStore>();
-  if (store.identity.contactShareChosen &&
-      hasWhatsAppNumber(store.identity)) {
+  if (store.identity.contactShareChosen && hasWhatsAppNumber(store.identity)) {
     return true;
   }
 
@@ -73,15 +72,11 @@ Future<bool> ensureContactShareForChat(BuildContext context) async {
     context: context,
     builder: (ctx) {
       final phone = store.identity.whatsappNumber;
-      final label = phone.isEmpty
-          ? 'your verified phone'
-          : '+$phone';
+      final label = phone.isEmpty ? 'your verified phone' : '+$phone';
       return AlertDialog(
         key: const Key('contact_share_choice_dialog'),
         title: const Text('WhatsApp number'),
-        content: Text(
-          'Use $label for WhatsApp and Telegram?',
-        ),
+        content: Text('Use $label for WhatsApp and Telegram?'),
         actions: [
           TextButton(
             key: const Key('contact_share_different'),
@@ -109,9 +104,7 @@ Future<bool> ensureContactShareForChat(BuildContext context) async {
       );
       if (!ok || !context.mounted) return false;
     }
-    await store.save(
-      store.identity.copyWith(contactShareChosen: true),
-    );
+    await store.save(store.identity.copyWith(contactShareChosen: true));
     try {
       await IdentityRepository().sync(store.identity);
     } catch (_) {}
@@ -123,9 +116,7 @@ Future<bool> ensureContactShareForChat(BuildContext context) async {
     purpose: WhatsAppGatePurpose.contactShare,
   );
   if (!ok || !context.mounted) return false;
-  await store.save(
-    store.identity.copyWith(contactShareChosen: true),
-  );
+  await store.save(store.identity.copyWith(contactShareChosen: true));
   try {
     await IdentityRepository().sync(store.identity);
   } catch (_) {}
@@ -225,8 +216,7 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
         store.identity.copyWith(
           whatsappNumber: e164,
           dialCodePreference: _dial.digits,
-          contactShareChosen:
-              widget.purpose == WhatsAppGatePurpose.contactShare
+          contactShareChosen: widget.purpose == WhatsAppGatePurpose.contactShare
               ? true
               : store.identity.contactShareChosen,
         ),

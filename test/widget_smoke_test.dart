@@ -50,7 +50,9 @@ void main() {
     expect(find.text('Account'), findsWidgets);
     expect(find.byKey(const Key('page_domain_label')), findsWidgets);
     expect(find.text('Posts'), findsOneWidget);
-    expect(find.text('Optional profile'), findsOneWidget);
+    expect(find.byKey(const Key('me_account_row')), findsOneWidget);
+    expect(find.text('Verify phone'), findsOneWidget);
+    expect(find.text('Optional profile'), findsNothing);
     expect(find.text('Add one'), findsOneWidget);
     expect(find.text('Get more views'), findsNothing);
     expect(find.text('Settings & safety'), findsNothing);
@@ -60,6 +62,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
     expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Sign out'), findsOneWidget);
     expect(find.text('Delete account'), findsOneWidget);
 
     // Close settings sheet.

@@ -90,8 +90,7 @@ class ListingPublisher {
     subtitle: profile.salaryBand,
     cityId: profile.countryId,
     cityLabel:
-        KuwaitJobsProfile.countryLabels[profile.countryId] ??
-        profile.countryId,
+        KuwaitJobsProfile.countryLabels[profile.countryId] ?? profile.countryId,
     categoryTags: List<String>.of(profile.tradeIds),
     imageUrls: photoUrls,
     role: profile.role,

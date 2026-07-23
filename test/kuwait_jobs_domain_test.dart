@@ -61,9 +61,8 @@ void main() {
     expect(
       KuwaitJobsProfile.trades,
       orderedEquals(
-        [...KuwaitJobsProfile.trades]..sort(
-          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
-        ),
+        [...KuwaitJobsProfile.trades]
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase())),
       ),
     );
     expect(KuwaitJobsProfile.trades.length, greaterThanOrEqualTo(55));
@@ -71,7 +70,10 @@ void main() {
 
   test('Kuwait Jobs allows 1–5 trades and title shows first +N', () {
     expect(KuwaitJobsProfile.titleLine(['Cook']), 'Cook');
-    expect(KuwaitJobsProfile.titleLine(['Cook', 'Helper', 'Driver-Pickup']), 'Cook +2');
+    expect(
+      KuwaitJobsProfile.titleLine(['Cook', 'Helper', 'Driver-Pickup']),
+      'Cook +2',
+    );
     expect(
       KuwaitJobsProfile.normalizeTrades([
         'Cook',
@@ -86,10 +88,7 @@ void main() {
 
     final tooMany = KuwaitJobsProfile(
       role: 'seek',
-      tradeIds: List<String>.generate(
-        6,
-        (i) => KuwaitJobsProfile.trades[i],
-      ),
+      tradeIds: List<String>.generate(6, (i) => KuwaitJobsProfile.trades[i]),
       countryId: 'kuwait',
       salaryBand: 'Under KWD 100/mo',
       nationality: 'Indian',

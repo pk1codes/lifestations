@@ -23,22 +23,25 @@ void main() {
     );
   });
 
-  test('falls back to install referrer when no app link route exists', () async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    final router = ShareLinkRouter(
-      getInitialUri: () async => null,
-      incomingUriStream: const Stream<Uri>.empty(),
-      consumeInstallReferrer: (_) async => 'rooms_abc123',
-    );
+  test(
+    'falls back to install referrer when no app link route exists',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final router = ShareLinkRouter(
+        getInitialUri: () async => null,
+        incomingUriStream: const Stream<Uri>.empty(),
+        consumeInstallReferrer: (_) async => 'rooms_abc123',
+      );
 
-    final route = await router.resolveInitialRoute(
-      prefs: prefs,
-      defaultRouteName: '/',
-    );
+      final route = await router.resolveInitialRoute(
+        prefs: prefs,
+        defaultRouteName: '/',
+      );
 
-    expect(route, '/c/rooms_abc123');
-  });
+      expect(route, '/c/rooms_abc123');
+    },
+  );
 
   testWidgets('navigates when a new share link arrives while app is open', (
     tester,

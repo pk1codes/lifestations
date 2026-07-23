@@ -32,7 +32,8 @@ Identity mergeRemoteIdentity(Identity local, Map<String, dynamic>? data) {
     nativeLanguage: local.nativeLanguage.isEmpty && remoteLanguage.isNotEmpty
         ? remoteLanguage
         : local.nativeLanguage,
-    photoUrls: remotePhotos.isNotEmpty && !listEquals(remotePhotos, local.photoUrls)
+    photoUrls:
+        remotePhotos.isNotEmpty && !listEquals(remotePhotos, local.photoUrls)
         ? remotePhotos
         : local.photoUrls,
   );

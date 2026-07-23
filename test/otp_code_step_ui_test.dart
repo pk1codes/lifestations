@@ -19,7 +19,9 @@ void main() {
         providers: [ChangeNotifierProvider.value(value: identity)],
         child: const MaterialApp(
           home: Scaffold(
-            body: OtpSheet(debugStartWithVerificationId: 'test-verification-id'),
+            body: OtpSheet(
+              debugStartWithVerificationId: 'test-verification-id',
+            ),
           ),
         ),
       ),

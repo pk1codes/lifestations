@@ -21,7 +21,7 @@ void main() {
           body: SaveGateButton(
             missing: const ['Add a photo'],
             accent: Colors.pink,
-            onSave: () => saved = true,
+            onSave: () async => saved = true,
           ),
         ),
       ),
@@ -43,12 +43,45 @@ void main() {
           body: SaveGateButton(
             missing: const [],
             accent: Colors.pink,
-            onSave: () => saved = true,
+            onSave: () async => saved = true,
           ),
         ),
       ),
     );
     await tester.tap(find.byKey(const Key('save_gate_button')));
+    await tester.pump();
     expect(saved, isTrue);
+  });
+
+  testWidgets('SaveGateButton shows Saving feedback while await runs', (
+    tester,
+  ) async {
+    var finish = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SaveGateButton(
+            missing: const [],
+            accent: Colors.teal,
+            onSave: () async {
+              while (!finish) {
+                await Future<void>.delayed(const Duration(milliseconds: 10));
+              }
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('save_gate_button')));
+    await tester.pump();
+    expect(find.byKey(const Key('save_gate_busy')), findsOneWidget);
+    expect(find.text('Saving…'), findsOneWidget);
+    expect(find.text('Save'), findsNothing);
+
+    finish = true;
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('save_gate_busy')), findsNothing);
+    expect(find.text('Save'), findsOneWidget);
   });
 }

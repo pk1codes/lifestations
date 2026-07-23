@@ -149,17 +149,13 @@ class LikesRepository {
         .asyncMap((snap) async {
           try {
             final entries = snap.docs
-                .map(
-                  (doc) => _entryFromDoc(domain, LikeDirection.inbound, doc),
-                )
+                .map((doc) => _entryFromDoc(domain, LikeDirection.inbound, doc))
                 .toList(growable: false);
             return _enrichAll(entries);
           } catch (_) {
             // Never kill the realtime subscription on a bad photo enrich.
             return snap.docs
-                .map(
-                  (doc) => _entryFromDoc(domain, LikeDirection.inbound, doc),
-                )
+                .map((doc) => _entryFromDoc(domain, LikeDirection.inbound, doc))
                 .toList(growable: false);
           }
         });

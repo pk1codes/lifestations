@@ -1,5 +1,6 @@
 import 'package:flut_marriage/models/discovery_card.dart';
 import 'package:flut_marriage/state/app_stores.dart';
+import 'package:flut_marriage/widgets/onboarding/otp_sheet.dart';
 import 'package:flut_marriage/widgets/onboarding/whatsapp_gate_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,8 @@ void main() {
     });
     final prefs = await SharedPreferences.getInstance();
     final identity = IdentityStore(prefs);
+    debugHasLivePhoneAuth = ([_]) => true;
+    addTearDown(() => debugHasLivePhoneAuth = null);
 
     await tester.pumpWidget(
       MultiProvider(
@@ -37,7 +40,10 @@ void main() {
     await tester.tap(find.text('Open chat'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('contact_share_choice_dialog')), findsOneWidget);
+    expect(
+      find.byKey(const Key('contact_share_choice_dialog')),
+      findsOneWidget,
+    );
     expect(find.text('Use same'), findsOneWidget);
     expect(find.text('Different number'), findsOneWidget);
 

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_theme.dart';
+
 /// Shared Save affordance: disabled until [missing] is empty, with an inline list.
-class SaveGateButton extends StatelessWidget {
+///
+/// On tap, immediately shows a Google-style busy state (spinner + “Saving…”)
+/// so the press is obvious while the async save runs — used by every domain form.
+class SaveGateButton extends StatefulWidget {
   const SaveGateButton({
     required this.missing,
     required this.onSave,
@@ -12,21 +17,47 @@ class SaveGateButton extends StatelessWidget {
   });
 
   final List<String> missing;
-  final VoidCallback? onSave;
+
+  /// Async save. The button awaits this and owns tap feedback.
+  final Future<void> Function()? onSave;
   final Color accent;
+
+  /// Extra busy from the parent (e.g. Marriage form’s own `_saving` flag).
   final bool busy;
   final String label;
 
-  bool get canSave => missing.isEmpty && !busy && onSave != null;
+  @override
+  State<SaveGateButton> createState() => _SaveGateButtonState();
+}
+
+class _SaveGateButtonState extends State<SaveGateButton> {
+  var _pending = false;
+
+  bool get _busy => _pending || widget.busy;
+
+  bool get canSave =>
+      widget.missing.isEmpty && !_busy && widget.onSave != null;
+
+  Future<void> _onPressed() async {
+    final save = widget.onSave;
+    if (!canSave || save == null) return;
+    setState(() => _pending = true);
+    try {
+      await save();
+    } finally {
+      if (mounted) setState(() => _pending = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final busy = _busy;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (missing.isNotEmpty) ...[
+        if (widget.missing.isNotEmpty) ...[
           Text(
-            missing.join(' · '),
+            widget.missing.join(' · '),
             key: const Key('save_missing'),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.error,
@@ -37,18 +68,35 @@ class SaveGateButton extends StatelessWidget {
         ],
         FilledButton(
           key: const Key('save_gate_button'),
-          style: FilledButton.styleFrom(backgroundColor: accent),
-          onPressed: canSave ? onSave : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: widget.accent,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: widget.accent.withValues(alpha: 0.55),
+            disabledForegroundColor: Colors.white,
+            minimumSize: const Size(48, 52),
+          ).copyWith(overlayColor: AppTapFeedback.overlayColor()),
+          onPressed: busy
+              ? () {}
+              : (canSave ? _onPressed : null),
           child: busy
-              ? const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: Colors.white,
-                  ),
+              ? const Row(
+                  key: Key('save_gate_busy'),
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Saving…'),
+                  ],
                 )
-              : Text(label),
+              : Text(widget.label),
         ),
       ],
     );

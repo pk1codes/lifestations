@@ -30,14 +30,14 @@
 |-------|---------|----------|-----------|
 | Auth | Anonymous → phone link / sign-in | `otp_sheet.dart`, `firebase_bootstrap.dart` | Yes (Auth) |
 | Auth | Phone required for unlock | `unlockContact` checks `phone_number`, non-anonymous | Yes |
-| App Check | Play Integrity / reCAPTCHA v3 | `firebase_bootstrap.dart` | Client on; callables: unlock, delete, both throttles |
+| App Check | Play Integrity / reCAPTCHA v3 | `firebase_bootstrap.dart` | Client on; callables: **unlock + delete** enforce App Check. Feed/action **throttles are auth + server caps only** (web/incognito / sideload). |
 | Firestore | Domain allowlist, listing schema bans contact | `firestore.rules` | Yes |
 | Firestore | Contact vault owner-read only | `users/{uid}/private/{docId}` | Yes |
 | Firestore | OTP tracker 60s update gate | `otp_trackers` | Best-effort (client fail-open) |
 | Firestore | `rate_limits/{uid}` | owner read; create/update/delete denied (Functions Admin) | Yes |
 | Storage | Auth write, 5 MiB, MIME, path slots | `storage.rules` | Yes |
 | Storage | Public read for listing photos | intentional CDN | Accept risk |
-| Functions | `claimActionThrottle`, `checkFeedThrottle` | `functions/index.js` | App Check + server caps; release client fail-closed |
+| Functions | `claimActionThrottle`, `checkFeedThrottle` | `functions/index.js` | Auth + server caps; client bypasses App Check infrastructure failures |
 | Functions | `unlockContact` mutual + App Check | callable | Yes |
 | Client | Share allowlist / blur CTA | `public_share_card.dart`, share screen | Yes |
 | Client | No demo feed in release | `feature_flags.dart` | Yes |
@@ -136,7 +136,7 @@ Use Firebase Emulator Suite **or** a throwaway project. Prefer Admin + unauthent
 | P0 | Action/Feed throttle fail-open | Offline/patched client skips caps | Release: fail closed on throttle errors for like/post/report | **DONE** (`failClosed` defaults to `kReleaseMode`) |
 | P1 | `validIdentity` allows public `whatsappNumber` | Peer can read `users/{id}` if client regresses | Force empty contact fields in rules (`noPublicContact`) | OPEN |
 | P1 | OTP tracker vs `serverTimestamp` mismatch | Server 60s gate may never apply | Align client write with `request.time` or loosen rules | OPEN |
-| P1 | Throttles without App Check | Scripts call `claimActionThrottle` with stolen tokens | `enforceAppCheck: true` on throttle callables | **DONE** |
+| P1 | Throttles without App Check | Scripts call `claimActionThrottle` with stolen ID tokens | Auth + server caps (accepted for web/sideload); unlock/delete keep App Check | **ACCEPTED** (3.0.65+) — not `enforceAppCheck` on throttles |
 | P2 | World-readable Storage + `serveMedia` | Path leak = scrape | Signed URLs or auth-gated CDN for sensitive domains | OPEN |
 | P2 | Weak TextSafety / optional Vision | NSFW/spam posts | Server moderation queue; require Vision in release | OPEN |
 | P2 | No admin review API | Reports only Slack | Privileged review console + custom claims | OPEN |
@@ -277,14 +277,14 @@ Never commit Admin SDK JSON, keystores, or live phone numbers in proofs.
 | C1–C10 bot flood against production callables | **NOT RUN** — use staging |
 | D1–D10 device UX security | **NOT RUN** — QA checklist |
 | E4–E6 GCP console restrictions | **OWNER** — screenshots needed |
-| P0 hardening items | **Partial** — rate_limits + fail-closed + throttle App Check **DONE**; Firestore/Storage App Check still OPEN |
+| P0 hardening items | **Partial** — rate_limits + fail-closed + unlock/delete App Check **DONE**; throttle App Check **intentionally off**; Firestore/Storage App Check still OPEN |
 
 ### Bot top-3 patch proof (this session)
 
 | Field | Value |
 |-------|-------|
 | UTC | `2026-07-23T13:40:00Z` (approx) |
-| Changes | Deny client `rate_limits` writes; release fail-closed throttles; `enforceAppCheck` on `checkFeedThrottle` + `claimActionThrottle` |
+| Changes | Deny client `rate_limits` writes; release fail-closed throttles; App Check on unlock/delete; throttles auth-capped for web Save |
 | Deploy | Firestore rules + Functions on `aaaa-4eee0` |
 | Contract tests | `firebase_rules_proof_test`, `security_checklist_contract_test`, `media_trust_throttle_test` |
 
@@ -294,7 +294,8 @@ Never commit Admin SDK JSON, keystores, or live phone numbers in proofs.
 
 1. Emulator rules suite for B1–B7, B9–B10 (highest ROI).  
 2. Staging callables C1–C4 + B11–B14 with App Check debug tokens.  
-3. ~~Patch P0: deny client `rate_limits` writes; fail-closed throttles in release; App Check on throttle callables.~~ **DONE**  
+3. ~~Patch P0: deny client `rate_limits` writes; fail-closed throttles in release.~~ **DONE**  
+   ~~Throttle App Check~~ **superseded:** auth-capped throttles + client App Check bypass (3.0.65/66).  
 4. Device D1–D8 on Play internal track (rebuild AAB after this patch).  
 5. Remaining P0: App Check enforcement on Firestore/Storage (monitor → enforce).  
 6. Re-run Phase A; attach new §8 entry; only then risk-accept remaining P2.

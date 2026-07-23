@@ -28,15 +28,15 @@ void main() {
       MultiProvider(
         providers: [ChangeNotifierProvider.value(value: identity)],
         child: const MaterialApp(
-          home: Scaffold(
-            body: OtpSheet(debugStartWithVerificationId: 'vid'),
-          ),
+          home: Scaffold(body: OtpSheet(debugStartWithVerificationId: 'vid')),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final field = tester.widget<TextField>(find.byKey(const Key('otp_code_field')));
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('otp_code_field')),
+    );
     expect(field.decoration?.hintText, otpCodeHintExample);
     expect(find.text('111111'), findsNothing);
   });

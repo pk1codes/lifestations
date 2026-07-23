@@ -54,7 +54,7 @@ class ActionThrottleService {
       if (error.code == 'resource-exhausted') {
         throw StateError('Too many attempts. Try again later.');
       }
-      if (_isAppCheckInfrastructureFailure(error)) {
+      if (isAppCheckInfrastructureFailure(error)) {
         // Project/console App Check can still reject callables before our
         // function runs. Do not block post/like — Auth + local flow continue.
         if (kDebugMode) {
@@ -76,7 +76,10 @@ class ActionThrottleService {
   }
 
   /// App Check rejects often surface as failed-precondition before the handler.
-  static bool _isAppCheckInfrastructureFailure(FirebaseFunctionsException error) {
+  @visibleForTesting
+  static bool isAppCheckInfrastructureFailure(
+    FirebaseFunctionsException error,
+  ) {
     final blob = '${error.code} ${error.message ?? ''}'.toLowerCase();
     if (blob.contains('app check') ||
         blob.contains('app-check') ||

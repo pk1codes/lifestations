@@ -1,4 +1,3 @@
-import 'package:flut_marriage/models/discovery_card.dart';
 import 'package:flut_marriage/screens/home_shell.dart';
 import 'package:flut_marriage/state/app_stores.dart';
 import 'package:flut_marriage/state/domain_profile_stores.dart';
@@ -19,6 +18,10 @@ void main() {
       'identity_city_label': 'Mumbai',
     });
     final prefs = await SharedPreferences.getInstance();
+
+    // Short phone height: Sign out used to clip below Delete without scroll.
+    await tester.binding.setSurfaceSize(const Size(390, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       MultiProvider(
@@ -63,8 +66,14 @@ void main() {
 
     expect(find.byKey(const Key('settings_account_card')), findsOneWidget);
     expect(find.text('Ravi'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings_sign_out')),
+      200,
+    );
     expect(find.byKey(const Key('settings_sign_out')), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
     expect(find.byIcon(Icons.logout), findsOneWidget);
+    expect(find.textContaining('Posts stay'), findsNothing);
+    expect(find.textContaining('Verify again'), findsNothing);
   });
 }

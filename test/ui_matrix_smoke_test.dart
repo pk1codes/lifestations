@@ -66,6 +66,20 @@ void main() {
     expect(find.text('Rooms'), findsWidgets);
   });
 
+  testWidgets('C2b: every enabled domain is switchable from the grid', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    for (final domain in AppDomains.all.where((d) => d.enabled)) {
+      await tester.tap(find.byKey(const Key('domain_switcher')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('domain_tile_${domain.id.name}')));
+      await tester.pumpAndSettle();
+      expect(find.text(domain.label), findsWidgets);
+      expect(find.text('Browse'), findsOneWidget);
+    }
+  });
+
   testWidgets('C1: Likes and Me keep domain switcher', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('Likes'));

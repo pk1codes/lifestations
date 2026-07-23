@@ -63,7 +63,8 @@ class FeedFetchThrottle {
         return allowed;
       } on FirebaseFunctionsException catch (error) {
         final blob = '${error.code} ${error.message ?? ''}'.toLowerCase();
-        final appCheck = blob.contains('app check') ||
+        final appCheck =
+            blob.contains('app check') ||
             blob.contains('app-check') ||
             blob.contains('attestation') ||
             error.code == 'failed-precondition';

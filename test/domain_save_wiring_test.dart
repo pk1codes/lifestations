@@ -124,6 +124,33 @@ void main() {
     expect(card.role, 'have');
   });
 
+  test('Kuwait Jobs Save payload builds a valid discovery card', () {
+    final country = KuwaitJobsProfile.countryIds.first;
+    final card = publisher.buildKuwaitJobsCard(
+      ownerId: 'u1',
+      offerId: 'kuwait_1',
+      profile: KuwaitJobsProfile(
+        role: 'seek',
+        tradeIds: [KuwaitJobsProfile.trades.first, KuwaitJobsProfile.trades[1]],
+        countryId: country,
+        salaryBand: KuwaitJobsProfile.salaryBandsFor(country).first,
+        nationality: KuwaitJobsProfile.nationalities.first,
+        experienceBand: KuwaitJobsProfile.experienceBands.first,
+        photoCount: 1,
+      ),
+      photoUrls: const ['https://cdn.example/kj.webp'],
+    );
+    expect(card.domain, AppDomainId.kuwaitJobs);
+    expect(
+      card.categoryTags,
+      containsAll([
+        KuwaitJobsProfile.trades.first,
+        KuwaitJobsProfile.trades[1],
+      ]),
+    );
+    expect(DiscoveryCardModel.isPublicSafe(card.toPublicJson()), isTrue);
+  });
+
   test('all domains are enabled for New post / Save', () {
     expect(
       AppDomains.all.where((d) => d.enabled).map((d) => d.id),

@@ -402,9 +402,7 @@ class KuwaitJobsProfile {
 
   static List<String> salaryBandsFor(String countryId) {
     final currency = currencyFor(countryId);
-    return [
-      for (final key in salaryBandKeys) salaryLabel(key, currency),
-    ];
+    return [for (final key in salaryBandKeys) salaryLabel(key, currency)];
   }
 
   static const nationalities = <String>[

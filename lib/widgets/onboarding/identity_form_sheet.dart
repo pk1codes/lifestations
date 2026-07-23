@@ -266,13 +266,26 @@ class _IdentityFormSheetState extends State<_IdentityFormSheet> {
               ),
               const SizedBox(height: 28),
               FilledButton(
-                style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
-                onPressed: _saving ? null : _save,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(48, 52),
+                ).copyWith(overlayColor: AppTapFeedback.overlayColor()),
+                onPressed: _saving ? () {} : _save,
                 child: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text('Saving…'),
+                        ],
                       )
                     : const Text('Save'),
               ),

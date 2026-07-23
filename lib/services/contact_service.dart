@@ -142,9 +142,7 @@ class ContactService {
         );
       } on FirebaseFunctionsException catch (error) {
         if (kDebugMode) {
-          debugPrint(
-            'unlockContact failed (${error.code}): ${error.message}',
-          );
+          debugPrint('unlockContact failed (${error.code}): ${error.message}');
         }
         if (error.code == 'permission-denied') {
           throw StateError(error.message ?? 'Mutual interest required');
@@ -186,20 +184,19 @@ class ContactService {
     if (cleaned.length < 8) return false;
     final text = (message ?? contactOpenMessage(domainLabel: domainLabel))
         .trim();
-    // HTTPS first — more reliable on Android 11+ than whatsapp:// alone.
+    // Native scheme first on device — https can "succeed" via Chrome without
+    // handing off to WhatsApp (looks like a brief animation then nothing).
     final uris = <Uri>[
+      if (!kIsWeb) buildWhatsAppNativeUri(cleaned, message: text),
       buildWhatsAppApiUri(cleaned, message: text),
       buildWhatsAppHttpsUri(cleaned, message: text),
-      if (!kIsWeb) buildWhatsAppNativeUri(cleaned, message: text),
     ];
     for (final uri in uris) {
       if (await _launchExternal(uri)) return true;
     }
     // Last resort so the user can still start the chat manually.
     try {
-      await Clipboard.setData(
-        ClipboardData(text: '+$cleaned\n$text'),
-      );
+      await Clipboard.setData(ClipboardData(text: '+$cleaned\n$text'));
     } catch (_) {}
     return false;
   }
@@ -261,8 +258,8 @@ class ContactService {
     }
     // Prefer non-browser so Android opens WhatsApp/Telegram, not Chrome.
     for (final mode in <LaunchMode>[
-      LaunchMode.externalApplication,
       LaunchMode.externalNonBrowserApplication,
+      LaunchMode.externalApplication,
       LaunchMode.platformDefault,
     ]) {
       try {

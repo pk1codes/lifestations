@@ -249,9 +249,7 @@ KuwaitJobsProfile? kuwaitJobsFromCard(DiscoveryCardModel card) {
   final attrs = card.attributes;
   final role = card.role ?? attrs['role'] as String? ?? 'seek';
   final tradeIds = KuwaitJobsProfile.normalizeTrades(
-    attrs['tradeIds'] is List
-        ? attrs['tradeIds'] as List
-        : card.categoryTags,
+    attrs['tradeIds'] is List ? attrs['tradeIds'] as List : card.categoryTags,
     legacyTradeId: attrs['tradeId'] as String?,
   );
   final country =

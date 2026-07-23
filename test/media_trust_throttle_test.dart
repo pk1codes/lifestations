@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flut_marriage/config/feature_flags.dart';
 import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flut_marriage/services/account_services.dart';
@@ -80,19 +81,22 @@ void main() {
     expect(await throttle.allow(callRemote: true), isFalse);
   });
 
-  test('action throttle fail-closed throws when Firebase is not ready', () async {
-    const throttle = ActionThrottleService(failClosed: true);
-    await expectLater(
-      throttle.claim(ThrottledAction.like),
-      throwsA(
-        isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('Not connected'),
+  test(
+    'action throttle fail-closed throws when Firebase is not ready',
+    () async {
+      const throttle = ActionThrottleService(failClosed: true);
+      await expectLater(
+        throttle.claim(ThrottledAction.like),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('Not connected'),
+          ),
         ),
-      ),
-    );
-  });
+      );
+    },
+  );
 
   test('action throttle fail-open skips when Firebase is not ready', () async {
     const throttle = ActionThrottleService(failClosed: false);
@@ -101,13 +105,26 @@ void main() {
 
   test('Play-store App Check copy is not used for throttle errors', () {
     // Regression: web Save used to show "Install from Play" when App Check failed.
+    final src = File('lib/services/action_throttle.dart').readAsStringSync();
+    expect(src, isNot(contains('Install from Play')));
+    expect(src, contains('isAppCheckInfrastructureFailure'));
+  });
+
+  test('App Check infrastructure failures are classified for bypass', () {
     expect(
-      File('lib/services/action_throttle.dart').readAsStringSync(),
-      isNot(contains('Install from Play')),
+      ActionThrottleService.isAppCheckInfrastructureFailure(
+        FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: 'App Check token is invalid',
+        ),
+      ),
+      isTrue,
     );
     expect(
-      File('lib/services/action_throttle.dart').readAsStringSync(),
-      contains('_isAppCheckInfrastructureFailure'),
+      ActionThrottleService.isAppCheckInfrastructureFailure(
+        FirebaseFunctionsException(code: 'unavailable', message: 'network'),
+      ),
+      isFalse,
     );
   });
 

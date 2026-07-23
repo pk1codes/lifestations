@@ -70,8 +70,14 @@ assert(
   'rules comment documents unlockContact callable',
 );
 assert(
-  firestoreRules.includes('request.resource.data.hits <= 10'),
-  'rate limit cap 10',
+  /match \/rate_limits\/\{userId\}[\s\S]*?allow create, update, delete: if false;/.test(
+    firestoreRules,
+  ),
+  'rate_limits Functions-only writes (client denied)',
+);
+assert(
+  !firestoreRules.includes('request.resource.data.hits <= 10'),
+  'legacy client rate_limits hits cap removed',
 );
 assert(firestoreRules.includes('match /image_flags/{flagId}'), 'image_flags match');
 assert(
@@ -168,7 +174,20 @@ assert(functionsSrc.includes('exports.checkFeedThrottle'), 'checkFeedThrottle');
 assert(functionsSrc.includes('exports.onInboundLikeCreated'), 'onInboundLikeCreated');
 assert(functionsSrc.includes('exports.unlockContact'), 'unlockContact');
 assert(functionsSrc.includes('exports.deleteAccount'), 'deleteAccount');
+assert(functionsSrc.includes('exports.claimActionThrottle'), 'claimActionThrottle');
 assert(functionsSrc.includes('enforceAppCheck: true'), 'App Check on sensitive callables');
+assert(
+  !functionsSrc.includes(
+    'exports.claimActionThrottle = onCall({enforceAppCheck: true}',
+  ),
+  'claimActionThrottle is auth-capped (no enforceAppCheck)',
+);
+assert(
+  functionsSrc.includes(
+    'exports.unlockContact = onCall({enforceAppCheck: true}',
+  ),
+  'unlockContact enforces App Check',
+);
 assert(functionsSrc.includes('SLACK_WEBHOOK_URL'), 'slack webhook optional');
 assert(functionsSrc.includes('maxHits: 10'), 'throttle max 10');
 assert(functionsSrc.includes('windowMs: 30_000'), 'throttle 30s window');

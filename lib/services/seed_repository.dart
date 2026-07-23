@@ -75,7 +75,11 @@ class SeedRepository {
         final role = index.isEven ? 'seek' : 'offer';
         final countries = <String>['kuwait', 'saudi', 'uae'];
         final country = countries[index % 3];
-        final nationality = <String>['Indian', 'Pakistan', 'Egyptian'][index % 3];
+        final nationality = <String>[
+          'Indian',
+          'Pakistan',
+          'Egyptian',
+        ][index % 3];
         final experience = <String>['0–1', '1–3', '5+'][index % 3];
         final pay = <String>[
           'KWD 200–400/mo',

@@ -29,7 +29,10 @@ void main() {
     expect(find.byKey(const Key('otp_send')), findsOneWidget);
     expect(find.byKey(const Key('otp_code_field')), findsNothing);
     expect(find.text('Name'), findsNothing);
-    expect(find.text('Save your WhatsApp number in Account first.'), findsNothing);
+    expect(
+      find.text('Save your WhatsApp number in Account first.'),
+      findsNothing,
+    );
 
     final field = tester.widget<TextFormField>(find.byType(TextFormField));
     expect(field.enabled, isTrue);
@@ -37,15 +40,11 @@ void main() {
 
   test('friendlyOtpError covers captcha and auth domain failures', () {
     expect(
-      friendlyOtpError(
-        FirebaseAuthException(code: 'captcha-check-failed'),
-      ),
+      friendlyOtpError(FirebaseAuthException(code: 'captcha-check-failed')),
       contains('Security check'),
     );
     expect(
-      friendlyOtpError(
-        FirebaseAuthException(code: 'operation-not-allowed'),
-      ),
+      friendlyOtpError(FirebaseAuthException(code: 'operation-not-allowed')),
       contains('Firebase settings'),
     );
   });

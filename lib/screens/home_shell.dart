@@ -56,6 +56,26 @@ import '../widgets/onboarding/whatsapp_gate_sheet.dart';
 import '../widgets/photo_pager.dart';
 import '../widgets/safety/safety_sheet.dart';
 
+/// Visible over Match / Liked-me sheets (SnackBars often hide behind them).
+Future<void> _showContactActionDialog(
+  BuildContext context,
+  String message,
+) async {
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -486,8 +506,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       final messenger = ScaffoldMessenger.of(context);
                       final likes = context.read<LikesStore>();
                       try {
-                        final ready =
-                            await ensurePhoneVerifiedForAction(context);
+                        final ready = await ensurePhoneVerifiedForAction(
+                          context,
+                        );
                         if (!ready || !context.mounted) return false;
                         final mutual = await likes.like(
                           domain.id,
@@ -929,6 +950,9 @@ class _LikesScreenState extends State<LikesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Match first so it is not buried under long I liked / Liked me lists.
+          _MatchSection(likes: likes),
+          const SizedBox(height: 16),
           _LikesSection(
             title: 'I liked',
             count: likes.outboundCount,
@@ -946,8 +970,6 @@ class _LikesScreenState extends State<LikesScreen> {
             entriesFor: likes.inboundEntries,
             likes: likes,
           ),
-          const SizedBox(height: 16),
-          _MatchSection(likes: likes),
         ],
       ),
     );
@@ -1114,7 +1136,7 @@ class _MatchSection extends StatelessWidget {
         if (domainsWithMatches.isEmpty)
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('None yet'),
+            child: Text(LikeDisplay.matchEmptyHint),
           )
         else
           ...domainsWithMatches.map((policy) {
@@ -1145,11 +1167,8 @@ class _MatchSection extends StatelessWidget {
                     child: _MatchRow(
                       entry: entry,
                       onOpen: () => _showMatchDetail(context, entry),
-                      onDelete: () => _deleteMatchRow(
-                        context,
-                        likes: likes,
-                        entry: entry,
-                      ),
+                      onDelete: () =>
+                          _deleteMatchRow(context, likes: likes, entry: entry),
                     ),
                   ),
               ],
@@ -1190,12 +1209,9 @@ class _MatchRowState extends State<_MatchRow> {
       );
       if (!mounted) return null;
       if (contact == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Their WhatsApp is not saved yet. Ask them to open the app once.',
-            ),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Their WhatsApp is not saved yet. Ask them to open the app once.',
         );
         return null;
       }
@@ -1205,9 +1221,7 @@ class _MatchRowState extends State<_MatchRow> {
       final message = error is StateError
           ? error.message
           : 'Could not unlock chat. Check phone verification.';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      await _showContactActionDialog(context, message);
       return null;
     }
   }
@@ -1229,10 +1243,10 @@ class _MatchRowState extends State<_MatchRow> {
       );
       if (!mounted) return;
       if (!opened) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open WhatsApp — number & message copied'),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Could not open WhatsApp — number & message copied. '
+          'Is WhatsApp installed?',
         );
       }
     } finally {
@@ -1249,9 +1263,7 @@ class _MatchRowState extends State<_MatchRow> {
       final handle = contact.telegramHandle?.trim() ?? '';
       final phone = contact.whatsappNumber;
       if (handle.isEmpty && cleanWhatsAppDigits(phone).length < 8) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No Telegram number yet')),
-        );
+        await _showContactActionDialog(context, 'No Telegram number yet');
         return;
       }
       await context.read<LikesStore>().signalChatOpened(
@@ -1266,10 +1278,9 @@ class _MatchRowState extends State<_MatchRow> {
       );
       if (!mounted) return;
       if (!opened) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open Telegram — message copied to paste'),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Could not open Telegram — message copied to paste',
         );
       }
     } finally {
@@ -1280,103 +1291,95 @@ class _MatchRowState extends State<_MatchRow> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final yourTitle = LikeDisplay.rowTitle(entry.targetCard);
     final theirTitle = LikeDisplay.rowTitle(entry.card);
+    final yourTitle = LikeDisplay.rowTitle(entry.targetCard);
+    final city = entry.card?.cityLabel.trim() ?? '';
     return Material(
       key: Key('match_row_${entry.domain.name}_${entry.otherUid}'),
       color: Colors.white,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppColors.muted.withValues(alpha: .22)),
+        side: BorderSide(color: AppColors.muted.withValues(alpha: .18)),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: widget.onOpen,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _DualLikeThumbs(entry: entry),
+                  _DualLikeThumbs(entry: entry, compact: true),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          LikeDisplay.yourPostLabel,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          yourTitle,
+                          theirTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 2),
                         Text(
-                          LikeDisplay.likedByLabel,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          theirTitle,
+                          city.isNotEmpty
+                              ? city
+                              : '${LikeDisplay.yourPostLabel}: $yourTitle',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.muted,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
+                  PopupMenuButton<String>(
                     key: Key(
-                      'match_delete_${entry.domain.name}_${entry.otherUid}',
+                      'match_more_${entry.domain.name}_${entry.otherUid}',
                     ),
-                    tooltip: LikeConsent.deleteMatchTooltip,
-                    onPressed: widget.onDelete,
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    color: AppColors.muted,
+                    tooltip: 'More',
+                    icon: const Icon(
+                      Icons.more_vert,
+                      color: AppColors.muted,
+                      size: 20,
+                    ),
+                    onSelected: (value) {
+                      if (value == 'delete') widget.onDelete();
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        key: Key(
+                          'match_delete_${entry.domain.name}_${entry.otherUid}',
+                        ),
+                        value: 'delete',
+                        child: Text(LikeDisplay.deleteMatchLabel),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
-                    child: _ContactActionButton(
-                      label: 'WhatsApp',
-                      icon: Icons.chat,
-                      color: const Color(0xFF25D366),
-                      enabled: _opening == null,
-                      locked: false,
+                    child: _MatchWhatsAppButton(
                       busy: _opening == _ContactChannel.whatsapp,
+                      enabled: _opening == null,
                       onPressed: _openWhatsApp,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ContactActionButton(
-                      label: 'Telegram',
-                      icon: Icons.send,
-                      color: const Color(0xFF229ED9),
-                      enabled: _opening == null,
-                      locked: false,
-                      busy: _opening == _ContactChannel.telegram,
-                      onPressed: _openTelegram,
-                    ),
+                  const SizedBox(width: 8),
+                  _MatchTelegramIconButton(
+                    busy: _opening == _ContactChannel.telegram,
+                    enabled: _opening == null,
+                    onPressed: _openTelegram,
                   ),
                 ],
               ),
@@ -1428,12 +1431,9 @@ class _MatchDetailSheetState extends State<_MatchDetailSheet> {
       );
       if (!mounted) return null;
       if (contact == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Their WhatsApp is not saved yet. Ask them to open the app once.',
-            ),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Their WhatsApp is not saved yet. Ask them to open the app once.',
         );
         return null;
       }
@@ -1444,9 +1444,7 @@ class _MatchDetailSheetState extends State<_MatchDetailSheet> {
       final message = error is StateError
           ? error.message
           : 'Could not unlock chat. Check phone verification.';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      await _showContactActionDialog(context, message);
       return null;
     }
   }
@@ -1468,10 +1466,10 @@ class _MatchDetailSheetState extends State<_MatchDetailSheet> {
       );
       if (!mounted) return;
       if (!opened) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open WhatsApp — number & message copied'),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Could not open WhatsApp — number & message copied. '
+          'Is WhatsApp installed?',
         );
       }
     } finally {
@@ -1488,9 +1486,7 @@ class _MatchDetailSheetState extends State<_MatchDetailSheet> {
       final handle = contact.telegramHandle?.trim() ?? '';
       final phone = contact.whatsappNumber;
       if (handle.isEmpty && cleanWhatsAppDigits(phone).length < 8) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No Telegram number yet')),
-        );
+        await _showContactActionDialog(context, 'No Telegram number yet');
         return;
       }
       await context.read<LikesStore>().signalChatOpened(
@@ -1505,10 +1501,9 @@ class _MatchDetailSheetState extends State<_MatchDetailSheet> {
       );
       if (!mounted) return;
       if (!opened) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open Telegram — message copied to paste'),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Could not open Telegram — message copied to paste',
         );
       }
     } finally {
@@ -1519,89 +1514,118 @@ class _MatchDetailSheetState extends State<_MatchDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final policy = AppDomains.byId(entry.domain);
+    final theme = Theme.of(context);
+    final theirTitle = LikeDisplay.rowTitle(entry.card);
+    final city = entry.card?.cityLabel.trim() ?? '';
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.7;
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    LikeDisplay.matchSectionTitle,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      LikeDisplay.matchSectionTitle,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: policy.color.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        policy.label,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: policy.color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _MatchHero(
+                  card: entry.card,
+                  seed: entry.otherUid.hashCode,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  theirTitle,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  const Spacer(),
+                ),
+                if (city.isNotEmpty) ...[
+                  const SizedBox(height: 4),
                   Text(
-                    policy.label,
-                    style: TextStyle(
-                      color: policy.color,
-                      fontWeight: FontWeight.w700,
+                    city,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: AppColors.muted,
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 16),
-              _LikeDetailBlock(
-                label: LikeDisplay.yourPostLabel,
-                card: entry.targetCard,
-                seed: (entry.targetCard?.id ?? entry.otherUid).hashCode,
-              ),
-              const SizedBox(height: 16),
-              _LikeDetailBlock(
-                label: LikeDisplay.likedByLabel,
-                card: entry.card,
-                seed: entry.otherUid.hashCode,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ContactActionButton(
-                      label: 'WhatsApp',
-                      icon: Icons.chat,
-                      color: const Color(0xFF25D366),
-                      enabled: _opening == null,
-                      locked: false,
-                      busy: _opening == _ContactChannel.whatsapp,
-                      onPressed: _openWhatsApp,
+                const SizedBox(height: 12),
+                _YourPostChip(
+                  card: entry.targetCard,
+                  seed: (entry.targetCard?.id ?? entry.otherUid).hashCode,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MatchWhatsAppButton(
+                        busy: _opening == _ContactChannel.whatsapp,
+                        enabled: _opening == null,
+                        onPressed: _openWhatsApp,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _ContactActionButton(
-                      label: 'Telegram',
-                      icon: Icons.send,
-                      color: const Color(0xFF229ED9),
-                      enabled: _opening == null,
-                      locked: false,
+                    const SizedBox(width: 8),
+                    _MatchTelegramIconButton(
                       busy: _opening == _ContactChannel.telegram,
+                      enabled: _opening == null,
                       onPressed: _openTelegram,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                key: Key(
-                  'match_detail_delete_${entry.domain.name}_${entry.otherUid}',
+                  ],
                 ),
-                onPressed: () async {
-                  final likes = context.read<LikesStore>();
-                  Navigator.of(context).pop();
-                  await _deleteMatchRow(context, likes: likes, entry: entry);
-                },
-                icon: const Icon(Icons.delete_outline_rounded),
-                label: const Text(LikeConsent.deleteMatchTooltip),
-              ),
-            ],
+                const SizedBox(height: 4),
+                TextButton(
+                  key: Key(
+                    'match_detail_delete_${entry.domain.name}_${entry.otherUid}',
+                  ),
+                  onPressed: () async {
+                    final likes = context.read<LikesStore>();
+                    Navigator.of(context).pop();
+                    await _deleteMatchRow(
+                      context,
+                      likes: likes,
+                      entry: entry,
+                    );
+                  },
+                  child: Text(
+                    LikeDisplay.deleteMatchLabel,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1636,10 +1660,7 @@ class _LikeRow extends StatelessWidget {
           if (inbound)
             _DualLikeThumbs(entry: entry)
           else
-            _LikeThumb(
-              card: entry.card,
-              seed: entry.otherUid.hashCode,
-            ),
+            _LikeThumb(card: entry.card, seed: entry.otherUid.hashCode),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1657,9 +1678,9 @@ class _LikeRow extends StatelessWidget {
                     '${LikeDisplay.likedByLabel} · ${LikeDisplay.rowTitle(entry.card)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.muted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                   ),
                 ] else
                   _LikeTitleBlock(card: entry.card),
@@ -1741,15 +1762,18 @@ class _LikeTitleBlock extends StatelessWidget {
 }
 
 class _DualLikeThumbs extends StatelessWidget {
-  const _DualLikeThumbs({required this.entry});
+  const _DualLikeThumbs({required this.entry, this.compact = false});
 
   final LikeEntry entry;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final box = compact ? 56.0 : 72.0;
+    final thumb = compact ? 38.0 : 48.0;
     return SizedBox(
-      width: 72,
-      height: 72,
+      width: box,
+      height: box,
       child: Stack(
         children: [
           Positioned(
@@ -1758,7 +1782,7 @@ class _DualLikeThumbs extends StatelessWidget {
             child: _LikeThumb(
               card: entry.targetCard,
               seed: (entry.targetCard?.id ?? entry.otherUid).hashCode,
-              size: 48,
+              size: thumb,
             ),
           ),
           Positioned(
@@ -1772,7 +1796,7 @@ class _DualLikeThumbs extends StatelessWidget {
               child: _LikeThumb(
                 card: entry.card,
                 seed: entry.otherUid.hashCode,
-                size: 48,
+                size: thumb,
               ),
             ),
           ),
@@ -1782,12 +1806,170 @@ class _DualLikeThumbs extends StatelessWidget {
   }
 }
 
-class _LikeThumb extends StatelessWidget {
-  const _LikeThumb({
-    required this.card,
-    required this.seed,
-    this.size = 72,
+class _MatchHero extends StatelessWidget {
+  const _MatchHero({required this.card, required this.seed});
+
+  final DiscoveryCardModel? card;
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = card?.imageUrls ?? const <String>[];
+    final title = LikeDisplay.rowTitle(card);
+    return Align(
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 220, maxWidth: 220),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: photos.isEmpty
+                ? const _BlankLikeHero()
+                : PhotoGalleryPager(
+                    children: photos
+                        .map(
+                          (url) => _LikePhoto(
+                            url: url,
+                            label: title,
+                            seed: seed,
+                            role: FastImageRole.detail,
+                            blankWhenMissing: true,
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _YourPostChip extends StatelessWidget {
+  const _YourPostChip({required this.card, required this.seed});
+
+  final DiscoveryCardModel? card;
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = LikeDisplay.rowTitle(card);
+    return Material(
+      key: const Key('match_your_post_chip'),
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+        child: Row(
+          children: [
+            _LikeThumb(card: card, seed: seed, size: 44),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    LikeDisplay.yourPostLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchWhatsAppButton extends StatelessWidget {
+  const _MatchWhatsAppButton({
+    required this.busy,
+    required this.enabled,
+    required this.onPressed,
   });
+
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF25D366);
+    return FilledButton.icon(
+      key: const Key('match_whatsapp_btn'),
+      onPressed: enabled && !busy ? onPressed : null,
+      style: FilledButton.styleFrom(
+        backgroundColor: green,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: green.withValues(alpha: .45),
+        disabledForegroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+      icon: busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.chat, size: 18),
+      label: const Text('WhatsApp'),
+    );
+  }
+}
+
+class _MatchTelegramIconButton extends StatelessWidget {
+  const _MatchTelegramIconButton({
+    required this.busy,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const blue = Color(0xFF229ED9);
+    return IconButton.outlined(
+      key: const Key('match_telegram_btn'),
+      onPressed: enabled && !busy ? onPressed : null,
+      tooltip: 'Telegram',
+      style: IconButton.styleFrom(
+        foregroundColor: blue,
+        side: BorderSide(color: blue.withValues(alpha: .55)),
+        minimumSize: const Size(48, 48),
+      ),
+      icon: busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: blue),
+            )
+          : const Icon(Icons.send, size: 20),
+    );
+  }
+}
+
+class _LikeThumb extends StatelessWidget {
+  const _LikeThumb({required this.card, required this.seed, this.size = 72});
 
   final DiscoveryCardModel? card;
   final int seed;
@@ -1973,6 +2155,7 @@ class _LikeDetailSheet extends StatefulWidget {
 
 class _LikeDetailSheetState extends State<_LikeDetailSheet> {
   PrivateContact? _contact;
+
   /// Which contact button is busy (only that one shows a spinner).
   _ContactChannel? _opening;
   bool _likingBack = false;
@@ -2043,12 +2226,9 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       );
       if (!mounted) return null;
       if (contact == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Their WhatsApp is not saved yet. Ask them to open the app once.',
-            ),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Their WhatsApp is not saved yet. Ask them to open the app once.',
         );
         return null;
       }
@@ -2059,9 +2239,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       final message = error is StateError
           ? error.message
           : 'Could not unlock chat. Check phone verification.';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      await _showContactActionDialog(context, message);
       return null;
     }
   }
@@ -2081,12 +2259,10 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       );
       if (!mounted) return;
       if (!opened) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not open WhatsApp — number & message copied',
-            ),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Could not open WhatsApp — number & message copied. '
+          'Is WhatsApp installed?',
         );
       }
     } finally {
@@ -2103,9 +2279,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       final handle = contact.telegramHandle?.trim() ?? '';
       final phone = contact.whatsappNumber;
       if (handle.isEmpty && cleanWhatsAppDigits(phone).length < 8) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No Telegram number yet')),
-        );
+        await _showContactActionDialog(context, 'No Telegram number yet');
         return;
       }
       final likes = context.read<LikesStore>();
@@ -2118,12 +2292,9 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       );
       if (!mounted) return;
       if (!opened) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not open Telegram — message copied to paste',
-            ),
-          ),
+        await _showContactActionDialog(
+          context,
+          'Could not open Telegram — message copied to paste',
         );
         return;
       }
@@ -2463,11 +2634,7 @@ class MeScreen extends StatelessWidget {
                 ? (city.isNotEmpty ? city : 'Phone verified')
                 : 'Verify phone',
             trailing: verified
-                ? const Icon(
-                    Icons.verified,
-                    color: Color(0xFF059669),
-                    size: 22,
-                  )
+                ? const Icon(Icons.verified, color: Color(0xFF059669), size: 22)
                 : null,
           ),
           const SizedBox(height: 16),
@@ -2718,10 +2885,13 @@ List<OwnedPost> _ownedPosts(BuildContext context) {
 }
 
 /// Best local listing for inbound "who liked you" snapshots (prefer photos).
-DiscoveryCardModel? _ownCardForDomain(BuildContext context, AppDomainId domain) {
-  final posts = _ownedPosts(context)
-      .where((p) => p.domain == domain && p.card.active)
-      .toList(growable: false);
+DiscoveryCardModel? _ownCardForDomain(
+  BuildContext context,
+  AppDomainId domain,
+) {
+  final posts = _ownedPosts(
+    context,
+  ).where((p) => p.domain == domain && p.card.active).toList(growable: false);
   if (posts.isEmpty) return null;
   for (final post in posts) {
     if (post.card.imageUrls.isNotEmpty) return post.card;
@@ -3779,159 +3949,175 @@ Future<void> showMatchDialog(BuildContext context) => showDialog<void>(
 Future<void> _showMatch(BuildContext context, DiscoveryCardModel card) =>
     showMatchDialog(context);
 
-Future<void> showSettingsSheet(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  showDragHandle: true,
-  isScrollControlled: true,
-  builder: (sheetContext) {
-    final locale = sheetContext.watch<LocaleController>();
-    final identity = sheetContext.watch<IdentityStore>().identity;
-    final photoUrl = identity.photoUrls.isNotEmpty
-        ? identity.photoUrls.first
-        : null;
-    final name = identity.displayName.trim();
-    final phone = identity.whatsappNumber.trim();
-    final phoneParts = phone.isEmpty ? null : splitStoredPhone(phone);
-    final phoneLabel = phoneParts == null
-        ? (identity.phoneVerified ? 'Phone verified' : 'Not signed in')
-        : '${phoneParts.dial.label} ${phoneParts.national}';
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Settings', style: Theme.of(sheetContext).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              Material(
-                key: const Key('settings_account_card'),
-                color: AppColors.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: AppColors.muted.withValues(alpha: .18),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                  child: Row(
-                    children: [
-                      _IdentityAvatar(photoUrl: photoUrl),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.isNotEmpty ? name : 'Account',
-                              style: Theme.of(sheetContext)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
+Future<void> showSettingsSheet(BuildContext context) =>
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final locale = sheetContext.watch<LocaleController>();
+        final identity = sheetContext.watch<IdentityStore>().identity;
+        final photoUrl = identity.photoUrls.isNotEmpty
+            ? identity.photoUrls.first
+            : null;
+        final name = identity.displayName.trim();
+        final phone = identity.whatsappNumber.trim();
+        final phoneParts = phone.isEmpty ? null : splitStoredPhone(phone);
+        final phoneLabel = phoneParts == null
+            ? (identity.phoneVerified ? 'Phone verified' : 'Not signed in')
+            : '${phoneParts.dial.label} ${phoneParts.national}';
+        // Bound height so SingleChildScrollView can scroll; without this,
+        // Sign out (below Delete account) is clipped on short phones.
+        final maxHeight = MediaQuery.sizeOf(sheetContext).height * 0.92;
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Settings',
+                      style: Theme.of(sheetContext).textTheme.titleLarge,
+                    ),
+                  const SizedBox(height: 16),
+                  Material(
+                    key: const Key('settings_account_card'),
+                    color: AppColors.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: AppColors.muted.withValues(alpha: .18),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                      child: Row(
+                        children: [
+                          _IdentityAvatar(photoUrl: photoUrl),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name.isNotEmpty ? name : 'Account',
+                                  style: Theme.of(sheetContext)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  phoneLabel,
+                                  style: Theme.of(sheetContext)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(color: AppColors.muted),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              phoneLabel,
-                              style: Theme.of(sheetContext)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Language',
+                    style: Theme.of(sheetContext).textTheme.titleMedium,
+                  ),
+                  RadioGroup<String?>(
+                    groupValue: locale.localeCode,
+                    onChanged: locale.setLocale,
+                    child: const Column(
+                      children: [
+                        RadioListTile(
+                          value: null,
+                          title: Text('Phone language'),
+                        ),
+                        RadioListTile(value: 'en', title: Text('English')),
+                        RadioListTile(value: 'hi', title: Text('हिन्दी')),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.gavel_outlined),
+                    title: const Text('Terms'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(sheetContext).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const LegalPageScreen.terms(),
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.privacy_tip_outlined),
+                    title: const Text('Privacy'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(sheetContext).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const LegalPageScreen.privacy(),
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline),
+                    title: const Text('Delete account'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(sheetContext).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const LegalPageScreen.dataDeletion(),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 28),
+                  ListTile(
+                    key: const Key('settings_sign_out'),
+                    leading: const Icon(Icons.logout),
+                    title: const Text('Sign out'),
+                    onTap: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: sheetContext,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Sign out?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              key: const Key('settings_sign_out_confirm'),
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('Sign out'),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                      );
+                      if (confirmed != true || !sheetContext.mounted) return;
+                      await signOutLocalSession(sheetContext);
+                      if (!sheetContext.mounted) return;
+                      Navigator.pop(sheetContext);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Signed out')),
+                        );
+                      }
+                    },
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 20),
-              Text('Language', style: Theme.of(sheetContext).textTheme.titleMedium),
-              RadioGroup<String?>(
-                groupValue: locale.localeCode,
-                onChanged: locale.setLocale,
-                child: const Column(
-                  children: [
-                    RadioListTile(value: null, title: Text('Phone language')),
-                    RadioListTile(value: 'en', title: Text('English')),
-                    RadioListTile(value: 'hi', title: Text('हिन्दी')),
-                  ],
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.gavel_outlined),
-                title: const Text('Terms'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(sheetContext).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const LegalPageScreen.terms(),
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('Privacy'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(sheetContext).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const LegalPageScreen.privacy(),
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('Delete account'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(sheetContext).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const LegalPageScreen.dataDeletion(),
-                  ),
-                ),
-              ),
-              const Divider(height: 28),
-              ListTile(
-                key: const Key('settings_sign_out'),
-                leading: const Icon(Icons.logout),
-                title: const Text('Sign out'),
-                onTap: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: sheetContext,
-                    builder: (dialogContext) => AlertDialog(
-                      title: const Text('Sign out?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.pop(dialogContext, false),
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          key: const Key('settings_sign_out_confirm'),
-                          onPressed: () =>
-                              Navigator.pop(dialogContext, true),
-                          child: const Text('Sign out'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed != true || !sheetContext.mounted) return;
-                  await signOutLocalSession(sheetContext);
-                  if (!sheetContext.mounted) return;
-                  Navigator.pop(sheetContext);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Signed out')),
-                    );
-                  }
-                },
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+          ),
+        );
+      },
     );
-  },
-);
 
 Future<void> showDomainProfileForm(
   BuildContext context,

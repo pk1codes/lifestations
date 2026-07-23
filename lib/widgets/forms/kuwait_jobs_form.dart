@@ -64,7 +64,8 @@ class _KuwaitJobsFormState extends State<KuwaitJobsForm> {
     _country = initial?.countryId ?? 'kuwait';
     _salary =
         initial?.salaryBand ?? KuwaitJobsProfile.salaryBandsFor(_country).first;
-    _nationality = initial?.nationality ?? KuwaitJobsProfile.nationalities.first;
+    _nationality =
+        initial?.nationality ?? KuwaitJobsProfile.nationalities.first;
     _experience =
         initial?.experienceBand ?? KuwaitJobsProfile.experienceBands.first;
     _howMany = initial?.howMany ?? KuwaitJobsProfile.howManyOptions.first;
@@ -256,9 +257,7 @@ Future<Set<String>?> showKuwaitJobsPositionPicker(
     showDragHandle: true,
     useRootNavigator: true,
     builder: (sheetContext) {
-      var draft = Set<String>.of(
-        KuwaitJobsProfile.normalizeTrades(selected),
-      );
+      var draft = Set<String>.of(KuwaitJobsProfile.normalizeTrades(selected));
       return StatefulBuilder(
         builder: (context, setSheetState) {
           final max = KuwaitJobsProfile.maxTrades;
@@ -275,8 +274,9 @@ Future<Set<String>?> showKuwaitJobsPositionPicker(
                       children: [
                         Text(
                           'Positions',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(color: accent),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleLarge?.copyWith(color: accent),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -301,8 +301,7 @@ Future<Set<String>?> showKuwaitJobsPositionPicker(
                             title: Text(trade),
                             controlAffinity: ListTileControlAffinity.leading,
                             onChanged:
-                                (draft.length >= max &&
-                                    !draft.contains(trade))
+                                (draft.length >= max && !draft.contains(trade))
                                 ? null
                                 : (value) {
                                     setSheetState(() {
@@ -329,7 +328,9 @@ Future<Set<String>?> showKuwaitJobsPositionPicker(
                               sheetContext,
                               Set<String>.of(draft),
                             ),
-                      child: Text('Use ${draft.length} position${draft.length == 1 ? '' : 's'}'),
+                      child: Text(
+                        'Use ${draft.length} position${draft.length == 1 ? '' : 's'}',
+                      ),
                     ),
                   ),
                 ],

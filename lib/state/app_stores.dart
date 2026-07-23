@@ -144,7 +144,9 @@ class IdentityStore extends ChangeNotifier {
         value.nativeLanguage,
         identity.nativeLanguage,
       ),
-      whatsappNumber: nextPhone.isNotEmpty ? nextPhone : identity.whatsappNumber,
+      whatsappNumber: nextPhone.isNotEmpty
+          ? nextPhone
+          : identity.whatsappNumber,
     );
     await Future.wait(<Future<bool>>[
       _prefs.setString('identity_name', identity.displayName),
@@ -473,9 +475,7 @@ class LikesStore extends ChangeNotifier {
 
   /// Waiting inbound only — mutuals live under [matchEntries].
   List<LikeEntry> inboundEntries(AppDomainId domain) => List.unmodifiable(
-    _visibleInbound(domain).where(
-      (entry) => !isMutual(domain, entry.otherUid),
-    ),
+    _visibleInbound(domain).where((entry) => !isMutual(domain, entry.otherUid)),
   );
 
   /// Mutual pairs for the Match section (two-block: your post + liked by).
@@ -503,8 +503,7 @@ class LikesStore extends ChangeNotifier {
           direction: LikeDirection.inbound,
           card: inboundMap[id]?.card ?? outboundMap[id]?.card,
           targetCard: inboundMap[id]?.targetCard,
-          createdAt:
-              inboundMap[id]?.createdAt ?? outboundMap[id]?.createdAt,
+          createdAt: inboundMap[id]?.createdAt ?? outboundMap[id]?.createdAt,
           peerOpenedChat: inboundMap[id]?.peerOpenedChat ?? false,
         ),
     ];
@@ -751,32 +750,37 @@ class LikesStore extends ChangeNotifier {
     stopRealtimeSync();
     for (final domain in AppDomainId.values) {
       _inboundSubs.add(
-        _repository.watchInbound(domain).listen(
-          (entries) {
-            _inboundEntries[domain] = List<LikeEntry>.from(entries);
-            _inbound[domain] = {for (final entry in entries) entry.otherUid};
-            for (final entry in entries) {
-              if (isInboundDismissed(domain, entry.otherUid)) continue;
-              if (entry.peerOpenedChat || isMutual(domain, entry.otherUid)) {
-                (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
-              }
-            }
-            for (final other in _outbound[domain] ?? const <String>{}) {
-              if (isMutual(domain, other)) {
-                (_chatReady[domain] ??= <String>{}).add(other);
-              }
-            }
-            notifyListeners();
-          },
-          onError: (Object error, StackTrace stack) {
-            debugPrint('Likes inbound watch failed for $domain: $error');
-            // Soft restart this domain watch on the next frame.
-            Future<void>.delayed(const Duration(seconds: 2), () {
-              if (_inboundSubs.isEmpty) return;
-              unawaited(hydrate(domain));
-            });
-          },
-        ),
+        _repository
+            .watchInbound(domain)
+            .listen(
+              (entries) {
+                _inboundEntries[domain] = List<LikeEntry>.from(entries);
+                _inbound[domain] = {
+                  for (final entry in entries) entry.otherUid,
+                };
+                for (final entry in entries) {
+                  if (isInboundDismissed(domain, entry.otherUid)) continue;
+                  if (entry.peerOpenedChat ||
+                      isMutual(domain, entry.otherUid)) {
+                    (_chatReady[domain] ??= <String>{}).add(entry.otherUid);
+                  }
+                }
+                for (final other in _outbound[domain] ?? const <String>{}) {
+                  if (isMutual(domain, other)) {
+                    (_chatReady[domain] ??= <String>{}).add(other);
+                  }
+                }
+                notifyListeners();
+              },
+              onError: (Object error, StackTrace stack) {
+                debugPrint('Likes inbound watch failed for $domain: $error');
+                // Soft restart this domain watch on the next frame.
+                Future<void>.delayed(const Duration(seconds: 2), () {
+                  if (_inboundSubs.isEmpty) return;
+                  unawaited(hydrate(domain));
+                });
+              },
+            ),
       );
     }
   }

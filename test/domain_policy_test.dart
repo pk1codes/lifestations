@@ -4,17 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('canonical domain policies preserve release boundaries', () {
     expect(AppDomains.all, hasLength(6));
-    expect(
-      AppDomains.all.map((domain) => domain.id),
-      [
-        AppDomainId.kuwaitJobs,
-        AppDomainId.marriage,
-        AppDomainId.jobs,
-        AppDomainId.rooms,
-        AppDomainId.bikes,
-        AppDomainId.homeHelp,
-      ],
-    );
+    expect(AppDomains.all.map((domain) => domain.id), [
+      AppDomainId.kuwaitJobs,
+      AppDomainId.marriage,
+      AppDomainId.jobs,
+      AppDomainId.rooms,
+      AppDomainId.bikes,
+      AppDomainId.homeHelp,
+    ]);
     expect(AppDomains.all.every((domain) => domain.enabled), isTrue);
     expect(AppDomains.kuwaitJobs.slug, 'kuwait_jobs');
     expect(AppDomains.kuwaitJobs.roles, ['seek', 'offer']);

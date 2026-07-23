@@ -48,8 +48,14 @@ Future<bool> ensurePhoneVerifiedForAction(BuildContext context) async {
       hasLivePhoneAuth();
 }
 
+/// Test hook — when set, [hasLivePhoneAuth] returns this instead of Auth.
+@visibleForTesting
+bool Function([FirebaseAuth?])? debugHasLivePhoneAuth;
+
 /// True when Firebase Auth currently has a phone-linked user.
 bool hasLivePhoneAuth([FirebaseAuth? auth]) {
+  final override = debugHasLivePhoneAuth;
+  if (override != null) return override(auth);
   try {
     final phone = (auth ?? FirebaseAuth.instance).currentUser?.phoneNumber
         ?.trim();
@@ -94,8 +100,7 @@ class _OtpSheetState extends State<OtpSheet> {
   bool _busy = false;
   Timer? _cooldownTicker;
 
-  bool get _awaitingCode =>
-      _verificationId != null || _webConfirmation != null;
+  bool get _awaitingCode => _verificationId != null || _webConfirmation != null;
 
   @override
   void initState() {
@@ -246,9 +251,7 @@ class _OtpSheetState extends State<OtpSheet> {
           FilledButton(
             key: Key(_awaitingCode ? 'otp_confirm' : 'otp_send'),
             style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
-            onPressed: _busy
-                ? null
-                : (_awaitingCode ? _verify : _send),
+            onPressed: _busy ? null : (_awaitingCode ? _verify : _send),
             child: _busy
                 ? const SizedBox(
                     width: 22,
@@ -476,9 +479,7 @@ class _OtpSheetState extends State<OtpSheet> {
     await identity.savePhoneVerification(
       phoneVerified: true,
       dialCodePreference: _dial.digits,
-      whatsappNumber: e164.isNotEmpty
-          ? e164
-          : identity.identity.whatsappNumber,
+      whatsappNumber: e164.isNotEmpty ? e164 : identity.identity.whatsappNumber,
     );
     if (mounted) Navigator.pop(context, true);
   }

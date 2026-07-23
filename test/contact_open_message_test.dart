@@ -7,10 +7,7 @@ void main() {
       contactOpenMessage(domainLabel: 'Jobs'),
       'Hi, I found you on Life Stations (Jobs).',
     );
-    expect(
-      contactOpenMessage(),
-      'Hi, I found you on Life Stations.',
-    );
+    expect(contactOpenMessage(), 'Hi, I found you on Life Stations.');
   });
 
   test('WhatsApp URI prefills phone and message', () {
