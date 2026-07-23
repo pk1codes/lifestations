@@ -3894,18 +3894,11 @@ Future<void> showSettingsSheet(BuildContext context) => showModalBottomSheet<voi
                 key: const Key('settings_sign_out'),
                 leading: const Icon(Icons.logout),
                 title: const Text('Sign out'),
-                subtitle: const Text(
-                  'Posts stay with your phone. Verify again to restore.',
-                ),
                 onTap: () async {
                   final confirmed = await showDialog<bool>(
                     context: sheetContext,
                     builder: (dialogContext) => AlertDialog(
                       title: const Text('Sign out?'),
-                      content: const Text(
-                        'You will need to verify your phone again on this '
-                        'device. Your posts are not deleted.',
-                      ),
                       actions: [
                         TextButton(
                           onPressed: () =>

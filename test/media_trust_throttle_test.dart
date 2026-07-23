@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flut_marriage/config/feature_flags.dart';
 import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flut_marriage/services/account_services.dart';
@@ -95,6 +97,18 @@ void main() {
   test('action throttle fail-open skips when Firebase is not ready', () async {
     const throttle = ActionThrottleService(failClosed: false);
     await expectLater(throttle.claim(ThrottledAction.like), completes);
+  });
+
+  test('Play-store App Check copy is not used for throttle errors', () {
+    // Regression: web Save used to show "Install from Play" when App Check failed.
+    expect(
+      File('lib/services/action_throttle.dart').readAsStringSync(),
+      isNot(contains('Install from Play')),
+    );
+    expect(
+      File('lib/services/action_throttle.dart').readAsStringSync(),
+      contains('_isAppCheckInfrastructureFailure'),
+    );
   });
 
   test('seed feature flag: debug may use demos; release never does', () {

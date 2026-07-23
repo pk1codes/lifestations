@@ -259,7 +259,8 @@ class ListingPublisher {
     _assertTextSafe(card);
     var toWrite = card;
     if (FirebaseBootstrap.ready) {
-      // Auth + App Check must be ready before claimActionThrottle (enforceAppCheck).
+      // Auth must be ready before claimActionThrottle (rate limit).
+      // App Check is not required for post/like throttles.
       final user = await FirebaseBootstrap.ensureSignedIn();
       final policy = AppDomains.byId(card.domain);
       if (card.ownerId != user.uid) {

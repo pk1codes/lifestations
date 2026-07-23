@@ -19,9 +19,8 @@ class ActionThrottleService {
   /// Claims a server rate-limit slot.
   ///
   /// Always hard-fails on true quota (`resource-exhausted`).
-  /// In release, auth / network failures also hard-fail.
-  /// App Check is best-effort: web/incognito reCAPTCHA often fails even when
-  /// Storage uploads work; server throttles use auth + caps (not App Check).
+  /// App Check / attestation failures never block — phone Auth is enough for
+  /// throttles (web/incognito and sideload often lack a valid App Check token).
   Future<void> claim(ThrottledAction action) async {
     if (!FirebaseBootstrap.ready) {
       if (_failClosed) {
@@ -40,10 +39,13 @@ class ActionThrottleService {
       return;
     }
     try {
-      try {
-        await FirebaseAppCheck.instance.getToken(true);
-      } catch (error) {
-        if (kDebugMode) debugPrint('App Check warm skipped: $error');
+      // Best-effort only — never gate the action on App Check here.
+      if (!kIsWeb) {
+        try {
+          await FirebaseAppCheck.instance.getToken(true);
+        } catch (error) {
+          if (kDebugMode) debugPrint('App Check warm skipped: $error');
+        }
       }
       await FirebaseFunctions.instance
           .httpsCallable('claimActionThrottle')
@@ -51,6 +53,14 @@ class ActionThrottleService {
     } on FirebaseFunctionsException catch (error) {
       if (error.code == 'resource-exhausted') {
         throw StateError('Too many attempts. Try again later.');
+      }
+      if (_isAppCheckInfrastructureFailure(error)) {
+        // Project/console App Check can still reject callables before our
+        // function runs. Do not block post/like — Auth + local flow continue.
+        if (kDebugMode) {
+          debugPrint('Action throttle App Check bypassed: ${error.code}');
+        }
+        return;
       }
       if (_failClosed) {
         throw StateError(_friendlyThrottleError(error));
@@ -65,19 +75,23 @@ class ActionThrottleService {
     }
   }
 
+  /// App Check rejects often surface as failed-precondition before the handler.
+  static bool _isAppCheckInfrastructureFailure(FirebaseFunctionsException error) {
+    final blob = '${error.code} ${error.message ?? ''}'.toLowerCase();
+    if (blob.contains('app check') ||
+        blob.contains('app-check') ||
+        blob.contains('attestation') ||
+        blob.contains('firebase-app-check')) {
+      return true;
+    }
+    // Callable App Check enforcement uses this code when the token is missing.
+    return error.code == 'failed-precondition';
+  }
+
   String _friendlyThrottleError(FirebaseFunctionsException error) {
     final code = error.code.toLowerCase();
-    final message = (error.message ?? '').toLowerCase();
     if (code == 'unauthenticated') {
       return 'Sign in required. Try again.';
-    }
-    if (code == 'failed-precondition' ||
-        message.contains('app check') ||
-        message.contains('attestation')) {
-      if (kIsWeb) {
-        return 'Security check failed. Try a normal browser window.';
-      }
-      return 'App verification failed. Install from Play or try again.';
     }
     return 'Could not verify action limit. Try again.';
   }

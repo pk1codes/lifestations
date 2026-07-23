@@ -38,10 +38,12 @@ class FeedFetchThrottle {
     _hits.add(now);
     if (callRemote && FirebaseBootstrap.ready) {
       try {
-        try {
-          await FirebaseAppCheck.instance.getToken(true);
-        } catch (error) {
-          if (kDebugMode) debugPrint('Feed App Check warm skipped: $error');
+        if (!kIsWeb) {
+          try {
+            await FirebaseAppCheck.instance.getToken(true);
+          } catch (error) {
+            if (kDebugMode) debugPrint('Feed App Check warm skipped: $error');
+          }
         }
         final result = await FirebaseFunctions.instance
             .httpsCallable('checkFeedThrottle')
@@ -59,6 +61,24 @@ class FeedFetchThrottle {
           _hits.removeLast();
         }
         return allowed;
+      } on FirebaseFunctionsException catch (error) {
+        final blob = '${error.code} ${error.message ?? ''}'.toLowerCase();
+        final appCheck = blob.contains('app check') ||
+            blob.contains('app-check') ||
+            blob.contains('attestation') ||
+            error.code == 'failed-precondition';
+        if (appCheck) {
+          // Same as action throttle: Auth is enough; don't block Browse.
+          if (kDebugMode) {
+            debugPrint('Feed throttle App Check bypassed: ${error.code}');
+          }
+          return true;
+        }
+        if (kDebugMode) debugPrint('Feed throttle remote skipped: $error');
+        if (_failClosed) {
+          _hits.removeLast();
+          return false;
+        }
       } catch (error) {
         if (kDebugMode) debugPrint('Feed throttle remote skipped: $error');
         if (_failClosed) {
