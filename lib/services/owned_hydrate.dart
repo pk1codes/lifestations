@@ -14,6 +14,7 @@ Future<void> hydrateOwnedListings({
   required OwnedListingCache media,
   required ProfileStore marriage,
   required JobsOfferStore jobs,
+  required KuwaitJobsOfferStore kuwaitJobs,
   required RoomsOfferStore rooms,
   required BikesOfferStore bikes,
   required HomeHelpOfferStore homeHelp,
@@ -34,6 +35,14 @@ Future<void> hydrateOwnedListings({
       fromCard: marriageFromCard,
     ),
     _hydrateJobsOffers(ownerId: ownerId, media: media, store: jobs, repo: repo),
+    _hydrateOffers(
+      domain: AppDomainId.kuwaitJobs,
+      ownerId: ownerId,
+      media: media,
+      store: kuwaitJobs,
+      repo: repo,
+      fromCard: kuwaitJobsFromCard,
+    ),
     _hydrateOffers(
       domain: AppDomainId.rooms,
       ownerId: ownerId,
@@ -232,6 +241,46 @@ JobsProfile? jobsFromCard(DiscoveryCardModel card) {
     howMany: howMany != null && JobsProfile.howManyOptions.contains(howMany)
         ? howMany
         : (role == 'offer' ? JobsProfile.howManyOptions.first : null),
+  );
+}
+
+KuwaitJobsProfile? kuwaitJobsFromCard(DiscoveryCardModel card) {
+  if (card.domain != AppDomainId.kuwaitJobs) return null;
+  final attrs = card.attributes;
+  final role = card.role ?? attrs['role'] as String? ?? 'seek';
+  final trade = attrs['tradeId'] as String? ?? KuwaitJobsProfile.trades.first;
+  final country =
+      attrs['countryId'] as String? ??
+      (card.cityId.isNotEmpty ? card.cityId : 'kuwait');
+  final countryId = KuwaitJobsProfile.countryIds.contains(country)
+      ? country
+      : 'kuwait';
+  final bands = KuwaitJobsProfile.salaryBandsFor(countryId);
+  final salary = attrs['salaryBand'] as String? ?? bands.first;
+  final nationality =
+      attrs['nationality'] as String? ?? KuwaitJobsProfile.nationalities.first;
+  final experience =
+      attrs['experienceBand'] as String? ??
+      KuwaitJobsProfile.experienceBands.first;
+  final howMany = attrs['howMany'] as String?;
+  return KuwaitJobsProfile(
+    role: const {'seek', 'offer'}.contains(role) ? role : 'seek',
+    tradeId: KuwaitJobsProfile.trades.contains(trade)
+        ? trade
+        : KuwaitJobsProfile.trades.first,
+    countryId: countryId,
+    salaryBand: bands.contains(salary) ? salary : bands.first,
+    nationality: KuwaitJobsProfile.nationalities.contains(nationality)
+        ? nationality
+        : KuwaitJobsProfile.nationalities.first,
+    experienceBand: KuwaitJobsProfile.experienceBands.contains(experience)
+        ? experience
+        : KuwaitJobsProfile.experienceBands.first,
+    photoCount: card.imageUrls.length.clamp(0, 3),
+    howMany:
+        howMany != null && KuwaitJobsProfile.howManyOptions.contains(howMany)
+        ? howMany
+        : (role == 'offer' ? KuwaitJobsProfile.howManyOptions.first : null),
   );
 }
 

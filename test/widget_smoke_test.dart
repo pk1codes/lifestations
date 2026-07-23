@@ -12,7 +12,10 @@ void main() {
   testWidgets('shell renders synthetic Marriage feed and navigation', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({'domain_coach_seen': true});
+    SharedPreferences.setMockInitialValues({
+      'domain_coach_seen': true,
+      'selected_domain': AppDomainId.marriage.index,
+    });
     final prefs = await SharedPreferences.getInstance();
     final controller = DomainController(prefs);
     const seeds = SeedRepository();
@@ -44,10 +47,10 @@ void main() {
 
     await tester.tap(find.text('Me'));
     await tester.pumpAndSettle();
-    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Account'), findsWidgets);
     expect(find.byKey(const Key('page_domain_label')), findsWidgets);
     expect(find.text('Posts'), findsOneWidget);
-    expect(find.text('Name, phone, city'), findsOneWidget);
+    expect(find.text('Optional profile'), findsOneWidget);
     expect(find.text('Add one'), findsOneWidget);
     expect(find.text('Get more views'), findsNothing);
     expect(find.text('Settings & safety'), findsNothing);
@@ -76,6 +79,7 @@ void main() {
 
   test('saved Guide tab index clamps to Me', () async {
     SharedPreferences.setMockInitialValues({
+      'selected_domain': AppDomainId.marriage.index,
       'tab_marriage': 3,
       'domain_coach_seen': true,
     });

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,6 +13,59 @@ class PrivateContact {
   const PrivateContact({required this.whatsappNumber, this.telegramHandle});
   final String whatsappNumber;
   final String? telegramHandle;
+}
+
+/// Short starter so the user only has to tap Send in WhatsApp / Telegram.
+String contactOpenMessage({String? domainLabel}) {
+  final domain = domainLabel?.trim() ?? '';
+  if (domain.isNotEmpty) {
+    return 'Hi, I found you on Life Stations ($domain).';
+  }
+  return 'Hi, I found you on Life Stations.';
+}
+
+/// Digits-only E.164 without `+` (e.g. `919869610903`).
+String cleanWhatsAppDigits(String raw) => raw.replaceAll(RegExp(r'\D'), '');
+
+String cleanTelegramHandle(String raw) =>
+    raw.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+
+/// Prefer installed WhatsApp; `wa.me` / api.whatsapp.com prefills the chat.
+Uri buildWhatsAppNativeUri(String digits, {required String message}) {
+  final cleaned = cleanWhatsAppDigits(digits);
+  return Uri(
+    scheme: 'whatsapp',
+    host: 'send',
+    queryParameters: {'phone': cleaned, 'text': message},
+  );
+}
+
+Uri buildWhatsAppHttpsUri(String digits, {required String message}) {
+  final cleaned = cleanWhatsAppDigits(digits);
+  return Uri.https('wa.me', '/$cleaned', {'text': message});
+}
+
+/// Android often resolves this to the WhatsApp app (not Chrome).
+Uri buildWhatsAppApiUri(String digits, {required String message}) {
+  final cleaned = cleanWhatsAppDigits(digits);
+  return Uri.https('api.whatsapp.com', '/send', {
+    'phone': cleaned,
+    'text': message,
+  });
+}
+
+Uri buildTelegramNativeUri(String handle) {
+  final cleaned = cleanTelegramHandle(handle);
+  return Uri(
+    scheme: 'tg',
+    host: 'resolve',
+    queryParameters: {'domain': cleaned},
+  );
+}
+
+Uri buildTelegramHttpsUri(String handle) {
+  final cleaned = cleanTelegramHandle(handle);
+  return Uri.https('t.me', '/$cleaned');
 }
 
 class ContactService {
@@ -36,7 +90,7 @@ class ContactService {
     if (user == null || user.isAnonymous || user.phoneNumber == null) {
       throw StateError('Phone verification is required');
     }
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     if (FirebaseBootstrap.ready) {
       try {
         final result = await _functions
@@ -75,20 +129,79 @@ class ContactService {
     return null;
   }
 
-  Future<bool> openWhatsApp(String digits) async {
-    final cleaned = digits.replaceAll(RegExp(r'\D'), '');
+  /// Opens the phone WhatsApp app (or web) to [digits] with a ready-to-send message.
+  Future<bool> openWhatsApp(
+    String digits, {
+    String? domainLabel,
+    String? message,
+  }) async {
+    final cleaned = cleanWhatsAppDigits(digits);
     if (cleaned.length < 8) return false;
-    final uri = Uri.parse('https://wa.me/$cleaned');
-    if (!await canLaunchUrl(uri)) return false;
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
+    final text = (message ?? contactOpenMessage(domainLabel: domainLabel))
+        .trim();
+    final uris = <Uri>[
+      if (!kIsWeb) buildWhatsAppNativeUri(cleaned, message: text),
+      buildWhatsAppApiUri(cleaned, message: text),
+      buildWhatsAppHttpsUri(cleaned, message: text),
+    ];
+    for (final uri in uris) {
+      if (await _launchExternal(uri)) return true;
+    }
+    // Last resort so the user can still start the chat manually.
+    try {
+      await Clipboard.setData(ClipboardData(text: '+$cleaned'));
+    } catch (_) {}
+    return false;
   }
 
-  Future<bool> openTelegram(String handle) async {
-    final cleaned = handle.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+  /// Opens Telegram to [handle]. Message is copied so the user can paste & send
+  /// (Telegram user chats do not support WhatsApp-style URL prefills).
+  Future<bool> openTelegram(
+    String handle, {
+    String? domainLabel,
+    String? message,
+  }) async {
+    final cleaned = cleanTelegramHandle(handle);
     if (cleaned.length < 3) return false;
-    final uri = Uri.parse('https://t.me/$cleaned');
-    if (!await canLaunchUrl(uri)) return false;
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
+    final text = (message ?? contactOpenMessage(domainLabel: domainLabel))
+        .trim();
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (_) {}
+    final uris = <Uri>[
+      if (!kIsWeb) buildTelegramNativeUri(cleaned),
+      buildTelegramHttpsUri(cleaned),
+    ];
+    for (final uri in uris) {
+      if (await _launchExternal(uri)) return true;
+    }
+    return false;
+  }
+
+  /// Try hard to leave the app / browser and open the chat client.
+  Future<bool> _launchExternal(Uri uri) async {
+    if (kIsWeb) {
+      try {
+        return await launchUrl(
+          uri,
+          mode: LaunchMode.platformDefault,
+          webOnlyWindowName: '_blank',
+        );
+      } catch (error) {
+        if (kDebugMode) debugPrint('launch web failed: $error');
+        return false;
+      }
+    }
+    // Prefer non-browser so Android opens WhatsApp/Telegram, not Chrome.
+    for (final mode in <LaunchMode>[
+      LaunchMode.externalNonBrowserApplication,
+      LaunchMode.externalApplication,
+    ]) {
+      try {
+        if (await launchUrl(uri, mode: mode)) return true;
+      } catch (_) {}
+    }
+    return false;
   }
 }
 

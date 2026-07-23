@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppDomainId { marriage, jobs, rooms, bikes, homeHelp }
+enum AppDomainId { marriage, jobs, rooms, bikes, homeHelp, kuwaitJobs }
 
 enum DomainStorageKind { profiles, offers }
 
@@ -38,7 +38,11 @@ class DomainPolicy {
   final List<String> roles;
   final bool enabled;
 
-  String get slug => id == AppDomainId.homeHelp ? 'home_help' : id.name;
+  String get slug => switch (id) {
+    AppDomainId.homeHelp => 'home_help',
+    AppDomainId.kuwaitJobs => 'kuwait_jobs',
+    _ => id.name,
+  };
   String get collection => storageKind == DomainStorageKind.profiles
       ? 'domains/$slug/profiles'
       : 'domains/$slug/offers';
@@ -49,6 +53,22 @@ class DomainPolicy {
 }
 
 abstract final class AppDomains {
+  /// Kuwait Jobs — Gulf teal. Oilfield / camp roles (Available / Wanted).
+  static const kuwaitJobs = DomainPolicy(
+    id: AppDomainId.kuwaitJobs,
+    label: 'Kuwait Jobs',
+    frequency: 88.8,
+    color: Color(0xFF0F766E),
+    storageKind: DomainStorageKind.offers,
+    subject: OfferSubject.person,
+    mediaPolicy: MediaPolicy.face,
+    maxProfiles: 5,
+    minPhotos: 1,
+    maxPhotos: 3,
+    roles: <String>['seek', 'offer'],
+    enabled: true,
+  );
+
   /// Marriage — warm rose (love).
   static const marriage = DomainPolicy(
     id: AppDomainId.marriage,
@@ -129,7 +149,15 @@ abstract final class AppDomains {
     enabled: true,
   );
 
-  static const all = <DomainPolicy>[marriage, jobs, rooms, bikes, homeHelp];
+  /// Dial order: Kuwait Jobs first, then the original five.
+  static const all = <DomainPolicy>[
+    kuwaitJobs,
+    marriage,
+    jobs,
+    rooms,
+    bikes,
+    homeHelp,
+  ];
 
   static DomainPolicy byId(AppDomainId id) =>
       all.firstWhere((domain) => domain.id == id);

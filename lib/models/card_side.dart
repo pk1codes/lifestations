@@ -55,6 +55,21 @@ CardSideMark? cardSideMark(DiscoveryCardModel card) {
         icon: Icons.handyman_outlined,
         color: CardSideMark.supplyColor,
       );
+    case AppDomainId.kuwaitJobs:
+      if (card.role == 'offer') {
+        return const CardSideMark(
+          side: MarketplaceSide.demand,
+          label: 'Wanted',
+          icon: Icons.person_search_outlined,
+          color: CardSideMark.demandColor,
+        );
+      }
+      return const CardSideMark(
+        side: MarketplaceSide.supply,
+        label: 'Available',
+        icon: Icons.engineering_outlined,
+        color: CardSideMark.supplyColor,
+      );
     case AppDomainId.homeHelp:
       if (card.role == 'need') {
         return const CardSideMark(
@@ -119,6 +134,7 @@ String cardTitleLine(DiscoveryCardModel card, {bool allowFallback = true}) {
       if (age.isNotEmpty) return age;
       return allowFallback ? _fallbackTitle(card) : '';
     case AppDomainId.jobs:
+    case AppDomainId.kuwaitJobs:
       final trade = _firstNonEmpty([
         attrs['tradeId'] as String?,
         if (card.categoryTags.isNotEmpty) card.categoryTags.first,
@@ -174,6 +190,20 @@ String cardFactLine(DiscoveryCardModel card) {
         return payLine.isEmpty ? 'Need $howMany' : 'Need $howMany · $payLine';
       }
       return payLine;
+    case AppDomainId.kuwaitJobs:
+      final howMany = (attrs['howMany'] as String?)?.trim() ?? '';
+      final pay = (attrs['salaryBand'] as String?)?.trim() ?? '';
+      final payLine = pay.isNotEmpty ? pay : _moneyFromSubtitle(card.subtitle);
+      final nationality = (attrs['nationality'] as String?)?.trim() ?? '';
+      final experience = (attrs['experienceBand'] as String?)?.trim() ?? '';
+      final bits = <String>[
+        if (card.role == 'offer' && howMany.isNotEmpty) 'Need $howMany',
+        if (payLine.isNotEmpty) payLine,
+        if (nationality.isNotEmpty) nationality,
+        if (experience.isNotEmpty) experience,
+      ];
+      if (bits.isNotEmpty) return bits.join(' · ');
+      return '';
     case AppDomainId.rooms:
       final rent = attrs['monthlyRent'];
       if (rent != null) return '₹$rent/month';

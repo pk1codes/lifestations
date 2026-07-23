@@ -2,7 +2,6 @@ import 'package:flut_marriage/models/app_domain.dart';
 import 'package:flut_marriage/models/discovery_card.dart';
 import 'package:flut_marriage/services/likes_repository.dart';
 import 'package:flut_marriage/state/app_stores.dart';
-import 'package:flut_marriage/widgets/onboarding/whatsapp_gate_sheet.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Skips Firestore so like-back cascade can be proven in-memory.
@@ -40,7 +39,7 @@ void main() {
     expect(likes.isMutual(AppDomainId.jobs, 'user1'), isFalse);
     expect(likes.chatIconsActive(AppDomainId.jobs, 'user1'), isFalse);
 
-    // U2 Like back (same as _likeBack after WhatsApp gate).
+    // U2 Like back (after phone OTP — same as Me verify).
     final mutual = await likes.like(
       AppDomainId.jobs,
       'user1',
@@ -84,10 +83,5 @@ void main() {
       isFalse,
       reason: 'OTP still required at chat unlock, not at like-back',
     );
-    expect(
-      whatsAppGateTitle(WhatsAppGatePurpose.likeBack),
-      'Add WhatsApp to accept',
-    );
-    expect(whatsAppGateCta(WhatsAppGatePurpose.likeBack), 'Save & accept');
   });
 }

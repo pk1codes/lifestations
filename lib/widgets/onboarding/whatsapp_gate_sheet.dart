@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +10,7 @@ import '../../services/phone_number.dart';
 import '../../state/app_stores.dart';
 import '../../theme/app_theme.dart';
 import '../forms/dial_code_phone_field.dart';
+import 'otp_sheet.dart';
 
 bool hasWhatsAppNumber(Identity identity) {
   return isValidE164Digits(identity.whatsappNumber);
@@ -15,18 +18,21 @@ bool hasWhatsAppNumber(Identity identity) {
 
 /// Why the WhatsApp sheet opened — drives title + primary CTA copy.
 enum WhatsAppGatePurpose {
-  /// Browse ♥ — Screen A.
+  /// Browse ♥ — Screen A (legacy copy; like now uses OTP).
   like,
 
-  /// Liked me → Accept — chat — Screen B.
+  /// Liked me → Accept (legacy copy; accept now uses OTP).
   likeBack,
 
   /// Publish / other actions (generic continue).
   continueAction,
+
+  /// User chose a different number for WhatsApp / Telegram share.
+  contactShare,
 }
 
 /// Returns true if WhatsApp is already saved, or the user just saved it.
-/// Returns false if they cancel. Use before like, like-back, or publish.
+/// Returns false if they cancel. Use before publish when a vault number is needed.
 ///
 /// After a number exists locally, re-syncs the contact vault under a live
 /// auth uid so unlockContact does not fail with "Phone not ready".
@@ -52,6 +58,80 @@ Future<bool> ensureWhatsAppForAction(
   return hasWhatsAppNumber(store.identity);
 }
 
+/// WhatsApp / Telegram tap: verify phone if needed, then same-or-other number.
+Future<bool> ensureContactShareForChat(BuildContext context) async {
+  final verified = await ensurePhoneVerifiedForAction(context);
+  if (!verified || !context.mounted) return false;
+
+  final store = context.read<IdentityStore>();
+  if (store.identity.contactShareChosen &&
+      hasWhatsAppNumber(store.identity)) {
+    return true;
+  }
+
+  final useSame = await showDialog<bool>(
+    context: context,
+    builder: (ctx) {
+      final phone = store.identity.whatsappNumber;
+      final label = phone.isEmpty
+          ? 'your verified phone'
+          : '+$phone';
+      return AlertDialog(
+        key: const Key('contact_share_choice_dialog'),
+        title: const Text('WhatsApp number'),
+        content: Text(
+          'Use $label for WhatsApp and Telegram?',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('contact_share_different'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Different number'),
+          ),
+          FilledButton(
+            key: const Key('contact_share_same'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Use same'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (!context.mounted || useSame == null) return false;
+
+  if (useSame) {
+    if (!hasWhatsAppNumber(store.identity)) {
+      // Verified but empty local digits — collect once.
+      final ok = await showWhatsAppGateSheet(
+        context,
+        purpose: WhatsAppGatePurpose.contactShare,
+      );
+      if (!ok || !context.mounted) return false;
+    }
+    await store.save(
+      store.identity.copyWith(contactShareChosen: true),
+    );
+    try {
+      await IdentityRepository().sync(store.identity);
+    } catch (_) {}
+    return hasWhatsAppNumber(store.identity);
+  }
+
+  final ok = await showWhatsAppGateSheet(
+    context,
+    purpose: WhatsAppGatePurpose.contactShare,
+  );
+  if (!ok || !context.mounted) return false;
+  await store.save(
+    store.identity.copyWith(contactShareChosen: true),
+  );
+  try {
+    await IdentityRepository().sync(store.identity);
+  } catch (_) {}
+  return hasWhatsAppNumber(store.identity);
+}
+
 Future<bool> showWhatsAppGateSheet(
   BuildContext context, {
   WhatsAppGatePurpose purpose = WhatsAppGatePurpose.continueAction,
@@ -70,6 +150,7 @@ String whatsAppGateTitle(WhatsAppGatePurpose purpose) => switch (purpose) {
   WhatsAppGatePurpose.like => 'Add WhatsApp to like',
   WhatsAppGatePurpose.likeBack => 'Add WhatsApp to accept',
   WhatsAppGatePurpose.continueAction => 'Add WhatsApp to continue',
+  WhatsAppGatePurpose.contactShare => 'WhatsApp for chat',
 };
 
 @visibleForTesting
@@ -77,22 +158,19 @@ String whatsAppGateCta(WhatsAppGatePurpose purpose) => switch (purpose) {
   WhatsAppGatePurpose.like => 'Save & like',
   WhatsAppGatePurpose.likeBack => 'Save & accept',
   WhatsAppGatePurpose.continueAction => 'Save & continue',
+  WhatsAppGatePurpose.contactShare => 'Save number',
 };
 
 @visibleForTesting
 String whatsAppGateBody(WhatsAppGatePurpose purpose) => switch (purpose) {
   WhatsAppGatePurpose.like =>
-    'People who like you back need a way to reach you. '
-        'Your number stays private until both are interested '
-        'and phone-verified.',
+    'Add your number so matches can reach you. It stays private until both like.',
   WhatsAppGatePurpose.likeBack =>
-    'To accept and chat, add WhatsApp. '
-        'Your number stays private until both are interested '
-        'and phone-verified.',
+    'Add your number to accept. It stays private until both like.',
   WhatsAppGatePurpose.continueAction =>
-    'Others need a way to reach you after a match. '
-        'Your number stays private until both are interested '
-        'and phone-verified.',
+    'Add your number so matches can reach you. It stays private until both like.',
+  WhatsAppGatePurpose.contactShare =>
+    'This number is for WhatsApp only — not your login phone.',
 };
 
 class _WhatsAppGateSheet extends StatefulWidget {
@@ -119,7 +197,11 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
       fallback: PhoneDialCode.fromDigits(current.dialCodePreference),
     );
     _dial = parts.dial;
-    _phone = TextEditingController(text: parts.national);
+    _phone = TextEditingController(
+      text: widget.purpose == WhatsAppGatePurpose.contactShare
+          ? ''
+          : parts.national,
+    );
   }
 
   @override
@@ -143,6 +225,10 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
         store.identity.copyWith(
           whatsappNumber: e164,
           dialCodePreference: _dial.digits,
+          contactShareChosen:
+              widget.purpose == WhatsAppGatePurpose.contactShare
+              ? true
+              : store.identity.contactShareChosen,
         ),
       );
       // Force vault write even when public identity fields are incomplete.
@@ -194,6 +280,9 @@ class _WhatsAppGateSheetState extends State<_WhatsAppGateSheet> {
               label: 'WhatsApp number',
               autofocus: true,
               onDialChanged: (code) => setState(() => _dial = code),
+              onComplete: () {
+                if (!_busy) unawaited(_saveAndContinue());
+              },
             ),
             const SizedBox(height: 18),
             FilledButton(

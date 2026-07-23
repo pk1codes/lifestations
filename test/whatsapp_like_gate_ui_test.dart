@@ -12,7 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Me shows WhatsApp needed pill when number missing', (
+  testWidgets('Me shows verify pill when phone not verified', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({'domain_coach_seen': true});

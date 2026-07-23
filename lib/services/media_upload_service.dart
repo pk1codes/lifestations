@@ -76,7 +76,7 @@ class MediaUploadService {
       await _faceGate.requireSingleFace(image.large);
     }
     await _requireSafeSearch(image.medium);
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     final prefix = 'profile_photos/$uid/$slug/$slot';
     return _putVariants(prefix, image, onProgress: onProgress);
   }
@@ -90,7 +90,7 @@ class MediaUploadService {
     void Function(double progress)? onProgress,
   }) async {
     await _requireSafeSearch(image.medium);
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     final prefix = 'media/$uid/$slug/$offerId/$slot';
     return _putVariants(prefix, image, onProgress: onProgress);
   }

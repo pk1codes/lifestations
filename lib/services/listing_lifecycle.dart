@@ -50,6 +50,7 @@ class ListingLifecycleService {
     required OwnedListingCache media,
     required ProfileStore marriage,
     required JobsOfferStore jobs,
+    required KuwaitJobsOfferStore kuwaitJobs,
     required RoomsOfferStore rooms,
     required BikesOfferStore bikes,
     required HomeHelpOfferStore homeHelp,
@@ -76,6 +77,13 @@ class ListingLifecycleService {
           domain: AppDomainId.jobs,
           index: post.offerIndex,
           store: jobs,
+          media: media,
+        );
+      case AppDomainId.kuwaitJobs:
+        await _deleteOfferSlot(
+          domain: AppDomainId.kuwaitJobs,
+          index: post.offerIndex,
+          store: kuwaitJobs,
           media: media,
         );
       case AppDomainId.rooms:

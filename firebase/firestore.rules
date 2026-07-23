@@ -20,7 +20,7 @@ service cloud.firestore {
     }
 
     function allowedDomain(domainId) {
-      return domainId in ['marriage', 'jobs', 'rooms', 'bikes', 'home_help'];
+      return domainId in ['marriage', 'jobs', 'rooms', 'bikes', 'home_help', 'kuwait_jobs'];
     }
 
     // Same-domain mutual interest (not cross-domain mix-and-match).
@@ -38,7 +38,8 @@ service cloud.firestore {
         || mutualLikeInDomain('jobs', targetUid)
         || mutualLikeInDomain('rooms', targetUid)
         || mutualLikeInDomain('bikes', targetUid)
-        || mutualLikeInDomain('home_help', targetUid);
+        || mutualLikeInDomain('home_help', targetUid)
+        || mutualLikeInDomain('kuwait_jobs', targetUid);
     }
 
     function validGender() {
@@ -231,7 +232,7 @@ service cloud.firestore {
     function validOffer(domainId) {
       let d = request.resource.data;
       return allowedDomain(domainId)
-        && domainId in ['rooms', 'bikes', 'home_help', 'jobs']
+        && domainId in ['rooms', 'bikes', 'home_help', 'jobs', 'kuwait_jobs']
         && validDiscoveryListing(domainId)
         && d.photoUrls.size() <= 8
         && (!('body' in d) || (d.body is string && d.body.size() <= 400));

@@ -36,8 +36,9 @@ void main() {
     expect(find.text('Marriage · intentional'), findsOneWidget);
     expect(find.text('Mumbai & MMR'), findsOneWidget);
     expect(find.text('Marriage'), findsWidgets);
-    expect(find.textContaining('never included'), findsOneWidget);
-    expect(find.text('Explore safely'), findsOneWidget);
+    expect(find.textContaining('blurred'), findsOneWidget);
+    expect(find.text('Get the app'), findsOneWidget);
+    expect(find.text('Open in Life Stations'), findsOneWidget);
   });
 
   testWidgets('promoted share card explains Top badge', (tester) async {
@@ -66,8 +67,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Top'), findsOneWidget);
     expect(find.text('Self-attested ID'), findsOneWidget);
-    expect(find.textContaining('boosted visibility'), findsOneWidget);
-    expect(find.textContaining('not a check by us'), findsOneWidget);
+    expect(find.text('Get the app'), findsOneWidget);
   });
 
   testWidgets('missing share slug shows not found', (tester) async {

@@ -1,7 +1,7 @@
 name: flut_marriage
 description: Low-friction multi-domain discovery for India.
 publish_to: none
-version: 3.0.39+43
+version: 3.0.56+60
 
 environment:
   sdk: ^3.12.2
@@ -40,6 +40,8 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.5
   intl: ^0.20.2
+  play_install_referrer: ^0.5.0
+  app_links: ^7.2.1
 
 dev_dependencies:
   flutter_test:
@@ -64,13 +66,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/audio/
-    - initial_seeds/
-    - initial_seeds/photos/
-    - initial_seeds/jobs/
-    - initial_seeds/jobs/photos/
-    - initial_seeds/rooms/
-    - initial_seeds/rooms/photos/
-    - initial_seeds/bikes/
-    - initial_seeds/bikes/photos/
-    - initial_seeds/home_help/
-    - initial_seeds/home_help/photos/
+    # initial_seeds/ WebPs stay on disk for scripts/tests only — never ship in
+    # release AAB/APK/web (~43MB). Release Browse uses live feed or empty state.

@@ -152,6 +152,7 @@ class Identity {
     this.photoUrls = const <String>[],
     this.phoneVerified = false,
     this.dialCodePreference = '91',
+    this.contactShareChosen = false,
   });
 
   final String userId;
@@ -165,6 +166,9 @@ class Identity {
 
   /// Last chosen dial digits (`91` or `965`) for Account / OTP chips.
   final String dialCodePreference;
+
+  /// User answered “same verified number vs different WhatsApp number”.
+  final bool contactShareChosen;
 
   bool get isValid =>
       displayName.trim().length >= 2 &&
@@ -183,6 +187,7 @@ class Identity {
     List<String>? photoUrls,
     bool? phoneVerified,
     String? dialCodePreference,
+    bool? contactShareChosen,
   }) => Identity(
     userId: userId ?? this.userId,
     displayName: displayName ?? this.displayName,
@@ -193,5 +198,6 @@ class Identity {
     photoUrls: photoUrls ?? this.photoUrls,
     phoneVerified: phoneVerified ?? this.phoneVerified,
     dialCodePreference: dialCodePreference ?? this.dialCodePreference,
+    contactShareChosen: contactShareChosen ?? this.contactShareChosen,
   );
 }

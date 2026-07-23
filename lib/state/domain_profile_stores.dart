@@ -175,6 +175,73 @@ Map<String, Object?> _jobsToMap(JobsProfile value) => {
   if (value.howMany != null) 'howMany': value.howMany,
 };
 
+/// Multi Kuwait Jobs listings (Available / Wanted).
+class KuwaitJobsOfferStore extends MultiOfferStore<KuwaitJobsProfile> {
+  KuwaitJobsOfferStore({SharedPreferences? preferences})
+    : super(AppDomainId.kuwaitJobs, preferences: preferences);
+
+  static const _key = 'owned_kuwait_jobs_offers_json';
+
+  @override
+  void loadPersisted() {
+    final listRaw = prefs?.getStringList(_key);
+    if (listRaw == null || listRaw.isEmpty) return;
+    final loaded = <KuwaitJobsProfile>[];
+    for (final item in listRaw) {
+      try {
+        loaded.add(
+          _kuwaitJobsFromMap(jsonDecode(item) as Map<String, dynamic>),
+        );
+      } catch (_) {}
+    }
+    setOffersForLoad(loaded);
+  }
+
+  @override
+  void persistOffers() {
+    final p = prefs;
+    if (p == null) return;
+    unawaited(
+      p.setStringList(
+        _key,
+        offers
+            .map((o) => jsonEncode(_kuwaitJobsToMap(o)))
+            .toList(growable: false),
+      ),
+    );
+  }
+}
+
+KuwaitJobsProfile _kuwaitJobsFromMap(Map<String, dynamic> map) {
+  final country = map['countryId'] as String? ?? 'kuwait';
+  final bands = KuwaitJobsProfile.salaryBandsFor(country);
+  final salary = map['salaryBand'] as String? ?? bands.first;
+  return KuwaitJobsProfile(
+    role: map['role'] as String? ?? 'seek',
+    tradeId: map['tradeId'] as String? ?? KuwaitJobsProfile.trades.first,
+    countryId: country,
+    salaryBand: bands.contains(salary) ? salary : bands.first,
+    nationality:
+        map['nationality'] as String? ?? KuwaitJobsProfile.nationalities.first,
+    experienceBand:
+        map['experienceBand'] as String? ??
+        KuwaitJobsProfile.experienceBands.first,
+    photoCount: map['photoCount'] as int? ?? 0,
+    howMany: map['howMany'] as String?,
+  );
+}
+
+Map<String, Object?> _kuwaitJobsToMap(KuwaitJobsProfile value) => {
+  'role': value.role,
+  'tradeId': value.tradeId,
+  'countryId': value.countryId,
+  'salaryBand': value.salaryBand,
+  'nationality': value.nationality,
+  'experienceBand': value.experienceBand,
+  'photoCount': value.photoCount,
+  if (value.howMany != null) 'howMany': value.howMany,
+};
+
 abstract class MultiOfferStore<T> extends ChangeNotifier {
   MultiOfferStore(this.domain, {SharedPreferences? preferences})
     : _prefs = preferences {
@@ -489,6 +556,46 @@ class JobsDiscoverPrefsStore extends ChangeNotifier {
     cityId = null;
     role = null;
     tradeId = null;
+    notifyListeners();
+  }
+}
+
+class KuwaitJobsDiscoverPrefsStore extends ChangeNotifier {
+  String? countryId;
+  String? role;
+  String? tradeId;
+  String? nationality;
+  String? experienceBand;
+
+  bool get hasActive =>
+      (countryId != null && countryId!.isNotEmpty) ||
+      (role != null && role!.isNotEmpty) ||
+      (tradeId != null && tradeId!.isNotEmpty) ||
+      (nationality != null && nationality!.isNotEmpty) ||
+      (experienceBand != null && experienceBand!.isNotEmpty);
+
+  void update({
+    String? country,
+    String? roleValue,
+    String? trade,
+    String? nationalityValue,
+    String? experience,
+  }) {
+    countryId = country;
+    role = roleValue;
+    tradeId = trade;
+    nationality = nationalityValue;
+    experienceBand = experience;
+    notifyListeners();
+  }
+
+  void clear() {
+    if (!hasActive) return;
+    countryId = null;
+    role = null;
+    tradeId = null;
+    nationality = null;
+    experienceBand = null;
     notifyListeners();
   }
 }

@@ -77,6 +77,35 @@ class ListingPublisher {
     },
   );
 
+  DiscoveryCardModel buildKuwaitJobsCard({
+    required String ownerId,
+    required KuwaitJobsProfile profile,
+    required String offerId,
+    List<String> photoUrls = const <String>[],
+  }) => DiscoveryCardModel(
+    id: offerId,
+    domain: AppDomainId.kuwaitJobs,
+    ownerId: ownerId,
+    title: profile.tradeId,
+    subtitle: profile.salaryBand,
+    cityId: profile.countryId,
+    cityLabel:
+        KuwaitJobsProfile.countryLabels[profile.countryId] ??
+        profile.countryId,
+    categoryTags: [profile.tradeId],
+    imageUrls: photoUrls,
+    role: profile.role,
+    attributes: {
+      'tradeId': profile.tradeId,
+      'salaryBand': profile.salaryBand,
+      'countryId': profile.countryId,
+      'nationality': profile.nationality,
+      'experienceBand': profile.experienceBand,
+      if (profile.isDemand && profile.howMany != null)
+        'howMany': profile.howMany,
+    },
+  );
+
   DiscoveryCardModel buildRoomsCard({
     required String ownerId,
     required RoomsOffer offer,
@@ -162,6 +191,20 @@ class ListingPublisher {
     List<String> photoUrls = const <String>[],
   }) => _persist(
     buildJobsCard(
+      ownerId: ownerId,
+      profile: profile,
+      offerId: offerId,
+      photoUrls: photoUrls,
+    ),
+  );
+
+  Future<DiscoveryCardModel> publishKuwaitJobs({
+    required String ownerId,
+    required KuwaitJobsProfile profile,
+    required String offerId,
+    List<String> photoUrls = const <String>[],
+  }) => _persist(
+    buildKuwaitJobsCard(
       ownerId: ownerId,
       profile: profile,
       offerId: offerId,

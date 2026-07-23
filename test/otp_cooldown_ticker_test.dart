@@ -14,7 +14,10 @@ int? _secondsFromCooldown(String? text) {
 
 void main() {
   testWidgets('OTP cooldown error ticks down every second', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'identity_phone': '919869610903',
+      'identity_dial_code': '91',
+    });
     final prefs = await SharedPreferences.getInstance();
     final identity = IdentityStore(prefs);
     final throttle = OtpThrottle(
@@ -33,8 +36,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextFormField).first, '9869610903');
-    await tester.tap(find.text('Send SMS code'));
+    await tester.tap(find.text('Send code'));
     await tester.pump();
 
     expect(find.textContaining('Try again in'), findsOneWidget);

@@ -1,5 +1,6 @@
 import '../models/app_domain.dart';
 import '../models/discovery_card.dart';
+import '../models/domain_profiles.dart';
 
 class SeedRepository {
   const SeedRepository();
@@ -15,20 +16,23 @@ class SeedRepository {
     return List<DiscoveryCardModel>.generate(9, (index) {
       final city = cities[index ~/ 3];
       final detail = _detail(domain, index);
+      final countryId = detail.attributes['countryId'] as String?;
+      final cityId = countryId ?? city.$1;
+      final cityLabel = countryId != null
+          ? (KuwaitJobsProfile.countryLabels[countryId] ?? countryId)
+          : city.$2;
       return DiscoveryCardModel(
         id: 'demo_${policy.slug}_${index + 1}',
         domain: domain,
         ownerId: 'demo_owner_${policy.slug}_${index + 1}',
         title: detail.title,
         subtitle: detail.subtitle,
-        cityId: city.$1,
-        cityLabel: city.$2,
+        cityId: cityId,
+        cityLabel: cityLabel,
         categoryTags: detail.tags,
-        imageUrls: List<String>.generate(
-          3,
-          (photo) =>
-              'initial_seeds/${policy.slug == 'marriage' ? '' : '${policy.slug}/'}photos/${policy.slug}_${index + 1}_${photo + 1}.webp',
-        ),
+        // Seed WebPs are not Flutter assets (keeps release AAB lean).
+        // Debug demos use placeholder artwork in the UI.
+        imageUrls: const <String>[],
         role: detail.role,
         ageBand: detail.ageBand,
         attributes: detail.attributes,
@@ -64,6 +68,33 @@ class SeedRepository {
           tags: [trade.toLowerCase()],
           role: role,
           attributes: {'synthetic': true, 'tradeId': trade, 'salaryBand': pay},
+        );
+      case AppDomainId.kuwaitJobs:
+        final trades = <String>['Driller', 'Cook', 'Driver-Pickup'];
+        final trade = trades[index % 3];
+        final role = index.isEven ? 'seek' : 'offer';
+        final countries = <String>['kuwait', 'saudi', 'uae'];
+        final country = countries[index % 3];
+        final nationality = <String>['Indian', 'Pakistan', 'Egyptian'][index % 3];
+        final experience = <String>['0–1', '1–3', '5+'][index % 3];
+        final pay = <String>[
+          'KWD 200–400/mo',
+          'SAR 200–400/mo',
+          'AED 200–400/mo',
+        ][index % 3];
+        return _SeedDetail(
+          title: trade,
+          subtitle: pay,
+          tags: [trade.toLowerCase()],
+          role: role,
+          attributes: {
+            'synthetic': true,
+            'tradeId': trade,
+            'salaryBand': pay,
+            'countryId': country,
+            'nationality': nationality,
+            'experienceBand': experience,
+          },
         );
       case AppDomainId.rooms:
         final types = <String>['Room', 'Studio', '1 BHK'];

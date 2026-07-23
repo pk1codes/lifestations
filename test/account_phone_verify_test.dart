@@ -8,7 +8,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Account shows Verify phone when not verified', (tester) async {
+  testWidgets('Account is profile-only; Verify opens phone OTP path', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final store = IdentityStore(prefs);
@@ -42,14 +44,15 @@ void main() {
     await tester.tap(find.text('Open account'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('account_verify_phone')), findsOneWidget);
-    expect(find.text('Verify phone (SMS)'), findsOneWidget);
-    expect(find.text('Phone verified'), findsNothing);
+    expect(find.text('Optional. Phone verify is separate.'), findsOneWidget);
+    expect(find.text('Name (optional)'), findsOneWidget);
+    expect(find.byKey(const Key('account_open_phone_verify')), findsOneWidget);
+    expect(find.text('Verify'), findsOneWidget);
+    // No second editable phone dial on Account (OTP owns that).
+    expect(find.text('WhatsApp number'), findsNothing);
   });
 
-  testWidgets('Account shows Phone verified badge after OTP done', (
-    tester,
-  ) async {
+  testWidgets('Account shows Phone verified when done', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final store = IdentityStore(prefs);
@@ -84,10 +87,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Phone verified'), findsOneWidget);
-    expect(find.byKey(const Key('account_verify_phone')), findsNothing);
+    expect(find.text('Change'), findsOneWidget);
   });
 
-  test('changing WhatsApp number clears phoneVerified on save', () async {
+  test('OTP number change clears phoneVerified', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final store = IdentityStore(prefs);
@@ -101,9 +104,6 @@ void main() {
         phoneVerified: true,
       ),
     );
-    expect(store.identity.phoneVerified, isTrue);
-
-    // Mimic Account save when digits changed.
     final phoneChanged = '96590977001' != store.identity.whatsappNumber;
     await store.save(
       store.identity.copyWith(
@@ -112,15 +112,11 @@ void main() {
       ),
     );
     expect(store.identity.phoneVerified, isFalse);
-    expect(prefs.getBool('identity_phone_verified'), isFalse);
   });
 
-  test('mutual + phoneVerified → unlock allowed (no OTP gate)', () {
+  test('mutual unlock still requires phoneVerified', () {
     final likes = LikesStore();
-    // Inbound + outbound presence for mutual without Firebase.
     likes.receiveLike(AppDomainId.marriage, 'peer');
-    // Force outbound locally via receiveLike then check canUnlock needs both.
-    // Use the same contract as WhatsApp open: verified + mutual.
     expect(
       likes.canUnlock(
         domain: AppDomainId.marriage,

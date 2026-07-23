@@ -49,6 +49,7 @@ void main() {
         ownerId: 'u1',
         marriage: ProfileStore(prefs),
         jobs: jobs,
+        kuwaitJobs: KuwaitJobsOfferStore(preferences: prefs),
         rooms: RoomsOfferStore(preferences: prefs),
         bikes: BikesOfferStore(preferences: prefs),
         homeHelp: HomeHelpOfferStore(preferences: prefs),

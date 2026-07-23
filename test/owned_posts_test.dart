@@ -59,6 +59,7 @@ void main() {
       ownerId: 'u1',
       marriage: marriage,
       jobs: jobs,
+      kuwaitJobs: KuwaitJobsOfferStore(),
       rooms: rooms,
       bikes: bikes,
       homeHelp: homeHelp,

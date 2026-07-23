@@ -30,6 +30,7 @@ void main() {
     for (final domain in AppDomains.all) {
       expect(find.byKey(Key('domain_tile_${domain.id.name}')), findsOneWidget);
     }
+    expect(find.text('KW Jobs'), findsOneWidget);
     expect(find.text('Marriage'), findsOneWidget);
     expect(find.text('Jobs'), findsOneWidget);
     expect(find.text('Rooms'), findsOneWidget);

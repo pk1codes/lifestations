@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 String domainShortLine(AppDomainId id) => switch (id) {
   AppDomainId.marriage => 'Find a life partner',
   AppDomainId.jobs => 'Find work',
+  AppDomainId.kuwaitJobs => 'Find Kuwait work',
   AppDomainId.rooms => 'Find a room',
   AppDomainId.bikes => 'Rent a bike',
   AppDomainId.homeHelp => 'Get help at home',
@@ -17,6 +18,7 @@ String domainPostLine(AppDomainId id, [AppLocalizations? l10n]) {
   final key = switch (id) {
     AppDomainId.marriage => 'postMarriage',
     AppDomainId.jobs => 'postJobs',
+    AppDomainId.kuwaitJobs => 'postKuwaitJobs',
     AppDomainId.rooms => 'postRooms',
     AppDomainId.bikes => 'postBikes',
     AppDomainId.homeHelp => 'postHomeHelp',
@@ -42,6 +44,7 @@ class DomainTilePicker extends StatelessWidget {
   static const icons = <AppDomainId, IconData>{
     AppDomainId.marriage: Icons.favorite,
     AppDomainId.jobs: Icons.work,
+    AppDomainId.kuwaitJobs: Icons.engineering,
     AppDomainId.rooms: Icons.hotel,
     AppDomainId.bikes: Icons.pedal_bike,
     AppDomainId.homeHelp: Icons.cleaning_services,
@@ -55,6 +58,8 @@ class DomainTilePicker extends StatelessWidget {
     switch (id) {
       case AppDomainId.homeHelp:
         return 'Help';
+      case AppDomainId.kuwaitJobs:
+        return 'KW Jobs';
       case AppDomainId.marriage:
       case AppDomainId.jobs:
       case AppDomainId.rooms:

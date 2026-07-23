@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('dial code is a dropdown defaulting to India', (tester) async {
+  testWidgets('dial code chips default to India with national digits only', (
+    tester,
+  ) async {
     var dial = PhoneDialCode.india;
     final phone = TextEditingController();
 
@@ -20,15 +22,20 @@ void main() {
       ),
     );
 
-    expect(find.byType(DropdownButtonFormField<PhoneDialCode>), findsOneWidget);
-    expect(find.text('+91 India'), findsOneWidget);
-    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byType(ChoiceChip), findsNWidgets(PhoneDialCode.all.length));
+    expect(find.text('+91'), findsOneWidget);
+    expect(find.text('+965'), findsOneWidget);
+    expect(find.text('India +91'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<PhoneDialCode>), findsNothing);
+
+    expect(find.text('9876543210'), findsOneWidget);
+    expect(find.text('9869610903'), findsNothing);
 
     await tester.enterText(find.byType(TextFormField), '9869610903');
     expect(phone.text, '9869610903');
   });
 
-  testWidgets('user can pick Kuwait from dropdown', (tester) async {
+  testWidgets('user can pick Kuwait chip', (tester) async {
     var dial = PhoneDialCode.india;
     final phone = TextEditingController();
 
@@ -48,12 +55,10 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byType(DropdownButtonFormField<PhoneDialCode>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('+965 Kuwait').last);
+    await tester.tap(find.byKey(const Key('dial_965')));
     await tester.pumpAndSettle();
 
     expect(dial, PhoneDialCode.kuwait);
-    expect(find.text('+965 Kuwait'), findsWidgets);
+    expect(find.text('Kuwait +965'), findsOneWidget);
   });
 }

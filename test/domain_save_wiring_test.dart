@@ -124,10 +124,11 @@ void main() {
     expect(card.role, 'have');
   });
 
-  test('all five domains are enabled for New post / Save', () {
+  test('all domains are enabled for New post / Save', () {
     expect(
       AppDomains.all.where((d) => d.enabled).map((d) => d.id),
       containsAll([
+        AppDomainId.kuwaitJobs,
         AppDomainId.marriage,
         AppDomainId.jobs,
         AppDomainId.rooms,

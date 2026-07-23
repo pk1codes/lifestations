@@ -10,7 +10,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Section C UI matrix — automated smoke for shell + domain switch + feeds.
 void main() {
   Future<void> pumpApp(WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({'domain_coach_seen': true});
+    SharedPreferences.setMockInitialValues({
+      'domain_coach_seen': true,
+      'selected_domain': AppDomainId.marriage.index,
+    });
     final prefs = await SharedPreferences.getInstance();
     final controller = DomainController(prefs);
     const seeds = SeedRepository();

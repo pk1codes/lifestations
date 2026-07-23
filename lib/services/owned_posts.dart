@@ -10,6 +10,7 @@ List<OwnedPost> collectOwnedPosts({
   required String ownerId,
   required ProfileStore marriage,
   required JobsOfferStore jobs,
+  required KuwaitJobsOfferStore kuwaitJobs,
   required RoomsOfferStore rooms,
   required BikesOfferStore bikes,
   required HomeHelpOfferStore homeHelp,
@@ -48,6 +49,23 @@ List<OwnedPost> collectOwnedPosts({
               photoUrls: media.photos(AppDomainId.jobs, i),
             )
             .copyWith(active: media.isActive(AppDomainId.jobs, i)),
+      ),
+    );
+  }
+
+  for (var i = 0; i < kuwaitJobs.offers.length; i++) {
+    out.add(
+      OwnedPost(
+        domain: AppDomainId.kuwaitJobs,
+        offerIndex: i,
+        card: cards
+            .buildKuwaitJobsCard(
+              ownerId: ownerId,
+              profile: kuwaitJobs.offers[i],
+              offerId: media.offerId(AppDomainId.kuwaitJobs, i),
+              photoUrls: media.photos(AppDomainId.kuwaitJobs, i),
+            )
+            .copyWith(active: media.isActive(AppDomainId.kuwaitJobs, i)),
       ),
     );
   }
@@ -109,6 +127,16 @@ List<OwnedPost> collectOwnedPosts({
 JobsProfile? jobsFromOwned(OwnedPost post, JobsOfferStore store) {
   final index = post.offerIndex;
   if (post.domain != AppDomainId.jobs || index == null) return null;
+  if (index < 0 || index >= store.offers.length) return null;
+  return store.offers[index];
+}
+
+KuwaitJobsProfile? kuwaitJobsFromOwned(
+  OwnedPost post,
+  KuwaitJobsOfferStore store,
+) {
+  final index = post.offerIndex;
+  if (post.domain != AppDomainId.kuwaitJobs || index == null) return null;
   if (index < 0 || index >= store.offers.length) return null;
   return store.offers[index];
 }

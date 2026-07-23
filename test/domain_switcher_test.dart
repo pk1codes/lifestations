@@ -11,7 +11,10 @@ void main() {
   testWidgets('Browse title is a label; only apps square opens switcher', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({'domain_coach_seen': true});
+    SharedPreferences.setMockInitialValues({
+      'domain_coach_seen': true,
+      'selected_domain': AppDomainId.marriage.index,
+    });
     final prefs = await SharedPreferences.getInstance();
     final controller = DomainController(prefs);
     const seeds = SeedRepository();

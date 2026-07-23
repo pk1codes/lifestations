@@ -19,7 +19,7 @@ void main() {
     );
   });
 
-  test('Kuwait dropdown + local digits builds Auth phone', () {
+  test('Kuwait chip + local digits builds Auth phone', () {
     expect(toFirebasePhone(PhoneDialCode.kuwait, '65620675'), '+96565620675');
   });
 

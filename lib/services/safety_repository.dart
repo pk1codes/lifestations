@@ -25,7 +25,7 @@ class SafetyRepository {
     final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
     if (uid == null) return;
     await _throttle.claim(ThrottledAction.report);
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     final urgent = reason == 'underage' || reason == 'child_safety';
     await (firestore ?? FirebaseFirestore.instance).collection('reports').add({
       'kind': 'user',
@@ -48,7 +48,7 @@ class SafetyRepository {
     final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
     if (uid == null) return;
     await _throttle.claim(ThrottledAction.imageFlag);
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     await (firestore ?? FirebaseFirestore.instance)
         .collection('image_flags')
         .add({

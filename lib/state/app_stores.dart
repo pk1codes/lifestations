@@ -15,7 +15,7 @@ import '../services/listing_image_cache.dart';
 
 class DomainController extends ChangeNotifier {
   DomainController(this._prefs)
-    : _selected = AppDomainId.values[_prefs.getInt(_domainKey) ?? 0],
+    : _selected = _readSelectedDomain(_prefs),
       _tabs = {
         for (final domain in AppDomainId.values)
           domain: (_prefs.getInt('tab_${domain.name}') ?? 0).clamp(
@@ -31,6 +31,16 @@ class DomainController extends ChangeNotifier {
   final SharedPreferences _prefs;
   AppDomainId _selected;
   final Map<AppDomainId, int> _tabs;
+
+  /// Newcomers land on Kuwait Jobs; later visits restore last selection.
+  static AppDomainId _readSelectedDomain(SharedPreferences prefs) {
+    if (!prefs.containsKey(_domainKey)) return AppDomainId.kuwaitJobs;
+    final index = prefs.getInt(_domainKey);
+    if (index == null || index < 0 || index >= AppDomainId.values.length) {
+      return AppDomainId.kuwaitJobs;
+    }
+    return AppDomainId.values[index];
+  }
 
   AppDomainId get selected => _selected;
   DomainPolicy get policy => AppDomains.byId(_selected);
@@ -70,6 +80,8 @@ class IdentityStore extends ChangeNotifier {
           _prefs.getStringList('identity_photo_urls') ?? const <String>[],
       phoneVerified: _prefs.getBool('identity_phone_verified') ?? false,
       dialCodePreference: _prefs.getString('identity_dial_code') ?? '91',
+      contactShareChosen:
+          _prefs.getBool('identity_contact_share_chosen') ?? false,
     );
   }
 
@@ -120,6 +132,10 @@ class IdentityStore extends ChangeNotifier {
       _prefs.setStringList('identity_photo_urls', identity.photoUrls),
       _prefs.setBool('identity_phone_verified', identity.phoneVerified),
       _prefs.setString('identity_dial_code', identity.dialCodePreference),
+      _prefs.setBool(
+        'identity_contact_share_chosen',
+        identity.contactShareChosen,
+      ),
     ]);
     try {
       await _repository.save(identity);
@@ -180,6 +196,8 @@ class DiscoveryStore extends ChangeNotifier {
     String? ageBand,
     String? role,
     String? tradeId,
+    String? nationality,
+    String? experienceBand,
   }) => (source ?? cards)
       .where((card) {
         if (cityId != null && cityId.isNotEmpty && card.cityId != cityId) {
@@ -199,6 +217,16 @@ class DiscoveryStore extends ChangeNotifier {
             !card.categoryTags.any(
               (tag) => tag.toLowerCase() == tradeId.toLowerCase(),
             )) {
+          return false;
+        }
+        if (nationality != null &&
+            nationality.isNotEmpty &&
+            card.attributes['nationality'] != nationality) {
+          return false;
+        }
+        if (experienceBand != null &&
+            experienceBand.isNotEmpty &&
+            card.attributes['experienceBand'] != experienceBand) {
           return false;
         }
         return true;
@@ -268,7 +296,8 @@ class DiscoveryStore extends ChangeNotifier {
     }
     _activeLive = this;
     stopLiveFeed();
-    if (!FirebaseBootstrap.ready) return;
+    // Repository decides empty/offline; always attach so Refresh/resume and
+    // tests can push snapshots through an injected DomainRepository.
     _liveSub = repository
         .watchDiscover(domain)
         .listen(

@@ -25,11 +25,23 @@ void main() {
     expect(whatsAppGateCta(WhatsAppGatePurpose.likeBack), 'Save & accept');
     expect(
       whatsAppGateBody(WhatsAppGatePurpose.like),
-      contains('People who like you back'),
+      contains('Add your number so matches can reach you'),
     );
     expect(
       whatsAppGateBody(WhatsAppGatePurpose.likeBack),
-      contains('accept and chat'),
+      contains('Add your number to accept'),
+    );
+  });
+
+  test('contact-share gate is WhatsApp-only number copy', () {
+    expect(
+      whatsAppGateTitle(WhatsAppGatePurpose.contactShare),
+      'WhatsApp for chat',
+    );
+    expect(whatsAppGateCta(WhatsAppGatePurpose.contactShare), 'Save number');
+    expect(
+      whatsAppGateBody(WhatsAppGatePurpose.contactShare),
+      contains('WhatsApp only'),
     );
   });
 }

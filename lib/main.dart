@@ -25,6 +25,7 @@ import 'services/owned_listing_cache.dart';
 import 'services/push_service.dart';
 import 'services/seed_repository.dart';
 import 'services/share_card_repository.dart';
+import 'services/share_link_router.dart';
 import 'services/share_service.dart';
 import 'state/app_stores.dart';
 import 'state/domain_profile_stores.dart';
@@ -43,6 +44,8 @@ Future<void> main() async {
     ..maximumSizeBytes = 12 * 1024 * 1024;
 
   final prefs = await SharedPreferences.getInstance();
+  final navigatorKey = GlobalKey<NavigatorState>();
+  final shareLinkRouter = ShareLinkRouter();
   final feedCache = DiscoveryFeedCache(prefs);
   final domainController = DomainController(prefs);
   final stores = <AppDomainId, DiscoveryStore>{
@@ -65,13 +68,13 @@ Future<void> main() async {
   Future<void> loadRemoteFeeds() async {
     if (!FirebaseBootstrap.ready) return;
     for (final store in stores.values) {
-      store.onRetry ??= loadRemoteFeeds;
       store.beginRemoteSync();
     }
     try {
       await FirebaseBootstrap.ensureSignedIn();
     } catch (_) {
-      // Stay on local/seed cards until the user can sign in.
+      // Stay on local/cached live cards until the user can sign in.
+      // Never inject bundled demos in release.
       for (final store in stores.values) {
         if (store.status == SyncStatus.loading) store.markReady();
       }
@@ -90,7 +93,8 @@ Future<void> main() async {
             merged.isEmpty ? seeds.forDomain(entry.key) : merged,
           );
         } else {
-          entry.value.load(merged);
+          // Release: empty remote → empty feed (drop any leftover demos).
+          entry.value.load(ScopedSyncEngine.withoutDemos(merged));
         }
       }
     } catch (_) {
@@ -102,6 +106,11 @@ Future<void> main() async {
         }
       }
     }
+  }
+
+  // Pull-to-refresh / resume / retry always reload every domain feed.
+  for (final store in stores.values) {
+    store.onRetry = loadRemoteFeeds;
   }
 
   unawaited(
@@ -123,14 +132,21 @@ Future<void> main() async {
   );
 
   final shareRepo = ShareCardRepository();
+  final initialRoute = await shareLinkRouter.resolveInitialRoute(
+    prefs: prefs,
+    defaultRouteName: WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+  );
   runApp(
     FlutMarriageApp(
       preferences: prefs,
       domainController: domainController,
       discoveryStores: stores,
       shareRepository: shareRepo,
+      initialRoute: initialRoute,
+      navigatorKey: navigatorKey,
     ),
   );
+  shareLinkRouter.attach(navigatorKey);
 }
 
 class FlutMarriageApp extends StatelessWidget {
@@ -139,6 +155,8 @@ class FlutMarriageApp extends StatelessWidget {
     required this.domainController,
     required this.discoveryStores,
     this.shareRepository,
+    this.initialRoute = '/',
+    this.navigatorKey,
     super.key,
   });
 
@@ -146,6 +164,8 @@ class FlutMarriageApp extends StatelessWidget {
   final DomainController domainController;
   final Map<AppDomainId, DiscoveryStore> discoveryStores;
   final ShareCardRepository? shareRepository;
+  final String initialRoute;
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   @override
   Widget build(BuildContext context) {
@@ -163,6 +183,9 @@ class FlutMarriageApp extends StatelessWidget {
           create: (_) => JobsOfferStore(preferences: preferences),
         ),
         ChangeNotifierProvider(
+          create: (_) => KuwaitJobsOfferStore(preferences: preferences),
+        ),
+        ChangeNotifierProvider(
           create: (_) => RoomsOfferStore(preferences: preferences),
         ),
         ChangeNotifierProvider(
@@ -174,6 +197,7 @@ class FlutMarriageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => OwnedListingCache(preferences)),
         ChangeNotifierProvider(create: (_) => MatchPreferencesStore()),
         ChangeNotifierProvider(create: (_) => JobsDiscoverPrefsStore()),
+        ChangeNotifierProvider(create: (_) => KuwaitJobsDiscoverPrefsStore()),
         ChangeNotifierProvider(
           create: (_) => BlockStore(
             preferences: preferences,
@@ -199,6 +223,7 @@ class FlutMarriageApp extends StatelessWidget {
       child: Consumer<LocaleController>(
         builder: (context, locale, _) => MaterialApp(
           debugShowCheckedModeBanner: false,
+          navigatorKey: navigatorKey,
           title: 'Life Stations',
           theme: buildTheme(),
           locale: locale.localeCode == null ? null : Locale(locale.localeCode!),
@@ -209,6 +234,7 @@ class FlutMarriageApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
+          initialRoute: initialRoute,
           onGenerateRoute: (settings) {
             final path =
                 Uri.tryParse(settings.name ?? '/')?.pathSegments ??

@@ -1,8 +1,17 @@
-/// India / Kuwait dial helpers for Account, WhatsApp gate, and SMS OTP.
+/// Dial helpers for Account, WhatsApp gate, and SMS OTP.
 library;
 
 enum PhoneDialCode {
+  bangladesh('880', '+880', 'Bangladesh'),
   india('91', '+91', 'India'),
+  pakistan('92', '+92', 'Pakistan'),
+  china('86', '+86', 'China'),
+  indonesia('62', '+62', 'Indonesia'),
+  egypt('20', '+20', 'Egypt'),
+  uae('971', '+971', 'UAE'),
+  saudi('966', '+966', 'Saudi'),
+  qatar('974', '+974', 'Qatar'),
+  oman('968', '+968', 'Oman'),
   kuwait('965', '+965', 'Kuwait');
 
   const PhoneDialCode(this.digits, this.label, this.country);
@@ -10,7 +19,27 @@ enum PhoneDialCode {
   final String label;
   final String country;
 
-  static const all = <PhoneDialCode>[india, kuwait];
+  /// UI order (India + Kuwait first — most common for this app).
+  static const all = <PhoneDialCode>[
+    india,
+    kuwait,
+    saudi,
+    uae,
+    qatar,
+    oman,
+    egypt,
+    pakistan,
+    bangladesh,
+    indonesia,
+    china,
+  ];
+
+  /// Longest dial digits first — avoids +880 matching as +86.
+  static List<PhoneDialCode> get matchOrder {
+    final codes = List<PhoneDialCode>.from(all);
+    codes.sort((a, b) => b.digits.length.compareTo(a.digits.length));
+    return codes;
+  }
 
   static PhoneDialCode fromDigits(String dialDigits) {
     for (final code in all) {
@@ -29,8 +58,35 @@ class PhoneParts {
 /// Preferred national lengths after dial code (loose, necessity-friendly).
 int nationalLengthHint(PhoneDialCode dial) => switch (dial) {
   PhoneDialCode.india => 10,
+  PhoneDialCode.pakistan => 10,
+  PhoneDialCode.bangladesh => 10,
+  PhoneDialCode.china => 11,
+  PhoneDialCode.indonesia => 10,
+  PhoneDialCode.egypt => 10,
   PhoneDialCode.kuwait => 8,
+  PhoneDialCode.saudi => 9,
+  PhoneDialCode.uae => 9,
+  PhoneDialCode.qatar => 8,
+  PhoneDialCode.oman => 8,
 };
+
+/// Dummy guidance digits only — never real test-console numbers.
+String nationalHintExample(PhoneDialCode dial) => switch (dial) {
+  PhoneDialCode.india => '9876543210',
+  PhoneDialCode.pakistan => '3001234567',
+  PhoneDialCode.bangladesh => '1712345678',
+  PhoneDialCode.china => '13812345678',
+  PhoneDialCode.indonesia => '8123456789',
+  PhoneDialCode.egypt => '1001234567',
+  PhoneDialCode.kuwait => '50123456',
+  PhoneDialCode.saudi => '501234567',
+  PhoneDialCode.uae => '501234567',
+  PhoneDialCode.qatar => '33123456',
+  PhoneDialCode.oman => '92123456',
+};
+
+/// Dummy 6-digit OTP hint (not a Firebase test code).
+const otpCodeHintExample = '123456';
 
 /// Strip non-digits and a leading trunk `0` from national input.
 String cleanNational(String raw) {
@@ -50,7 +106,7 @@ String toE164Digits(PhoneDialCode dial, String nationalRaw) {
       national.length > dial.digits.length + 4) {
     return national;
   }
-  for (final code in PhoneDialCode.all) {
+  for (final code in PhoneDialCode.matchOrder) {
     if (national.startsWith(code.digits) &&
         national.length >= code.digits.length + 7) {
       return national;
@@ -95,7 +151,7 @@ PhoneParts splitStoredPhone(
   if (digits.isEmpty) {
     return PhoneParts(dial: fallback, national: '');
   }
-  for (final code in PhoneDialCode.all) {
+  for (final code in PhoneDialCode.matchOrder) {
     if (digits.startsWith(code.digits) &&
         digits.length > code.digits.length + 4) {
       return PhoneParts(

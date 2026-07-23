@@ -8,12 +8,14 @@ void main() {
     final match = MatchPreferencesStore()
       ..update(city: 'mumbai', genderValue: 'woman', age: '25-29');
     final jobs = JobsDiscoverPrefsStore();
+    final kuwaitJobs = KuwaitJobsDiscoverPrefsStore();
 
     expect(
       browseActiveFilterLabels(
         domainId: AppDomainId.marriage,
         match: match,
         jobs: jobs,
+        kuwaitJobs: kuwaitJobs,
       ),
       ['Mumbai', 'woman', '25-29'],
     );
@@ -24,6 +26,7 @@ void main() {
         domainId: AppDomainId.marriage,
         match: match,
         jobs: jobs,
+        kuwaitJobs: kuwaitJobs,
       ),
       isEmpty,
     );
@@ -34,12 +37,14 @@ void main() {
     final match = MatchPreferencesStore();
     final jobs = JobsDiscoverPrefsStore()
       ..update(city: 'delhi', roleValue: 'seek', trade: 'Driver');
+    final kuwaitJobs = KuwaitJobsDiscoverPrefsStore();
 
     expect(
       browseActiveFilterLabels(
         domainId: AppDomainId.jobs,
         match: match,
         jobs: jobs,
+        kuwaitJobs: kuwaitJobs,
       ),
       ['Delhi NCR', 'I have', 'Driver'],
     );
@@ -52,12 +57,14 @@ void main() {
     final match = MatchPreferencesStore()
       ..update(city: 'bengaluru', genderValue: 'man', age: '30-34');
     final jobs = JobsDiscoverPrefsStore();
+    final kuwaitJobs = KuwaitJobsDiscoverPrefsStore();
 
     expect(
       browseActiveFilterLabels(
         domainId: AppDomainId.rooms,
         match: match,
         jobs: jobs,
+        kuwaitJobs: kuwaitJobs,
       ),
       ['Bengaluru'],
     );

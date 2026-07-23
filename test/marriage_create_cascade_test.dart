@@ -68,6 +68,7 @@ void main() {
         ownerId: 'user1',
         marriage: marriage,
         jobs: JobsOfferStore(),
+        kuwaitJobs: KuwaitJobsOfferStore(),
         rooms: RoomsOfferStore(),
         bikes: BikesOfferStore(),
         homeHelp: HomeHelpOfferStore(),

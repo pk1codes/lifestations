@@ -28,7 +28,7 @@ class ShareCardRepository {
       12,
       (_) => alphabet[_random.nextInt(alphabet.length)],
     ).join();
-    final prefix = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final prefix = AppDomains.byId(domain).slug;
     return '${prefix}_$token';
   }
 
@@ -109,9 +109,7 @@ class ShareCardRepository {
     await FirebaseBootstrap.waitUntilReady();
     final domain = PublicShareCard.domainFromSlug(slug);
     if (domain == null || !FirebaseBootstrap.ready) return null;
-    final domainSlug = domain == AppDomainId.homeHelp
-        ? 'home_help'
-        : domain.name;
+    final domainSlug = AppDomains.byId(domain).slug;
     final snap = await _db.doc('domains/$domainSlug/public_cards/$slug').get();
     if (!snap.exists) return null;
     final card = PublicShareCard.fromFirestore(slug, snap.data()!);
@@ -143,9 +141,7 @@ class ShareCardRepository {
     }
     final domain = PublicShareCard.domainFromSlug(slug);
     if (domain == null || !FirebaseBootstrap.ready) return;
-    final domainSlug = domain == AppDomainId.homeHelp
-        ? 'home_help'
-        : domain.name;
+    final domainSlug = AppDomains.byId(domain).slug;
     await _db.doc('domains/$domainSlug/public_cards/$slug').update({
       'active': false,
     });

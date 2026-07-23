@@ -165,7 +165,7 @@ exports.unlockContact = onCall({enforceAppCheck: true}, async (request) => {
   }
   const domainId = String(request.data?.domainId || "");
   const targetUid = String(request.data?.targetUid || "");
-  const allowed = ["marriage", "jobs", "rooms", "bikes", "home_help"];
+  const allowed = ["marriage", "jobs", "rooms", "bikes", "home_help", "kuwait_jobs"];
   if (!allowed.includes(domainId) || targetUid.length < 2) {
     throw new HttpsError("invalid-argument", "Invalid domain or target.");
   }
@@ -317,7 +317,7 @@ exports.serveMedia = onRequest(
   },
 );
 
-const DOMAIN_SLUGS = ["marriage", "jobs", "rooms", "bikes", "home_help"];
+const DOMAIN_SLUGS = ["marriage", "jobs", "rooms", "bikes", "home_help", "kuwait_jobs"];
 
 /**
  * Google Play data-deletion requirement: removes the caller's account and
@@ -432,6 +432,7 @@ exports.onInboundLikeCreated = onDocumentCreated(
       rooms: "Rooms",
       bikes: "Bikes",
       home_help: "Home Help",
+      kuwait_jobs: "Kuwait Jobs",
     };
     const domainLabel = domainLabels[domainId] || domainId;
 

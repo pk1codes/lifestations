@@ -79,12 +79,13 @@ void main() {
   });
 
   group('B3 Listings paths', () {
-    test('Marriage profiles; Jobs/Rooms/Bikes/Help offers', () {
+    test('Marriage profiles; Jobs/Rooms/Bikes/Help/Kuwait Jobs offers', () {
       expect(AppDomains.marriage.collection, 'domains/marriage/profiles');
       expect(AppDomains.jobs.collection, 'domains/jobs/offers');
       expect(AppDomains.rooms.collection, 'domains/rooms/offers');
       expect(AppDomains.bikes.collection, 'domains/bikes/offers');
       expect(AppDomains.homeHelp.collection, 'domains/home_help/offers');
+      expect(AppDomains.kuwaitJobs.collection, 'domains/kuwait_jobs/offers');
     });
 
     test('Jobs demand requires howMany; supply requires photo', () {
@@ -142,7 +143,7 @@ void main() {
     test('Jobs media path allowed under offers media', () {
       expect(
         storageRules.contains(
-          "domainId in ['rooms', 'bikes', 'home_help', 'jobs']",
+          "domainId in ['rooms', 'bikes', 'home_help', 'jobs', 'kuwait_jobs']",
         ),
         isTrue,
       );

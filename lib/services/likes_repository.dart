@@ -66,7 +66,7 @@ class LikesRepository {
       throw StateError('That demo card cannot be liked online.');
     }
     await _throttle.claim(ThrottledAction.like);
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     final targetSnap = _publicSnapshot(card);
     // Inbound must show the liker's public card so the owner can like back.
     var fromSnap = _publicSnapshot(fromCard);
@@ -108,7 +108,7 @@ class LikesRepository {
     }
     final uid = await _ensureUid();
     if (targetUid.isEmpty || uid == targetUid) return;
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     final batch = _db.batch();
     batch.delete(_db.doc('domains/$slug/likes/$uid/outbound/$targetUid'));
     batch.delete(_db.doc('domains/$slug/likes/$targetUid/inbound/$uid'));
@@ -132,7 +132,7 @@ class LikesRepository {
       yield const <LikeEntry>[];
       return;
     }
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     yield* _db
         .collection('domains/$slug/likes/$uid/inbound')
         .limit(100)
@@ -153,7 +153,7 @@ class LikesRepository {
     if (!FirebaseBootstrap.ready || otherUid.isEmpty) return;
     final uid = await _ensureUid();
     if (uid == otherUid) return;
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     // Our like sits on their inbound path — they listen there.
     final ref = _db.doc('domains/$slug/likes/$otherUid/inbound/$uid');
     try {
@@ -175,7 +175,7 @@ class LikesRepository {
     if (!FirebaseBootstrap.ready) return const <LikeEntry>[];
     final uid = (auth ?? FirebaseAuth.instance).currentUser?.uid;
     if (uid == null) return const <LikeEntry>[];
-    final slug = domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+    final slug = AppDomains.byId(domain).slug;
     final collection = direction == LikeDirection.outbound
         ? 'domains/$slug/likes/$uid/outbound'
         : 'domains/$slug/likes/$uid/inbound';

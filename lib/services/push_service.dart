@@ -77,6 +77,15 @@ class PushService {
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
+      // Keep token fresh after OTP / reinstall so like pushes reach the owner.
+      _messaging.onTokenRefresh.listen((fresh) async {
+        try {
+          await _db.doc('users/$uid/private/push').set({
+            'fcmToken': fresh,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (_) {}
+      });
       FirebaseMessaging.onMessage.listen(_onForeground);
       final initial = await _messaging.getInitialMessage();
       if (initial != null) _handleInboundData(initial.data);

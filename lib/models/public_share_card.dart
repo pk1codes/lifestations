@@ -72,18 +72,16 @@ class PublicShareCard {
   final bool verified;
   final bool promoted;
 
-  String get domainSlug =>
-      domain == AppDomainId.homeHelp ? 'home_help' : domain.name;
+  String get domainSlug => AppDomains.byId(domain).slug;
 
   bool get isActive => active;
 
   static AppDomainId? domainFromSlug(String slug) {
-    final parts = slug.split('_');
-    if (parts.length < 2) return null;
-    if (slug.startsWith('home_help_')) return AppDomainId.homeHelp;
-    for (final domain in AppDomainId.values) {
-      if (domain == AppDomainId.homeHelp) continue;
-      if (slug.startsWith('${domain.name}_')) return domain;
+    // Longer slugs first so kuwait_jobs_ wins over jobs_.
+    final policies = [...AppDomains.all]
+      ..sort((a, b) => b.slug.length.compareTo(a.slug.length));
+    for (final policy in policies) {
+      if (slug.startsWith('${policy.slug}_')) return policy.id;
     }
     return null;
   }
@@ -91,9 +89,7 @@ class PublicShareCard {
   static bool isValidSlug(String slug) {
     final domain = domainFromSlug(slug);
     if (domain == null) return false;
-    final prefix = domain == AppDomainId.homeHelp
-        ? 'home_help_'
-        : '${domain.name}_';
+    final prefix = '${AppDomains.byId(domain).slug}_';
     final token = slug.substring(prefix.length);
     return RegExp(r'^[a-zA-Z0-9]{6,64}$').hasMatch(token);
   }
@@ -128,7 +124,9 @@ class PublicShareCard {
       ageBand: _isSafeLabel(card.ageBand) ? card.ageBand : null,
       role: role,
       tradeLabel:
-          card.domain == AppDomainId.jobs && card.categoryTags.isNotEmpty
+          (card.domain == AppDomainId.jobs ||
+                  card.domain == AppDomainId.kuwaitJobs) &&
+              card.categoryTags.isNotEmpty
           ? card.categoryTags.first
           : null,
       categoryTags: safeTags,
@@ -180,9 +178,7 @@ class PublicShareCard {
     }
     if (!isValidSlug(slug) || data['slug'] != slug) return null;
     final domain = domainFromSlug(slug);
-    if (domain == null ||
-        data['domain'] !=
-            (domain == AppDomainId.homeHelp ? 'home_help' : domain.name)) {
+    if (domain == null || data['domain'] != AppDomains.byId(domain).slug) {
       return null;
     }
     if (data['active'] is! bool ||

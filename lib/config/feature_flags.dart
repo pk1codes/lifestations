@@ -7,16 +7,16 @@ abstract final class FeatureFlags {
   );
   static const enableVisionDev = bool.fromEnvironment('ENABLE_VISION_DEV');
 
-  /// Safe before a remote fetch: release mobile must first try the real feed.
+  /// Bundled demo people: debug/profile only (or explicit ALLOW_DEMO_SEEDS).
+  /// Release never starts with synthetic inventory.
   static bool get allowSeedsAtStartup =>
-      allowDemoSeedsOverride || !kReleaseMode || kIsWeb;
+      allowDemoSeedsOverride || !kReleaseMode;
 
-  /// Debug/profile: allow seeds. Release web: allow. Release mobile: empty-feed fallback only.
+  /// When remote Browse is empty, show empty state — not fake cards.
+  /// Low-literacy users treat demos as real people.
   static bool allowBundledSeeds({required bool remoteFeedEmpty}) {
     if (allowDemoSeedsOverride) return true;
-    if (kDebugMode) return true;
-    if (kIsWeb) return true;
-    // Release mobile
-    return remoteFeedEmpty;
+    if (!kReleaseMode) return true;
+    return false;
   }
 }

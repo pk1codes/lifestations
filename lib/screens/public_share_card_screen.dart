@@ -1,11 +1,18 @@
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config/store_links.dart';
 import '../models/app_domain.dart';
 import '../models/public_share_card.dart';
 import '../services/firebase_bootstrap.dart';
 import '../services/media_urls.dart';
 import '../services/share_card_repository.dart';
+import '../services/share_service.dart';
+import '../state/app_stores.dart';
 import '../theme/app_theme.dart';
 import '../widgets/fast_network_image.dart';
 import '../widgets/image_skeleton.dart';
@@ -98,7 +105,10 @@ class _PublicShareCardScreenState extends State<PublicShareCardScreen> {
                 actionLabel: 'Try again',
                 onAction: _load,
               ),
-              _ShareLoadState.ready => _ReadyCard(card: _card!),
+              _ShareLoadState.ready => _ReadyCard(
+                card: _card!,
+                slug: widget.slug,
+              ),
             },
           ),
         ),
@@ -177,8 +187,43 @@ class _ShareCardSkeleton extends StatelessWidget {
 }
 
 class _ReadyCard extends StatelessWidget {
-  const _ReadyCard({required this.card});
+  const _ReadyCard({required this.card, required this.slug});
   final PublicShareCard card;
+  final String slug;
+
+  Future<void> _openPlayStore() async {
+    final uri = Uri.parse(StoreLinks.playStoreForShareSlug(slug));
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openInAppOrWeb(BuildContext context) async {
+    if (!kIsWeb && context.mounted) {
+      // Already in the app on this card → Browse that domain.
+      context.read<DomainController>().selectDomain(card.domain);
+      Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+      return;
+    }
+    // Web: try to hand off to the installed Android app on the same /c/slug.
+    final origin = context.read<ShareService>().origin;
+    final shareHttps = '$origin/c/$slug';
+    final play = StoreLinks.playStoreForShareSlug(slug);
+    final intent = Uri.parse(
+      'intent://${Uri.parse(shareHttps).host}/c/$slug'
+      '#Intent;scheme=https;package=com.lifestations.app;'
+      'S.browser_fallback_url=${Uri.encodeComponent(play)};end',
+    );
+    try {
+      final launched = await launchUrl(
+        intent,
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched) return;
+    } catch (_) {}
+    await launchUrl(
+      Uri.parse(shareHttps),
+      mode: LaunchMode.externalApplication,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,34 +234,61 @@ class _ReadyCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (card.photoUrl != null)
-            AspectRatio(
-              aspectRatio: 4 / 3,
-              child: FastNetworkImage(
-                url: card.photoUrl!,
-                role: FastImageRole.card,
-                fit: BoxFit.cover,
-                placeholderColor: AppColors.darkCream,
-                fallback: Container(
-                  color: AppColors.darkCream,
-                  child: const Icon(Icons.image_outlined, size: 64),
-                ),
-              ),
-            )
-          else
-            ColoredBox(
-              color: AppColors.darkCream,
-              child: const AspectRatio(
-                aspectRatio: 4 / 3,
-                child: Center(
-                  child: Icon(
-                    Icons.image_outlined,
-                    size: 64,
-                    color: AppColors.muted,
+          AspectRatio(
+            aspectRatio: 4 / 3,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (card.photoUrl != null)
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: FastNetworkImage(
+                      url: card.photoUrl!,
+                      role: FastImageRole.card,
+                      fit: BoxFit.cover,
+                      placeholderColor: AppColors.darkCream,
+                      fallback: Container(
+                        color: AppColors.darkCream,
+                        child: const Icon(Icons.image_outlined, size: 64),
+                      ),
+                    ),
+                  )
+                else
+                  const ColoredBox(
+                    color: AppColors.darkCream,
+                    child: Center(
+                      child: Icon(
+                        Icons.image_outlined,
+                        size: 64,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ),
+                ColoredBox(color: Colors.black.withValues(alpha: 0.28)),
+                Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        'Preview — get the app to open',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
+          ),
           Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -247,19 +319,6 @@ class _ReadyCard extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (card.verified || card.promoted) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    [
-                      if (card.verified)
-                        'Self-attested ID is a claim by the owner, not a check by us.',
-                      if (card.promoted) 'Top means boosted visibility.',
-                    ].join(' '),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
-                  ),
-                ],
                 if (card.sideLabel != null && card.sideLabel!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -296,17 +355,27 @@ class _ReadyCard extends StatelessWidget {
                 ],
                 const SizedBox(height: 12),
                 Text(
-                  'Names, bios, phones, WhatsApp, Telegram, and documents are never included on public cards.',
+                  'Photo is blurred. Names, phones, WhatsApp, and Telegram stay private.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/',
-                    (_) => false,
+                FilledButton.icon(
+                  key: const Key('share_get_app'),
+                  onPressed: _openPlayStore,
+                  icon: const Icon(Icons.shop_outlined),
+                  label: const Text('Get the app'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
                   ),
-                  child: const Text('Explore safely'),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  key: const Key('share_open_app'),
+                  onPressed: () => _openInAppOrWeb(context),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  child: const Text('Open in Life Stations'),
                 ),
               ],
             ),

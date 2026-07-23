@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../services/phone_number.dart';
 import '../../theme/app_theme.dart';
 
-/// Country dial dropdown + national digits only (Account, WA gate, OTP).
+/// Country dial chips (+91 / +965) + national digits only (Account, WA gate, OTP).
 /// Default dial is India (+91); user never types the country code.
 class DialCodePhoneField extends StatelessWidget {
   const DialCodePhoneField({
@@ -15,6 +15,7 @@ class DialCodePhoneField extends StatelessWidget {
     this.enabled = true,
     this.autofocus = false,
     this.validator,
+    this.onComplete,
     super.key,
   });
 
@@ -26,8 +27,12 @@ class DialCodePhoneField extends StatelessWidget {
   final bool autofocus;
   final FormFieldValidator<String>? validator;
 
+  /// Fires once the national field reaches the expected digit count.
+  final VoidCallback? onComplete;
+
   @override
   Widget build(BuildContext context) {
+    final maxLen = nationalLengthHint(dial);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -39,57 +44,52 @@ class DialCodePhoneField extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            SizedBox(
-              width: 128,
-              child: DropdownButtonFormField<PhoneDialCode>(
-                // ValueKey rebuilds when dial changes (initialValue is one-shot).
-                key: ValueKey('dial_code_${dial.digits}'),
-                initialValue: dial,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Country',
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 16,
-                  ),
-                ),
-                items: [
-                  for (final code in PhoneDialCode.all)
-                    DropdownMenuItem(
-                      key: Key('dial_${code.digits}'),
-                      value: code,
-                      child: Text('${code.label} ${code.country}'),
-                    ),
-                ],
-                onChanged: enabled
-                    ? (code) {
-                        if (code != null) onDialChanged(code);
+            for (final code in PhoneDialCode.all)
+              ChoiceChip(
+                key: Key('dial_${code.digits}'),
+                label: Text(code.label),
+                selected: dial == code,
+                onSelected: enabled
+                    ? (selected) {
+                        if (selected) onDialChanged(code);
                       }
                     : null,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextFormField(
-                controller: controller,
-                enabled: enabled,
-                autofocus: autofocus,
-                keyboardType: TextInputType.phone,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(
-                  labelText: 'Phone',
-                  hintText: dial == PhoneDialCode.india
-                      ? '9869610903'
-                      : '90977001',
-                ),
-                validator:
-                    validator ?? (value) => phoneFieldError(dial, value ?? ''),
-              ),
-            ),
           ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${dial.country} ${dial.label}',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          enabled: enabled,
+          autofocus: autofocus,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(maxLen),
+          ],
+          decoration: InputDecoration(
+            labelText: 'Phone',
+            hintText: nationalHintExample(dial),
+          ),
+          validator: validator ?? (value) => phoneFieldError(dial, value ?? ''),
+          onChanged: enabled && onComplete != null
+              ? (value) {
+                  if (cleanNational(value).length == maxLen) {
+                    onComplete!();
+                  }
+                }
+              : null,
         ),
       ],
     );

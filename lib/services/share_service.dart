@@ -38,7 +38,7 @@ class ShareService {
     final url = canonicalUrl(published.slug);
     await SharePlus.instance.share(
       ShareParams(
-        text: 'Private-by-design listing: $url',
+        text: 'See this Life Stations listing: $url',
         subject: 'Shared on Life Stations',
       ),
     );

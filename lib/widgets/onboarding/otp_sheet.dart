@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,38 +14,49 @@ import '../../services/phone_number.dart';
 import '../../state/app_stores.dart';
 import '../../theme/app_theme.dart';
 import '../forms/dial_code_phone_field.dart';
-import 'whatsapp_gate_sheet.dart';
 
-Future<bool> showOtpSheet(
-  BuildContext context, {
-  bool preferWhatsAppNumber = false,
-}) async {
+/// Phone-only Firebase OTP (verify / sign-in). No name, city, or Account form.
+Future<bool> showOtpSheet(BuildContext context) async {
   final prefs = await SharedPreferences.getInstance();
   if (!context.mounted) return false;
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => OtpSheet(
-      throttle: OtpThrottle(preferences: prefs),
-      preferWhatsAppNumber: preferWhatsAppNumber,
-    ),
+    builder: (_) => OtpSheet(throttle: OtpThrottle(preferences: prefs)),
   );
   return result ?? false;
+}
+
+/// Like / Accept / publish: same verify path as Me → Account updates too.
+Future<bool> ensurePhoneVerifiedForAction(BuildContext context) async {
+  final store = context.read<IdentityStore>();
+  if (store.identity.phoneVerified) return true;
+  if (!context.mounted) return false;
+  final ok = await showOtpSheet(context);
+  if (!ok || !context.mounted) return false;
+  return context.read<IdentityStore>().identity.phoneVerified;
+}
+
+bool phoneBelongsToOtherAccount(FirebaseAuthException error) {
+  return error.code == 'credential-already-in-use' ||
+      error.code == 'account-exists-with-different-credential' ||
+      error.code == 'provider-already-linked';
 }
 
 class OtpSheet extends StatefulWidget {
   const OtpSheet({
     this.auth,
     this.throttle,
-    this.preferWhatsAppNumber = false,
+    @visibleForTesting this.debugStartWithVerificationId,
     super.key,
   });
   final FirebaseAuth? auth;
   final OtpThrottle? throttle;
 
-  /// When true (Account → Verify), start with the saved WhatsApp number.
-  final bool preferWhatsAppNumber;
+  /// Test-only: open directly on the 6-digit code step.
+  @visibleForTesting
+  final String? debugStartWithVerificationId;
 
   @override
   State<OtpSheet> createState() => _OtpSheetState();
@@ -55,11 +67,14 @@ class _OtpSheetState extends State<OtpSheet> {
   final _code = TextEditingController();
   late final OtpThrottle _throttle = widget.throttle ?? OtpThrottle();
   late PhoneDialCode _dial;
-  var _sameAsWhatsApp = false;
   String? _verificationId;
+  ConfirmationResult? _webConfirmation;
   String? _error;
   bool _busy = false;
   Timer? _cooldownTicker;
+
+  bool get _awaitingCode =>
+      _verificationId != null || _webConfirmation != null;
 
   @override
   void initState() {
@@ -69,12 +84,9 @@ class _OtpSheetState extends State<OtpSheet> {
       identity.whatsappNumber,
       fallback: PhoneDialCode.fromDigits(identity.dialCodePreference),
     );
-    // Default India (+91) when preference / WhatsApp dial is unset.
     _dial = wa.dial;
-    if (widget.preferWhatsAppNumber && wa.national.isNotEmpty) {
-      _sameAsWhatsApp = true;
-      _phone.text = wa.national;
-    }
+    _phone.text = wa.national;
+    _verificationId = widget.debugStartWithVerificationId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final left = _throttle.remaining(DateTime.now());
@@ -92,7 +104,6 @@ class _OtpSheetState extends State<OtpSheet> {
     super.dispose();
   }
 
-  /// Live “Try again in Xs” — ticks every second (local + remote cooldown).
   void _startCooldown(Duration duration) {
     var seconds = duration.inSeconds;
     if (seconds < 1) seconds = 60;
@@ -116,94 +127,117 @@ class _OtpSheetState extends State<OtpSheet> {
     });
   }
 
-  void _applySameAsWhatsApp(bool value) {
-    setState(() {
-      _sameAsWhatsApp = value;
-      if (!value) return;
-      final wa = splitStoredPhone(
-        context.read<IdentityStore>().identity.whatsappNumber,
-        fallback: _dial,
-      );
-      _dial = wa.dial;
-      _phone.text = wa.national;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final hasWa = hasWhatsAppNumber(context.watch<IdentityStore>().identity);
+    final theme = Theme.of(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        20,
+        24,
         0,
-        20,
-        MediaQuery.viewInsetsOf(context).bottom + 24,
+        24,
+        MediaQuery.viewInsetsOf(context).bottom + 28,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Verify phone',
-            style: Theme.of(context).textTheme.headlineSmall,
+            _awaitingCode ? 'Enter code' : 'Verify phone',
+            style: theme.textTheme.headlineSmall,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            'We send an SMS code to this phone. '
-            'This is not WhatsApp or Telegram.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+            _awaitingCode
+                ? 'Type the 6-digit code.'
+                : 'Enter your phone. We send a one-time code.',
+            style: theme.textTheme.bodyLarge?.copyWith(color: AppColors.muted),
           ),
-          const SizedBox(height: 16),
-          if (_verificationId == null) ...[
+          const SizedBox(height: 20),
+          if (!_awaitingCode)
             DialCodePhoneField(
               dial: _dial,
               controller: _phone,
-              label: 'Phone for SMS',
-              autofocus: true,
-              onDialChanged: (code) => setState(() {
-                _dial = code;
-                _sameAsWhatsApp = false;
-              }),
-            ),
-            if (hasWa)
-              CheckboxListTile(
-                key: const Key('otp_same_as_whatsapp'),
-                contentPadding: EdgeInsets.zero,
-                value: _sameAsWhatsApp,
-                onChanged: (v) => _applySameAsWhatsApp(v ?? false),
-                title: const Text('Same as WhatsApp'),
-                controlAffinity: ListTileControlAffinity.leading,
+              label: 'Phone',
+              autofocus: _phone.text.isEmpty,
+              onDialChanged: (code) => setState(() => _dial = code),
+              onComplete: () {
+                if (!_busy && !_awaitingCode) unawaited(_send());
+              },
+            )
+          else ...[
+            Text(
+              toFirebasePhone(_dial, _phone.text),
+              key: const Key('otp_sent_to'),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-          ] else
+            ),
+            const SizedBox(height: 16),
             TextField(
+              key: const Key('otp_code_field'),
               controller: _code,
+              autofocus: true,
               keyboardType: TextInputType.number,
               autofillHints: const [AutofillHints.oneTimeCode],
-              decoration: const InputDecoration(labelText: '6-digit SMS code'),
+              style: theme.textTheme.headlineSmall,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              decoration: const InputDecoration(
+                labelText: '6-digit code',
+                hintText: otpCodeHintExample,
+              ),
+              onChanged: (value) {
+                if (!_busy && value.trim().length == 6) {
+                  unawaited(_verify());
+                }
+              },
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                        _verificationId = null;
+                        _webConfirmation = null;
+                        _code.clear();
+                        _error = null;
+                      }),
+                child: const Text('Change number'),
+              ),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(
               _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              key: const Key('otp_error'),
+              style: TextStyle(
+                color: theme.colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          // Keep buttons as backup; auto-runs when digits are complete.
           FilledButton(
+            key: Key(_awaitingCode ? 'otp_confirm' : 'otp_send'),
+            style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
             onPressed: _busy
                 ? null
-                : (_verificationId == null ? _send : _verify),
+                : (_awaitingCode ? _verify : _send),
             child: _busy
                 ? const SizedBox(
                     width: 22,
                     height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
                   )
-                : Text(
-                    _verificationId == null ? 'Send SMS code' : 'Verify code',
-                  ),
+                : Text(_awaitingCode ? 'Confirm' : 'Send code'),
           ),
         ],
       ),
@@ -217,27 +251,14 @@ class _OtpSheetState extends State<OtpSheet> {
       return;
     }
     final firebasePhone = toFirebasePhone(_dial, _phone.text);
-    // Must be E.164 with '+' for Firebase Auth (e.g. +919869610903).
-    assert(
-      firebasePhone.startsWith('+') && firebasePhone.length >= 9,
-      'OTP requires Firebase E.164 phone, got: $firebasePhone',
-    );
     final now = DateTime.now();
     if (!_throttle.record(now)) {
       _startCooldown(_throttle.remaining(now));
       return;
     }
-    if (!await _claimRemoteOtpWindow()) {
-      return;
-    }
+    unawaited(_claimRemoteOtpWindowBestEffort());
+
     if (!FirebaseBootstrap.ready) {
-      if (kDebugMode) {
-        if (!mounted) return;
-        final identity = context.read<IdentityStore>();
-        await identity.save(identity.identity.copyWith(phoneVerified: true));
-        if (mounted) Navigator.pop(context, true);
-        return;
-      }
       setState(() => _error = 'Phone verification is unavailable offline.');
       return;
     }
@@ -245,10 +266,53 @@ class _OtpSheetState extends State<OtpSheet> {
       _busy = true;
       _error = null;
     });
-    final auth = widget.auth ?? FirebaseAuth.instance;
+    try {
+      await FirebaseBootstrap.ensureSignedIn();
+      final auth = widget.auth ?? FirebaseAuth.instance;
+      if (kIsWeb) {
+        await _sendWeb(auth, firebasePhone);
+      } else {
+        await _sendMobile(auth, firebasePhone);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = friendlyOtpError(error);
+      });
+    }
+  }
+
+  Future<void> _sendWeb(FirebaseAuth auth, String firebasePhone) async {
+    final user = auth.currentUser;
+    ConfirmationResult result;
+    try {
+      if (user != null && user.isAnonymous) {
+        result = await user.linkWithPhoneNumber(firebasePhone);
+      } else {
+        result = await auth.signInWithPhoneNumber(firebasePhone);
+      }
+    } on FirebaseAuthException catch (error) {
+      if (phoneBelongsToOtherAccount(error)) {
+        result = await auth.signInWithPhoneNumber(firebasePhone);
+      } else {
+        rethrow;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _webConfirmation = result;
+      _verificationId = result.verificationId;
+      _error = null;
+    });
+  }
+
+  Future<void> _sendMobile(FirebaseAuth auth, String firebasePhone) async {
     await auth.verifyPhoneNumber(
       phoneNumber: firebasePhone,
-      verificationCompleted: (credential) => _complete(credential),
+      timeout: const Duration(seconds: 60),
+      verificationCompleted: (credential) => _applyPhoneCredential(credential),
       verificationFailed: (error) {
         if (mounted) {
           setState(() {
@@ -262,67 +326,107 @@ class _OtpSheetState extends State<OtpSheet> {
           setState(() {
             _busy = false;
             _verificationId = verificationId;
+            _error = null;
           });
         }
       },
       codeAutoRetrievalTimeout: (verificationId) {
-        if (mounted) _verificationId ??= verificationId;
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _verificationId ??= verificationId;
+        });
       },
     );
   }
 
-  Future<bool> _claimRemoteOtpWindow() async {
-    if (!FirebaseBootstrap.ready) return true;
+  Future<void> _claimRemoteOtpWindowBestEffort() async {
+    if (!FirebaseBootstrap.ready) return;
     final user = (widget.auth ?? FirebaseAuth.instance).currentUser;
     final uid = user?.uid;
-    if (uid == null) return true;
+    if (uid == null) return;
     try {
       await FirebaseFirestore.instance.doc('otp_trackers/$uid').set({
         'uid': uid,
         'lastSentAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      return true;
-    } catch (_) {
-      // Same live countdown as local throttle (not a frozen "60s").
-      if (mounted) {
-        _startCooldown(const Duration(seconds: 60));
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('otp_trackers write skipped: $error');
       }
-      return false;
     }
   }
 
   Future<void> _verify() async {
-    if (_code.text.trim().length != 6) {
+    final code = _code.text.trim();
+    if (code.length != 6) {
       setState(() => _error = 'Enter the 6-digit code.');
       return;
     }
-    await _complete(
-      PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: _code.text.trim(),
-      ),
-    );
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      if (_webConfirmation != null) {
+        await _confirmWeb(code);
+        return;
+      }
+      final id = _verificationId;
+      if (id == null) {
+        setState(() {
+          _busy = false;
+          _error = 'Send a code first.';
+        });
+        return;
+      }
+      await _applyPhoneCredential(
+        PhoneAuthProvider.credential(verificationId: id, smsCode: code),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = friendlyOtpError(error);
+      });
+    }
   }
 
-  Future<void> _complete(PhoneAuthCredential credential) async {
-    setState(() => _busy = true);
+  Future<void> _confirmWeb(String code) async {
+    final auth = widget.auth ?? FirebaseAuth.instance;
+    final confirmation = _webConfirmation!;
+    try {
+      await confirmation.confirm(code);
+    } on FirebaseAuthException catch (error) {
+      if (!phoneBelongsToOtherAccount(error)) rethrow;
+      // Same person, other device/session — sign in as the existing phone user.
+      await auth.signInWithCredential(
+        PhoneAuthProvider.credential(
+          verificationId: confirmation.verificationId,
+          smsCode: code,
+        ),
+      );
+    }
+    await _persistVerified();
+  }
+
+  /// Link anonymous → phone when possible; otherwise sign in (same phone = same user).
+  Future<void> _applyPhoneCredential(PhoneAuthCredential credential) async {
+    if (mounted) setState(() => _busy = true);
     try {
       final auth = widget.auth ?? FirebaseAuth.instance;
       final user = auth.currentUser;
-      if (user != null && user.isAnonymous) {
-        await user.linkWithCredential(credential);
-      } else {
+      try {
+        if (user != null && user.isAnonymous) {
+          await user.linkWithCredential(credential);
+        } else {
+          await auth.signInWithCredential(credential);
+        }
+      } on FirebaseAuthException catch (error) {
+        if (!phoneBelongsToOtherAccount(error)) rethrow;
         await auth.signInWithCredential(credential);
       }
-      if (!mounted) return;
-      final identity = context.read<IdentityStore>();
-      await identity.save(
-        identity.identity.copyWith(
-          phoneVerified: true,
-          dialCodePreference: _dial.digits,
-        ),
-      );
-      if (mounted) Navigator.pop(context, true);
+      await _persistVerified();
     } on FirebaseAuthException catch (error) {
       if (mounted) {
         setState(() {
@@ -331,6 +435,33 @@ class _OtpSheetState extends State<OtpSheet> {
         });
       }
     }
+  }
+
+  Future<void> _persistVerified() async {
+    final auth = widget.auth ?? FirebaseAuth.instance;
+    final phone = auth.currentUser?.phoneNumber?.trim();
+    if (phone == null || phone.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not verify phone. Try again.';
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
+    final identity = context.read<IdentityStore>();
+    final e164 = toE164Digits(_dial, _phone.text);
+    await identity.save(
+      identity.identity.copyWith(
+        phoneVerified: true,
+        dialCodePreference: _dial.digits,
+        whatsappNumber: e164.isNotEmpty
+            ? e164
+            : identity.identity.whatsappNumber,
+      ),
+    );
+    if (mounted) Navigator.pop(context, true);
   }
 }
 
@@ -346,18 +477,38 @@ String friendlyOtpError(Object error) {
       case 'invalid-verification-id':
         return 'That code is wrong or expired. Request a new code.';
       case 'session-expired':
-        return 'Code expired. Send a new SMS code.';
+        return 'Code expired. Send a new code.';
       case 'quota-exceeded':
         return 'SMS limit reached. Try again later.';
       case 'network-request-failed':
         return 'No network. Check connection and retry.';
+      case 'credential-already-in-use':
+      case 'account-exists-with-different-credential':
+        // Handled by sign-in fallback; if it still surfaces, keep it plain.
+        return 'Signing you in with this phone…';
+      case 'captcha-check-failed':
+        return 'Security check failed. Refresh and try again.';
+      case 'operation-not-allowed':
+        final detail = error.message?.trim() ?? '';
+        if (detail.toLowerCase().contains('region') ||
+            detail.toLowerCase().contains('sms')) {
+          return 'SMS region blocked. Allow India and Kuwait in Firebase '
+              'Authentication → Settings → SMS region policy.';
+        }
+        return 'Phone sign-in blocked by Firebase settings.';
+      case 'missing-client-identifier':
+      case 'app-not-authorized':
+        return 'App not authorized for phone auth.';
       default:
         final message = error.message?.trim();
-        if (message != null && message.isNotEmpty && message.length <= 80) {
+        if (message != null && message.isNotEmpty && message.length <= 100) {
           return message;
         }
         return 'Could not verify phone. Try again.';
     }
+  }
+  if (error is StateError) {
+    return 'Could not start phone verify. Try again.';
   }
   return 'Could not verify phone. Try again.';
 }

@@ -72,9 +72,11 @@ void main() {
     expect(throttle.isLocked, isTrue);
   });
 
-  test('seed feature flag allows debug and empty-feed mobile fallback', () {
+  test('seed feature flag: debug may use demos; release never does', () {
+    // Widget/unit tests run as debug → seeds allowed for local UX.
     expect(FeatureFlags.allowBundledSeeds(remoteFeedEmpty: false), isTrue);
     expect(FeatureFlags.allowBundledSeeds(remoteFeedEmpty: true), isTrue);
+    expect(FeatureFlags.allowSeedsAtStartup, isTrue);
   });
 
   test('compression ladder softens quality for large sources', () {

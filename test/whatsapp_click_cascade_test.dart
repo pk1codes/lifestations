@@ -96,10 +96,15 @@ void main() {
   );
 
   test('openWhatsApp digit gate (≥8) matches wa.me launch path', () {
-    String digits(String raw) => raw.replaceAll(RegExp(r'\D'), '');
-    expect(digits('1234567').length >= 8, isFalse);
-    expect(digits('').length >= 8, isFalse);
-    expect(digits('+91 98765 43210').length >= 8, isTrue);
+    expect(cleanWhatsAppDigits('1234567').length >= 8, isFalse);
+    expect(cleanWhatsAppDigits('').length >= 8, isFalse);
+    expect(cleanWhatsAppDigits('+91 98765 43210').length >= 8, isTrue);
+    final uri = buildWhatsAppHttpsUri(
+      '+91 98765 43210',
+      message: contactOpenMessage(domainLabel: 'Jobs'),
+    );
+    expect(uri.queryParameters['text'], contains('Life Stations'));
+    expect(uri.path, '/919876543210');
   });
 
   test('OTP throttle applies when resending at chat unlock', () {

@@ -186,6 +186,178 @@ class JobsProfile {
   ];
 }
 
+/// Kuwait / Mid-East jobs (oilfield, camp, drivers). Available = seek, Wanted = offer.
+class KuwaitJobsProfile {
+  const KuwaitJobsProfile({
+    required this.role,
+    required this.tradeId,
+    required this.countryId,
+    required this.salaryBand,
+    required this.nationality,
+    required this.experienceBand,
+    this.photoCount = 0,
+    this.howMany,
+  });
+
+  final String role;
+  final String tradeId;
+  final String countryId;
+  final String salaryBand;
+  final String nationality;
+  final String experienceBand;
+  final int photoCount;
+  final String? howMany;
+
+  bool get isDemand => role == 'offer';
+  bool get isValid =>
+      roles.contains(role) &&
+      trades.contains(tradeId) &&
+      countryIds.contains(countryId) &&
+      salaryBandsFor(countryId).contains(salaryBand) &&
+      nationalities.contains(nationality) &&
+      experienceBands.contains(experienceBand) &&
+      photoCount <= 3 &&
+      (isDemand || photoCount >= 1) &&
+      (!isDemand || howManyOptions.contains(howMany));
+
+  static const roles = <String>['seek', 'offer'];
+  static String roleLabel(String role) => switch (role) {
+    'seek' => 'Available',
+    'offer' => 'Wanted',
+    _ => role,
+  };
+
+  static const howManyOptions = <String>['1', '2', '3', '4', '5', 'Team'];
+
+  static const trades = <String>[
+    'AC Mechanic',
+    'Accountant',
+    'Assistant Cook',
+    'Asst Driller',
+    'Camp Boss',
+    'Car Mechanic',
+    'Cashier',
+    'Cementer',
+    'Construction Worker',
+    'Cook',
+    'DD',
+    'DD Planner',
+    'DD/Mwd Coordinator',
+    'Derrikman',
+    'Driller',
+    'Drilling Er',
+    'Driver Ambulance',
+    'Driver Crane',
+    'Driver Tanker',
+    'Driver-Pickup',
+    'Electrician',
+    'Fishing Engineer',
+    'Floorman',
+    'Heavy Driver',
+    'Helper',
+    'Home Maid',
+    'Hotel Crew',
+    'HSE Supervisor',
+    'IT / Computer Engineer',
+    'Laundry boy',
+    'Logging Engineer',
+    'Manager',
+    'Material Dispatcher',
+    'Mechanic',
+    'Medic',
+    'MWD',
+    'Night Tool Pusher',
+    'Nurse',
+    'Office Jobs',
+    'Office Secretary',
+    'Office Service Coordinator',
+    'Others',
+    'Plumber',
+    'Receptionist',
+    'Rig Manager',
+    'Rig Superintendent',
+    'Room boy',
+    'Roustabout',
+    'Safety Er',
+    'Sales Manager',
+    'Salesman',
+    'Storekeeper',
+    'Tool Pusher',
+  ];
+
+  static const countryIds = <String>[
+    'kuwait',
+    'saudi',
+    'qatar',
+    'oman',
+    'egypt',
+    'uae',
+    'others',
+  ];
+
+  static const countryLabels = <String, String>{
+    'kuwait': 'Kuwait',
+    'saudi': 'Saudi',
+    'qatar': 'Qatar',
+    'oman': 'Oman',
+    'egypt': 'Egypt',
+    'uae': 'UAE',
+    'others': 'Others',
+  };
+
+  static String currencyFor(String countryId) => switch (countryId) {
+    'kuwait' => 'KWD',
+    'saudi' => 'SAR',
+    'qatar' => 'QAR',
+    'oman' => 'OMR',
+    'egypt' => 'EGP',
+    'uae' => 'AED',
+    'others' => 'USD',
+    _ => 'KWD',
+  };
+
+  static const salaryBandKeys = <String>[
+    'prefer_not',
+    'under_100',
+    '100_200',
+    '200_400',
+    '400_600',
+    '600_1000',
+    '1000_plus',
+  ];
+
+  static String salaryLabel(String key, String currency) => switch (key) {
+    'prefer_not' => 'Prefer not to say',
+    'under_100' => 'Under $currency 100/mo',
+    '100_200' => '$currency 100–200/mo',
+    '200_400' => '$currency 200–400/mo',
+    '400_600' => '$currency 400–600/mo',
+    '600_1000' => '$currency 600–1000/mo',
+    '1000_plus' => '$currency 1000+/mo',
+    _ => 'Prefer not to say',
+  };
+
+  static List<String> salaryBandsFor(String countryId) {
+    final currency = currencyFor(countryId);
+    return [
+      for (final key in salaryBandKeys) salaryLabel(key, currency),
+    ];
+  }
+
+  static const nationalities = <String>[
+    'Indian',
+    'Pakistan',
+    'Chinese',
+    'Egyptian',
+    'Indonesia',
+    'Bangladesh',
+    'Any',
+    'Others',
+  ];
+
+  static const experienceBands = <String>['0–1', '1–3', '3–5', '5+'];
+}
+
 class RoomsOffer {
   const RoomsOffer({
     required this.type,

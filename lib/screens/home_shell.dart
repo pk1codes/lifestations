@@ -37,6 +37,7 @@ import '../widgets/forms/form_fields.dart';
 import '../widgets/forms/bikes_form.dart';
 import '../widgets/forms/home_help_form.dart';
 import '../widgets/forms/jobs_form.dart';
+import '../widgets/forms/kuwait_jobs_form.dart';
 import '../widgets/forms/marriage_form.dart';
 import '../widgets/domain_tile_picker.dart';
 import '../widgets/domain_switcher_button.dart';
@@ -150,6 +151,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       media: context.read<OwnedListingCache>(),
       marriage: context.read<ProfileStore>(),
       jobs: context.read<JobsOfferStore>(),
+      kuwaitJobs: context.read<KuwaitJobsOfferStore>(),
       rooms: context.read<RoomsOfferStore>(),
       bikes: context.read<BikesOfferStore>(),
       homeHelp: context.read<HomeHelpOfferStore>(),
@@ -362,7 +364,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final visible = store.cardsForViewer(viewerUid);
     final matchPrefs = context.watch<MatchPreferencesStore>();
     final jobsPrefs = context.watch<JobsDiscoverPrefsStore>();
-    final cards = domain.id == AppDomainId.jobs
+    final kuwaitJobsPrefs = context.watch<KuwaitJobsDiscoverPrefsStore>();
+    final cards = domain.id == AppDomainId.kuwaitJobs
+        ? store.filtered(
+            source: visible,
+            cityId: kuwaitJobsPrefs.countryId,
+            role: kuwaitJobsPrefs.role,
+            tradeId: kuwaitJobsPrefs.tradeId,
+            nationality: kuwaitJobsPrefs.nationality,
+            experienceBand: kuwaitJobsPrefs.experienceBand,
+          )
+        : domain.id == AppDomainId.jobs
         ? store.filtered(
             source: visible,
             cityId: jobsPrefs.cityId,
@@ -383,6 +395,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       domainId: domain.id,
       match: matchPrefs,
       jobs: jobsPrefs,
+      kuwaitJobs: kuwaitJobsPrefs,
     );
     final filtersOn = filterChips.isNotEmpty;
     return RefreshIndicator(
@@ -470,10 +483,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       final messenger = ScaffoldMessenger.of(context);
                       final likes = context.read<LikesStore>();
                       try {
-                        final ready = await ensureWhatsAppForAction(
-                          context,
-                          purpose: WhatsAppGatePurpose.like,
-                        );
+                        final ready =
+                            await ensurePhoneVerifiedForAction(context);
                         if (!ready || !context.mounted) return false;
                         final mutual = await likes.like(
                           domain.id,
@@ -606,10 +617,14 @@ class DiscoveryCard extends StatelessWidget {
                     contentPadding: const EdgeInsets.fromLTRB(16, 2, 8, 0),
                     trailing: PopupMenuButton<String>(
                       tooltip: l10n.text('more'),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'safety',
+                          child: Text(l10n.text('safety')),
+                        ),
+                      ],
                       onSelected: (value) async {
-                        if (value == 'share') {
-                          await _share(context);
-                        } else if (value == 'safety') {
+                        if (value == 'safety') {
                           await showSafetySheet(
                             context,
                             domain: card.domain,
@@ -618,16 +633,6 @@ class DiscoveryCard extends StatelessWidget {
                           );
                         }
                       },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'share',
-                          child: Text(l10n.text('share')),
-                        ),
-                        PopupMenuItem(
-                          value: 'safety',
-                          child: Text(l10n.text('safety')),
-                        ),
-                      ],
                       icon: const Icon(Icons.more_vert),
                     ),
                   ),
@@ -659,6 +664,16 @@ class DiscoveryCard extends StatelessWidget {
                           filled: false,
                           compact: true,
                           onPressed: onPass,
+                        ),
+                        const SizedBox(width: 10),
+                        _RoundAction(
+                          key: const Key('share_button'),
+                          tooltip: l10n.text('share'),
+                          icon: Icons.share_outlined,
+                          color: domainColor,
+                          filled: false,
+                          compact: true,
+                          onPressed: () => unawaited(_share(context)),
                         ),
                         const SizedBox(width: 10),
                         _RoundAction(
@@ -1293,7 +1308,8 @@ class _LikeDetailSheet extends StatefulWidget {
 
 class _LikeDetailSheetState extends State<_LikeDetailSheet> {
   PrivateContact? _contact;
-  bool _unlocking = false;
+  /// Which contact button is busy (only that one shows a spinner).
+  _ContactChannel? _opening;
   bool _likingBack = false;
 
   LikeEntry get entry => widget.entry;
@@ -1304,10 +1320,7 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     if (likes.isMutual(entry.domain, entry.otherUid)) return;
     setState(() => _likingBack = true);
     try {
-      final ready = await ensureWhatsAppForAction(
-        context,
-        purpose: WhatsAppGatePurpose.likeBack,
-      );
+      final ready = await ensurePhoneVerifiedForAction(context);
       if (!ready || !mounted) return;
       final card =
           entry.card ??
@@ -1348,7 +1361,6 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
 
   Future<PrivateContact?> _ensureContact() async {
     if (_contact != null) return _contact;
-    final identity = context.read<IdentityStore>();
     final likes = context.read<LikesStore>();
     if (!likes.isMutual(entry.domain, entry.otherUid)) {
       ScaffoldMessenger.of(
@@ -1356,11 +1368,8 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
       ).showSnackBar(const SnackBar(content: Text(LikeConsent.acceptFirst)));
       return null;
     }
-    if (!identity.identity.phoneVerified) {
-      final ok = await showOtpSheet(context);
-      if (!ok || !mounted) return null;
-    }
-    setState(() => _unlocking = true);
+    final shareReady = await ensureContactShareForChat(context);
+    if (!shareReady || !mounted) return null;
     try {
       final contact = await ContactService().unlock(
         domain: entry.domain,
@@ -1381,32 +1390,70 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Check phone first')));
       return null;
-    } finally {
-      if (mounted) setState(() => _unlocking = false);
     }
   }
 
   Future<void> _openWhatsApp() async {
-    final contact = await _ensureContact();
-    if (contact == null || !mounted) return;
-    final likes = context.read<LikesStore>();
-    await likes.signalChatOpened(entry.domain, entry.otherUid);
-    await ContactService().openWhatsApp(contact.whatsappNumber);
+    if (_opening != null) return;
+    setState(() => _opening = _ContactChannel.whatsapp);
+    try {
+      final contact = await _ensureContact();
+      if (contact == null || !mounted) return;
+      final likes = context.read<LikesStore>();
+      await likes.signalChatOpened(entry.domain, entry.otherUid);
+      final label = AppDomains.byId(entry.domain).label;
+      final opened = await ContactService().openWhatsApp(
+        contact.whatsappNumber,
+        domainLabel: label,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('WhatsApp number copied — paste in WhatsApp'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = null);
+    }
   }
 
   Future<void> _openTelegram() async {
-    final contact = await _ensureContact();
-    if (contact == null || !mounted) return;
-    final handle = contact.telegramHandle?.trim() ?? '';
-    if (handle.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No Telegram yet')));
-      return;
+    if (_opening != null) return;
+    setState(() => _opening = _ContactChannel.telegram);
+    try {
+      final contact = await _ensureContact();
+      if (contact == null || !mounted) return;
+      final handle = contact.telegramHandle?.trim() ?? '';
+      if (handle.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No Telegram yet')));
+        return;
+      }
+      final likes = context.read<LikesStore>();
+      await likes.signalChatOpened(entry.domain, entry.otherUid);
+      final label = AppDomains.byId(entry.domain).label;
+      final opened = await ContactService().openTelegram(
+        handle,
+        domainLabel: label,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Telegram')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message copied — paste in Telegram, then Send'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _opening = null);
     }
-    final likes = context.read<LikesStore>();
-    await likes.signalChatOpened(entry.domain, entry.otherUid);
-    await ContactService().openTelegram(handle);
   }
 
   @override
@@ -1565,9 +1612,10 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                           label: 'WhatsApp',
                           icon: Icons.chat,
                           color: const Color(0xFF25D366),
-                          enabled: chatActive && !_unlocking,
+                          enabled:
+                              chatActive && _opening == null,
                           locked: !chatActive,
-                          busy: _unlocking,
+                          busy: _opening == _ContactChannel.whatsapp,
                           onPressed: _openWhatsApp,
                         ),
                       ),
@@ -1577,9 +1625,10 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
                           label: 'Telegram',
                           icon: Icons.send,
                           color: const Color(0xFF229ED9),
-                          enabled: chatActive && !_unlocking,
+                          enabled:
+                              chatActive && _opening == null,
                           locked: !chatActive,
-                          busy: _unlocking,
+                          busy: _opening == _ContactChannel.telegram,
                           onPressed: _openTelegram,
                         ),
                       ),
@@ -1594,6 +1643,8 @@ class _LikeDetailSheetState extends State<_LikeDetailSheet> {
     );
   }
 }
+
+enum _ContactChannel { whatsapp, telegram }
 
 class _ContactActionButton extends StatelessWidget {
   const _ContactActionButton({
@@ -1653,16 +1704,11 @@ class MeScreen extends StatelessWidget {
   const MeScreen({super.key});
 
   Future<void> _verifyPhoneFromMe(BuildContext context) async {
-    final identity = context.read<IdentityStore>();
-    if (!hasWhatsAppNumber(identity.identity)) {
-      await showIdentityForm(context);
-      return;
-    }
-    final ok = await showOtpSheet(context, preferWhatsAppNumber: true);
+    final ok = await showOtpSheet(context);
     if (!context.mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone verified — WhatsApp ready')),
+        const SnackBar(content: Text('Phone verified')),
       );
     }
   }
@@ -1693,28 +1739,31 @@ class MeScreen extends StatelessWidget {
           _MeHubRow(
             onTap: () => showIdentityForm(context),
             leading: _IdentityAvatar(photoUrl: photoUrl),
-            title: identity.completed
-                ? identity.identity.displayName
-                : 'Name, phone, city',
-            subtitle:
-                identity.completed && identity.identity.cityLabel.isNotEmpty
+            title: () {
+              final name = identity.identity.displayName.trim();
+              if (name.isNotEmpty) return name;
+              if (identity.identity.phoneVerified) return 'Phone verified';
+              return 'Account';
+            }(),
+            subtitle: identity.identity.cityLabel.isNotEmpty
                 ? identity.identity.cityLabel
-                : null,
+                : (identity.identity.phoneVerified
+                      ? 'Add a name anytime'
+                      : 'Optional profile'),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!hasWhatsAppNumber(identity.identity))
+                if (identity.identity.phoneVerified)
+                  const Icon(Icons.verified, color: AppColors.rose, size: 22)
+                else
                   const Padding(
                     padding: EdgeInsets.only(right: 8),
                     child: _WhatsAppNeededPill(),
-                  )
-                else if (identity.completed && identity.identity.phoneVerified)
-                  const Icon(Icons.verified, color: AppColors.rose, size: 22),
+                  ),
               ],
             ),
           ),
-          if (hasWhatsAppNumber(identity.identity) &&
-              !identity.identity.phoneVerified) ...[
+          if (!identity.identity.phoneVerified) ...[
             const SizedBox(height: 8),
             _MeHubRow(
               key: const Key('me_verify_phone_row'),
@@ -1728,8 +1777,8 @@ class MeScreen extends StatelessWidget {
                   size: 26,
                 ),
               ),
-              title: 'Verify phone (SMS)',
-              subtitle: 'One code — then WhatsApp opens',
+              title: 'Verify phone',
+              subtitle: 'One code — then chat can open',
             ),
           ],
           const SizedBox(height: 16),
@@ -1812,7 +1861,7 @@ class _WhatsAppNeededPill extends StatelessWidget {
         border: Border.all(color: AppColors.whatsapp.withValues(alpha: .45)),
       ),
       child: const Text(
-        'WhatsApp needed to like',
+        'Verify phone to like',
         style: TextStyle(
           color: Color(0xFF128C7E),
           fontWeight: FontWeight.w700,
@@ -1972,6 +2021,7 @@ class _IdentityAvatar extends StatelessWidget {
 void _watchPostStores(BuildContext context) {
   context.watch<ProfileStore>();
   context.watch<JobsOfferStore>();
+  context.watch<KuwaitJobsOfferStore>();
   context.watch<RoomsOfferStore>();
   context.watch<BikesOfferStore>();
   context.watch<HomeHelpOfferStore>();
@@ -1994,6 +2044,7 @@ List<OwnedPost> _ownedPosts(BuildContext context) {
     ownerId: _ownerUid(context),
     marriage: context.read<ProfileStore>(),
     jobs: context.read<JobsOfferStore>(),
+    kuwaitJobs: context.read<KuwaitJobsOfferStore>(),
     rooms: context.read<RoomsOfferStore>(),
     bikes: context.read<BikesOfferStore>(),
     homeHelp: context.read<HomeHelpOfferStore>(),
@@ -2008,6 +2059,8 @@ int _domainPostCount(BuildContext context, AppDomainId id) {
       return context.read<ProfileStore>().value != null ? 1 : 0;
     case AppDomainId.jobs:
       return context.read<JobsOfferStore>().offers.length;
+    case AppDomainId.kuwaitJobs:
+      return context.read<KuwaitJobsOfferStore>().offers.length;
     case AppDomainId.rooms:
       return context.read<RoomsOfferStore>().offers.length;
     case AppDomainId.bikes:
@@ -2308,6 +2361,7 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
     final media = host.read<OwnedListingCache>();
     final marriage = host.read<ProfileStore>();
     final jobs = host.read<JobsOfferStore>();
+    final kuwaitJobs = host.read<KuwaitJobsOfferStore>();
     final rooms = host.read<RoomsOfferStore>();
     final bikes = host.read<BikesOfferStore>();
     final homeHelp = host.read<HomeHelpOfferStore>();
@@ -2339,6 +2393,7 @@ class _OwnedPostDetailSheetState extends State<_OwnedPostDetailSheet> {
         media: media,
         marriage: marriage,
         jobs: jobs,
+        kuwaitJobs: kuwaitJobs,
         rooms: rooms,
         bikes: bikes,
         homeHelp: homeHelp,
@@ -2461,6 +2516,7 @@ class _DomainAdRow extends StatelessWidget {
 const _domainIcons = <AppDomainId, IconData>{
   AppDomainId.marriage: Icons.favorite,
   AppDomainId.jobs: Icons.work,
+  AppDomainId.kuwaitJobs: Icons.engineering,
   AppDomainId.rooms: Icons.hotel,
   AppDomainId.bikes: Icons.pedal_bike,
   AppDomainId.homeHelp: Icons.cleaning_services,
@@ -2767,8 +2823,26 @@ List<String> browseActiveFilterLabels({
   required AppDomainId domainId,
   required MatchPreferencesStore match,
   required JobsDiscoverPrefsStore jobs,
+  required KuwaitJobsDiscoverPrefsStore kuwaitJobs,
 }) {
   final labels = <String>[];
+  if (domainId == AppDomainId.kuwaitJobs) {
+    final country = kuwaitJobs.countryId;
+    if (country != null && country.isNotEmpty) {
+      labels.add(KuwaitJobsProfile.countryLabels[country] ?? country);
+    }
+    final role = kuwaitJobs.role;
+    if (role != null && role.isNotEmpty) {
+      labels.add(KuwaitJobsProfile.roleLabel(role));
+    }
+    final trade = kuwaitJobs.tradeId;
+    if (trade != null && trade.isNotEmpty) labels.add(trade);
+    final nationality = kuwaitJobs.nationality;
+    if (nationality != null && nationality.isNotEmpty) labels.add(nationality);
+    final experience = kuwaitJobs.experienceBand;
+    if (experience != null && experience.isNotEmpty) labels.add(experience);
+    return labels;
+  }
   if (domainId == AppDomainId.jobs) {
     final city = jobs.cityId;
     if (city != null && city.isNotEmpty) {
@@ -2796,7 +2870,9 @@ List<String> browseActiveFilterLabels({
 }
 
 void _clearBrowseFilters(BuildContext context, AppDomainId domainId) {
-  if (domainId == AppDomainId.jobs) {
+  if (domainId == AppDomainId.kuwaitJobs) {
+    context.read<KuwaitJobsDiscoverPrefsStore>().clear();
+  } else if (domainId == AppDomainId.jobs) {
     context.read<JobsDiscoverPrefsStore>().clear();
   } else {
     context.read<MatchPreferencesStore>().clear();
@@ -2806,11 +2882,19 @@ void _clearBrowseFilters(BuildContext context, AppDomainId domainId) {
 Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
   final match = context.read<MatchPreferencesStore>();
   final jobs = context.read<JobsDiscoverPrefsStore>();
+  final kuwaitJobs = context.read<KuwaitJobsDiscoverPrefsStore>();
   String? city = domain.id == AppDomainId.jobs ? jobs.cityId : match.cityId;
+  String? country = kuwaitJobs.countryId;
   String? gender = match.gender;
   String? age = match.ageBand;
-  String? role = jobs.role;
-  String? trade = jobs.tradeId;
+  String? role = domain.id == AppDomainId.kuwaitJobs
+      ? kuwaitJobs.role
+      : jobs.role;
+  String? trade = domain.id == AppDomainId.kuwaitJobs
+      ? kuwaitJobs.tradeId
+      : jobs.tradeId;
+  String? nationality = kuwaitJobs.nationality;
+  String? experience = kuwaitJobs.experienceBand;
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -2828,47 +2912,31 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
-              CityFilterDropdown(
-                value: city,
-                onChanged: (v) => setState(() => city = v),
-              ),
-              if (domain.id == AppDomainId.marriage) ...[
-                const SizedBox(height: 12),
+              if (domain.id == AppDomainId.kuwaitJobs) ...[
                 DropdownButtonFormField<String?>(
-                  initialValue: gender,
-                  decoration: const InputDecoration(labelText: 'Gender'),
+                  initialValue: country,
+                  decoration: const InputDecoration(labelText: 'Country'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('Any')),
-                    ...MarriageProfile.genders.map(
-                      (v) => DropdownMenuItem(value: v, child: Text(v)),
+                    ...KuwaitJobsProfile.countryIds.map(
+                      (v) => DropdownMenuItem(
+                        value: v,
+                        child: Text(KuwaitJobsProfile.countryLabels[v] ?? v),
+                      ),
                     ),
                   ],
-                  onChanged: (v) => setState(() => gender = v),
+                  onChanged: (v) => setState(() => country = v),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  initialValue: age,
-                  decoration: const InputDecoration(labelText: 'Age band'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Any')),
-                    ...MarriageProfile.ageBands.map(
-                      (v) => DropdownMenuItem(value: v, child: Text(v)),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => age = v),
-                ),
-              ],
-              if (domain.id == AppDomainId.jobs) ...[
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   initialValue: role,
                   decoration: const InputDecoration(labelText: 'Looking for'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('Any')),
-                    ...JobsProfile.roles.map(
+                    ...KuwaitJobsProfile.roles.map(
                       (v) => DropdownMenuItem(
                         value: v,
-                        child: Text(JobsProfile.roleLabel(v)),
+                        child: Text(KuwaitJobsProfile.roleLabel(v)),
                       ),
                     ),
                   ],
@@ -2883,17 +2951,112 @@ Future<void> _showFilters(BuildContext context, DomainPolicy domain) async {
                       value: null,
                       child: Text('Any trade'),
                     ),
-                    ...JobsProfile.trades.map(
+                    ...KuwaitJobsProfile.trades.map(
                       (v) => DropdownMenuItem(value: v, child: Text(v)),
                     ),
                   ],
                   onChanged: (v) => setState(() => trade = v),
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  initialValue: nationality,
+                  decoration: const InputDecoration(labelText: 'Nationality'),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Any')),
+                    ...KuwaitJobsProfile.nationalities.map(
+                      (v) => DropdownMenuItem(value: v, child: Text(v)),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => nationality = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  initialValue: experience,
+                  decoration: const InputDecoration(labelText: 'Experience'),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Any')),
+                    ...KuwaitJobsProfile.experienceBands.map(
+                      (v) => DropdownMenuItem(value: v, child: Text(v)),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => experience = v),
+                ),
+              ] else ...[
+                CityFilterDropdown(
+                  value: city,
+                  onChanged: (v) => setState(() => city = v),
+                ),
+                if (domain.id == AppDomainId.marriage) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: gender,
+                    decoration: const InputDecoration(labelText: 'Gender'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Any')),
+                      ...MarriageProfile.genders.map(
+                        (v) => DropdownMenuItem(value: v, child: Text(v)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => gender = v),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: age,
+                    decoration: const InputDecoration(labelText: 'Age band'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Any')),
+                      ...MarriageProfile.ageBands.map(
+                        (v) => DropdownMenuItem(value: v, child: Text(v)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => age = v),
+                  ),
+                ],
+                if (domain.id == AppDomainId.jobs) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: role,
+                    decoration: const InputDecoration(labelText: 'Looking for'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Any')),
+                      ...JobsProfile.roles.map(
+                        (v) => DropdownMenuItem(
+                          value: v,
+                          child: Text(JobsProfile.roleLabel(v)),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => role = v),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: trade,
+                    decoration: const InputDecoration(labelText: 'Trade'),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Any trade'),
+                      ),
+                      ...JobsProfile.trades.map(
+                        (v) => DropdownMenuItem(value: v, child: Text(v)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => trade = v),
+                  ),
+                ],
               ],
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
-                  if (domain.id == AppDomainId.jobs) {
+                  if (domain.id == AppDomainId.kuwaitJobs) {
+                    kuwaitJobs.update(
+                      country: country,
+                      roleValue: role,
+                      trade: trade,
+                      nationalityValue: nationality,
+                      experience: experience,
+                    );
+                  } else if (domain.id == AppDomainId.jobs) {
                     jobs.update(city: city, roleValue: role, trade: trade);
                   } else {
                     match.update(city: city, genderValue: gender, age: age);
@@ -2916,8 +3079,8 @@ Future<void> showMatchDialog(BuildContext context) => showDialog<void>(
     icon: const Icon(Icons.favorite, color: AppColors.rose, size: 42),
     title: const Text('Both interested'),
     content: const Text(
-      'Both interested — WhatsApp. '
-      'Verify your phone when you tap WhatsApp.',
+      'Both interested — open WhatsApp from Likes. '
+      'Verify your phone with one code first.',
       textAlign: TextAlign.center,
     ),
     actions: [
@@ -3011,7 +3174,7 @@ Future<void> showDomainProfileForm(
   DomainPolicy domain, {
   OwnedPost? edit,
 }) async {
-  final ready = await ensureWhatsAppForAction(context);
+  final ready = await ensurePhoneVerifiedForAction(context);
   if (!ready || !context.mounted) return;
   final hostMessenger = ScaffoldMessenger.of(context);
   final identity = context.read<IdentityStore>();
@@ -3040,7 +3203,7 @@ Future<void> showDomainProfileForm(
           if (profile != null) store.saveLocal(profile);
         }
       case AppDomainId.jobs:
-        break;
+      case AppDomainId.kuwaitJobs:
       case AppDomainId.rooms:
       case AppDomainId.bikes:
       case AppDomainId.homeHelp:
@@ -3082,6 +3245,8 @@ Future<void> showDomainProfileForm(
           (switch (domain.id) {
             AppDomainId.jobs =>
               context.read<JobsOfferStore>().offers.length - 1,
+            AppDomainId.kuwaitJobs =>
+              context.read<KuwaitJobsOfferStore>().offers.length - 1,
             AppDomainId.rooms =>
               context.read<RoomsOfferStore>().offers.length - 1,
             AppDomainId.bikes =>
@@ -3106,7 +3271,9 @@ Future<void> showDomainProfileForm(
   }
 
   final requireFace =
-      domain.id == AppDomainId.marriage || domain.id == AppDomainId.jobs;
+      domain.id == AppDomainId.marriage ||
+      domain.id == AppDomainId.jobs ||
+      domain.id == AppDomainId.kuwaitJobs;
 
   Future<bool> pickPhoto(BuildContext hostContext, int slot) async {
     if (!hostContext.mounted) return false;
@@ -3153,6 +3320,9 @@ Future<void> showDomainProfileForm(
       : null;
   final jobsInitial = activeEdit != null
       ? jobsFromOwned(activeEdit, context.read<JobsOfferStore>())
+      : null;
+  final kuwaitJobsInitial = activeEdit != null
+      ? kuwaitJobsFromOwned(activeEdit, context.read<KuwaitJobsOfferStore>())
       : null;
   final roomsInitial = activeEdit != null
       ? roomsFromOwned(activeEdit, context.read<RoomsOfferStore>())
@@ -3218,6 +3388,28 @@ Future<void> showDomainProfileForm(
                 onSaveSuccess: onSaved,
                 onAfterSave: (profile) async {
                   await publisher.publishJobs(
+                    ownerId: publishOwnerId(),
+                    profile: profile,
+                    offerId: offerId,
+                    photoUrls: List<String>.from(media.urls),
+                  );
+                  await rememberMedia(offerIndex: activeEdit?.offerIndex);
+                },
+              ),
+              AppDomainId.kuwaitJobs => KuwaitJobsForm(
+                initial: kuwaitJobsInitial,
+                editIndex: activeEdit?.offerIndex,
+                photoUrls: urls,
+                photoPreviews: previews,
+                busySlot: busy,
+                uploadProgress: progress,
+                photoStatus: media.lastStatus,
+                photoError: media.lastError,
+                onPickPhoto: onPick,
+                onRemovePhoto: removePhoto,
+                onSaveSuccess: onSaved,
+                onAfterSave: (profile) async {
+                  await publisher.publishKuwaitJobs(
                     ownerId: publishOwnerId(),
                     profile: profile,
                     offerId: offerId,

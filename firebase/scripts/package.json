@@ -8,7 +8,9 @@
     "prove:backend": "node prove_backend_invariants.mjs",
     "seed:safe": "node seed_safe_inventory.mjs",
     "seed:vaults": "node seed_contact_vaults.mjs",
-    "cleanup:bike-docs": "node cleanup_legacy_bike_doc_urls.mjs"
+    "cleanup:bike-docs": "node cleanup_legacy_bike_doc_urls.mjs",
+    "wipe:slate": "node wipe_clean_slate.mjs",
+    "wipe:slate:confirm": "node wipe_clean_slate.mjs --confirm"
   },
   "dependencies": {
     "firebase-admin": "^13.4.0",
